@@ -32,8 +32,14 @@ use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDev
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::core::w;
-use windows::Win32::System::DataExchange::{GetClipboardSequenceNumber, IsClipboardFormatAvailable, RegisterClipboardFormatW};
+use windows::core::{w, PCWSTR};
+use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
+use windows::Win32::System::Power::SetSuspendState;
+use windows::Win32::System::Shutdown::LockWorkStation;
+use windows::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE};
+use windows::Win32::System::DataExchange::{GetClipboardOwner, GetClipboardSequenceNumber, IsClipboardFormatAvailable, RegisterClipboardFormatW};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetKeyState, GetKeyboardLayout, GetLastInputInfo, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
@@ -48,6 +54,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::types::{Battery, Cmd, Media, MediaAction, Presence, Volume};
+use crate::settings::Settings;
 use crate::Shared;
 
 const TICK: Duration = Duration::from_millis(150);
@@ -62,11 +69,11 @@ const AWAY_AFTER_MS: u32 = 120_000;
 const ZONE_HALF_W: f64 = 125.0;
 const ZONE_H: f64 = 38.0;
 
-pub fn spawn(app: AppHandle, shared: Arc<Shared>) -> Sender<Cmd> {
+pub fn spawn(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>) -> Sender<Cmd> {
     let (tx, rx) = channel();
     thread::Builder::new()
         .name("island-sys".into())
-        .spawn(move || run(app, shared, rx))
+        .spawn(move || run(app, shared, settings, rx))
         .expect("spawn system thread");
     tx
 }
@@ -88,7 +95,7 @@ pub fn cursor_pos() -> Option<(f64, f64)> {
     Some((p.x as f64, p.y as f64))
 }
 
-fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
+fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receiver<Cmd>) {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
     }
@@ -191,7 +198,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
                 right: (mid + ZONE_HALF_W * g.scale) as i32,
                 bottom: (g.y + ZONE_H * g.scale) as i32,
             };
-            let p = presence(zone, &mut games);
+            let p = presence(zone, &mut games, &settings);
             let before = std::mem::replace(&mut shared.snap.lock().unwrap().presence, p);
             if p != before {
                 if let Some(w) = app.get_webview_window("island") {
@@ -404,7 +411,7 @@ fn battery() -> Option<Battery> {
 }
 
 /// What the island should do about the window in front, on the island's monitor.
-fn presence(zone: RECT, games: &mut GameCache) -> Presence {
+fn presence(zone: RECT, games: &mut GameCache, settings: &Settings) -> Presence {
     let island = POINT { x: (zone.left + zone.right) / 2, y: zone.top + 4 };
     unsafe {
         let fg = GetForegroundWindow();
@@ -437,12 +444,13 @@ fn presence(zone: RECT, games: &mut GameCache) -> Presence {
         let titled = GetWindowLongPtrW(fg, GWL_STYLE) as u32 & WS_CAPTION.0 == WS_CAPTION.0;
         if covers && !(IsZoomed(fg).as_bool() && titled) {
             // Full-screen: games lose the island entirely, the rest get a strip.
-            return if games.is_game(fg, pid, &class) { Presence::Hidden } else { Presence::Strip };
+            let game = games.is_game(fg, pid, &class);
+            return if game && settings.bool("hideInGames", true) { Presence::Hidden } else { Presence::Strip };
         }
         // An ordinary window that reaches under the island (a maximised
         // browser with its tabs and address bar): step aside to a strip.
         let overlaps = r.left < zone.right && r.right > zone.left && r.top < zone.bottom && r.bottom > zone.top;
-        if overlaps {
+        if overlaps && settings.bool("stripOverWindows", true) {
             Presence::Strip
         } else {
             Presence::Normal
@@ -542,7 +550,7 @@ fn process_path(pid: u32) -> String {
 /// Watches the clipboard and records what is copied. Content marked private
 /// (password managers set "ExcludeClipboardContentFromMonitorProcessing") is
 /// never recorded.
-pub fn spawn_clipboard(app: AppHandle, clips: Arc<std::sync::Mutex<crate::clip::Clips>>) {
+pub fn spawn_clipboard(app: AppHandle, clips: Arc<std::sync::Mutex<crate::clip::Clips>>, settings: Arc<Settings>) {
     thread::Builder::new()
         .name("island-clipboard".into())
         .spawn(move || {
@@ -559,8 +567,22 @@ pub fn spawn_clipboard(app: AppHandle, clips: Arc<std::sync::Mutex<crate::clip::
                     continue;
                 }
                 seq = now;
-                if private.iter().any(|&f| f != 0 && unsafe { IsClipboardFormatAvailable(f) }.is_ok()) {
+                if !settings.bool("clipboardHistory", true)
+                    || private.iter().any(|&f| f != 0 && unsafe { IsClipboardFormatAvailable(f) }.is_ok())
+                {
                     continue;
+                }
+                // Apps the user asked to skip (e.g. a password manager without the private mark).
+                let skip = settings.strings("clipSkipApps");
+                if !skip.is_empty() {
+                    let owner = unsafe { GetClipboardOwner() }.unwrap_or_default();
+                    let mut pid = 0u32;
+                    unsafe { GetWindowThreadProcessId(owner, Some(&mut pid)) };
+                    let exe = process_path(pid).to_lowercase();
+                    let name = exe.rsplit('\\').next().unwrap_or("").trim_end_matches(".exe").to_string();
+                    if !name.is_empty() && skip.iter().any(|s| s.trim_end_matches(".exe") == name) {
+                        continue;
+                    }
                 }
                 // The owner may still be writing: give it a moment.
                 thread::sleep(Duration::from_millis(60));
@@ -709,4 +731,194 @@ fn layout_name(langid: u16) -> String {
 
 pub fn mouse_down() -> bool {
     unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+// ------------------------------------------------------------- controls ----
+
+#[derive(Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Controls {
+    pub wifi: Option<bool>,
+    pub ssid: Option<String>,
+    pub bluetooth: Option<bool>,
+    pub dark: bool,
+}
+
+fn radios() -> Vec<Radio> {
+    let _ = Radio::RequestAccessAsync().and_then(|op| op.join());
+    match Radio::GetRadiosAsync().and_then(|op| op.join()) {
+        Ok(list) => list.into_iter().collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn radio_state(kind: RadioKind) -> Option<bool> {
+    radios()
+        .into_iter()
+        .find(|r| r.Kind().ok() == Some(kind))
+        .and_then(|r| r.State().ok())
+        .map(|s| s == RadioState::On)
+}
+
+pub fn controls_get() -> Controls {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+    let wifi = radio_state(RadioKind::WiFi);
+    Controls {
+        wifi,
+        ssid: if wifi == Some(true) { current_ssid() } else { None },
+        bluetooth: radio_state(RadioKind::Bluetooth),
+        dark: !read_theme_light(),
+    }
+}
+
+/// Turns the Wi-Fi or Bluetooth radio on or off.
+pub fn radio_set(kind: &str, on: bool) -> bool {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+    let kind = match kind {
+        "wifi" => RadioKind::WiFi,
+        "bluetooth" => RadioKind::Bluetooth,
+        _ => return false,
+    };
+    let state = if on { RadioState::On } else { RadioState::Off };
+    radios()
+        .into_iter()
+        .filter(|r| r.Kind().ok() == Some(kind))
+        .map(|r| r.SetStateAsync(state).and_then(|op| op.join()).map(|a| a == RadioAccessStatus::Allowed).unwrap_or(false))
+        .fold(false, |a, b| a || b)
+}
+
+/// Runs a console program without flashing a window and returns its output.
+pub fn quiet_output(program: &str, args: &[&str]) -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new(program).args(args).creation_flags(CREATE_NO_WINDOW).output().ok()?;
+    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn current_ssid() -> Option<String> {
+    let out = quiet_output("netsh", &["wlan", "show", "interfaces"])?;
+    out.lines().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        (k.trim() == "SSID").then(|| v.trim().to_string()).filter(|s| !s.is_empty())
+    })
+}
+
+const PERSONALIZE: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+
+fn read_theme_light() -> bool {
+    let mut data = 1u32;
+    let mut size = 4u32;
+    unsafe {
+        let _ = RegGetValueW(
+            HKEY_CURRENT_USER,
+            PERSONALIZE,
+            w!("AppsUseLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut _),
+            Some(&mut size),
+        );
+    }
+    data != 0
+}
+
+/// Switches Windows (apps and system) between the dark and the light theme.
+pub fn set_dark(dark: bool) {
+    let v: u32 = if dark { 0 } else { 1 };
+    unsafe {
+        for name in [w!("AppsUseLightTheme"), w!("SystemUsesLightTheme")] {
+            let _ = RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                PERSONALIZE,
+                name,
+                REG_DWORD.0,
+                Some(&v as *const u32 as *const _),
+                4,
+            );
+        }
+        let mut res = 0usize;
+        let _ = SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            WPARAM(0),
+            LPARAM(w!("ImmersiveColorSet").as_ptr() as isize),
+            SMTO_ABORTIFHUNG,
+            200,
+            Some(&mut res),
+        );
+    }
+}
+
+pub fn power(action: &str) {
+    match action {
+        "lock" => unsafe {
+            let _ = LockWorkStation();
+        },
+        "sleep" => unsafe {
+            let _ = SetSuspendState(false, false, false);
+        },
+        "restart" => {
+            let _ = quiet_output("shutdown", &["/r", "/t", "0"]);
+        }
+        "shutdown" => {
+            let _ = quiet_output("shutdown", &["/s", "/t", "0"]);
+        }
+        _ => {}
+    }
+}
+
+// ----------------------------------------------------------------- apps ----
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct App {
+    #[serde(rename = "Name")]
+    pub name: String,
+    #[serde(rename = "AppID")]
+    pub id: String,
+}
+
+/// Every app of the Start menu, Store apps included (via Get-StartApps).
+pub fn start_apps() -> Vec<App> {
+    let Some(out) = quiet_output(
+        "powershell",
+        &["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"],
+    ) else {
+        return Vec::new();
+    };
+    let out = out.trim_start_matches('\u{feff}');
+    serde_json::from_str::<Vec<App>>(out)
+        .or_else(|_| serde_json::from_str::<App>(out).map(|a| vec![a]))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|a| !a.name.is_empty())
+        .collect()
+}
+
+pub fn launch_app(id: &str) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new("explorer.exe")
+        .arg(format!("shell:AppsFolder\\{id}"))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+}
+
+/// Runs a command line in a new console window that stays open.
+pub fn run_shell(cmd: &str, powershell: bool) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    let mut c = if powershell {
+        let mut c = std::process::Command::new("powershell.exe");
+        c.args(["-NoLogo", "-NoExit", "-Command", cmd]);
+        c
+    } else {
+        let mut c = std::process::Command::new("cmd.exe");
+        c.raw_arg(format!("/k {cmd}"));
+        c
+    };
+    let _ = c.creation_flags(CREATE_NEW_CONSOLE).spawn();
 }

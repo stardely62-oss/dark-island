@@ -14,10 +14,13 @@ const P = ({ x, y, w = 1, h = 1, fill = C }: { x: number; y: number; w?: number;
   <rect x={x} y={y} width={w} height={h} fill={fill} />
 );
 
-export function Buddy({ size = 26, sleeping = false }: { size?: number; sleeping?: boolean }) {
+/** work: typing away for an agent; ask: waiting for your answer; done: pleased. */
+export type Mood = "work" | "ask" | "done" | null;
+
+export function Buddy({ size = 26, sleeping = false, mood = null }: { size?: number; sleeping?: boolean; mood?: Mood }) {
   return (
     <svg
-      className={`buddy ${sleeping ? "sleep" : ""}`}
+      className={`buddy ${sleeping && !mood ? "sleep" : ""} ${mood ? `mood-${mood}` : ""}`}
       width={size}
       height={(size * 11) / 15}
       viewBox="0 0 15 11"
@@ -37,8 +40,12 @@ export function Buddy({ size = 26, sleeping = false }: { size?: number; sleeping
         </g>
         <g className="bd-body">
           <P x={2} y={1} w={11} h={7} />
-          <P x={0} y={4} w={2} h={2} />
-          <P x={13} y={4} w={2} h={2} />
+          <g className="bd-arm-l">
+            <P x={0} y={4} w={2} h={2} />
+          </g>
+          <g className="bd-arm-r">
+            <P x={13} y={4} w={2} h={2} />
+          </g>
           <g className="bd-gaze">
             <g className="bd-eyes">
               <P x={5} y={3} h={2} fill={INK} />
@@ -58,6 +65,9 @@ export function Buddy({ size = 26, sleeping = false }: { size?: number; sleeping
             </g>
           </g>
         </g>
+      </g>
+      <g className="bd-mark" fill="#ffc58f" fontSize="5" fontWeight="800" fontFamily="Segoe UI, sans-serif">
+        <text x="13" y="1.6">?</text>
       </g>
       <g className="bd-zz" fill="#cfd3ff" fontSize="4" fontWeight="700" fontFamily="Segoe UI, sans-serif">
         <text x="12.5" y="1.5">z</text>

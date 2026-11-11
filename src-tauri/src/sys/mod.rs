@@ -9,7 +9,8 @@ mod windows;
 pub use self::meter::spawn as spawn_meter;
 #[cfg(windows)]
 pub use self::windows::{
-    cursor_pos, mouse_down, prepare_window, release_focus, send_paste, spawn, spawn_clipboard, take_focus,
+    controls_get, cursor_pos, launch_app, mouse_down, power, prepare_window, radio_set, release_focus, run_shell,
+    send_paste, set_dark, spawn, spawn_clipboard, start_apps, take_focus, App, Controls,
 };
 
 #[cfg(not(windows))]

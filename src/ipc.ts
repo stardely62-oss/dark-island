@@ -32,7 +32,9 @@ type Events = {
   audio: number[];
   clips: Clip[];
   keys: { caps: boolean; layout: string; what: "caps" | "layout" };
-  hotkey: "toggle" | "clipboard";
+  hotkey: "toggle" | "clipboard" | "command";
+  agent: AgentEvent;
+  settings: Record<string, unknown>;
   outside_click: null;
   /** Files dragged over the island from another window. */
   drag: { type: "enter" | "leave" | "drop"; paths: string[] };
@@ -48,6 +50,15 @@ export type Clip = {
   h: number;
   pinned: boolean;
   at: number;
+};
+export type AgentEvent = {
+  agent: "claude" | "codex";
+  session: string;
+  state: "working" | "ask" | "waiting" | "done" | "end" | "info";
+  project: string;
+  detail: string;
+  askId: number;
+  seconds: number;
 };
 export type ShelfItem = { path: string; name: string; dir: boolean; size: number };
 
@@ -199,6 +210,8 @@ function mockBridge(): Bridge {
     clips = [];
     shelf = [];
   }
+ const mockSettings: Record<string, unknown> = {};
+  const mockControls = { wifi: true, ssid: "Home-5G", bluetooth: false, dark: true };
   let note = "Идеи:\n— остров под музыку ✓\n— Клодик ✓\n— буфер обмена";
   const calls: Record<string, (a: Record<string, unknown>) => unknown> = {
     clip_list: () => clips,
@@ -222,6 +235,30 @@ function mockBridge(): Bridge {
     },
     shelf_remove: (a) => (shelf = shelf.filter((i) => i.path !== a.path)),
     shelf_clear: () => (shelf = []),
+    settings_get: () => mockSettings,
+    settings_set: (a) => {
+      Object.assign(mockSettings, a.patch);
+      return mockSettings;
+    },
+    agents_connections: () => ({ claude: false, codex: false, codex_busy: false }),
+    agents_connect: (a) => ({ claude: a.which === "claude" && a.on, codex: a.which === "codex" && a.on, codex_busy: false }),
+    agents_answer: (a) => {
+      emit("agent", { agent: "claude", session: "s1", state: "working", project: "dark-island", detail: "", askId: 0, seconds: 0 });
+      return a;
+    },
+    controls_get: () => mockControls,
+    controls_set: (a) => {
+      (mockControls as Record<string, unknown>)[a.what as string] = a.on;
+      return mockControls;
+    },
+    apps_list: () => [
+      { Name: "Telegram", AppID: "tg" },
+      { Name: "Google Chrome", AppID: "chrome" },
+      { Name: "Блокнот", AppID: "notepad" },
+      { Name: "Калькулятор", AppID: "calc" },
+      { Name: "Visual Studio Code", AppID: "code" },
+      { Name: "Steam", AppID: "steam" },
+    ],
     note_get: () => note,
     note_set: (a) => {
       note = a.text as string;

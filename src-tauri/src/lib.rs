@@ -1,4 +1,6 @@
+mod agents;
 mod clip;
+mod settings;
 mod cursor;
 mod sys;
 mod types;
@@ -34,6 +36,9 @@ struct Ctl {
     clips: Arc<Mutex<Clips>>,
     shelf: Mutex<Shelf>,
     note: Mutex<Note>,
+    settings: Arc<settings::Settings>,
+    agents: Arc<agents::Agents>,
+    apps: Arc<Mutex<Vec<sys::App>>>,
 }
 
 impl Ctl {
@@ -200,12 +205,106 @@ fn release_focus(app: AppHandle) {
     });
 }
 
+// ---- settings ----------------------------------------------------------------
+
+#[tauri::command]
+fn settings_get(ctl: State<'_, Ctl>) -> serde_json::Map<String, serde_json::Value> {
+    ctl.settings.all()
+}
+
+#[tauri::command]
+fn settings_set(
+    app: AppHandle,
+    ctl: State<'_, Ctl>,
+    patch: serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let all = ctl.settings.merge(patch);
+    let _ = app.emit_to("island", "settings", all.clone());
+    all
+}
+
+// ---- agents ------------------------------------------------------------------
+
+#[tauri::command]
+fn agents_answer(ctl: State<'_, Ctl>, id: u64, allow: bool) {
+    ctl.agents.answer(id, allow);
+}
+
+#[tauri::command]
+fn agents_connections() -> agents::Connections {
+    agents::connections()
+}
+
+#[tauri::command]
+fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool) -> Result<agents::Connections, String> {
+    match which.as_str() {
+        "claude" => agents::connect_claude(&ctl.agents, on)?,
+        "codex" => agents::connect_codex(&ctl.agents, on)?,
+        _ => return Err("неизвестный агент".into()),
+    }
+    Ok(agents::connections())
+}
+
+// ---- controls, power, apps -----------------------------------------------------
+
+#[tauri::command]
+async fn controls_get() -> sys::Controls {
+    sys::controls_get()
+}
+
+#[tauri::command]
+async fn controls_set(what: String, on: bool) -> sys::Controls {
+    match what.as_str() {
+        "wifi" | "bluetooth" => {
+            sys::radio_set(&what, on);
+        }
+        "dark" => sys::set_dark(on),
+        _ => {}
+    }
+    sys::controls_get()
+}
+
+#[tauri::command]
+fn power(action: String) {
+    sys::power(&action);
+}
+
+#[tauri::command]
+async fn apps_list(ctl: State<'_, Ctl>) -> Result<Vec<sys::App>, ()> {
+    let cached = ctl.apps.lock().unwrap().clone();
+    if !cached.is_empty() {
+        return Ok(cached);
+    }
+    let apps = sys::start_apps();
+    *ctl.apps.lock().unwrap() = apps.clone();
+    Ok(apps)
+}
+
+#[tauri::command]
+fn app_launch(id: String) {
+    sys::launch_app(&id);
+}
+
+#[tauri::command]
+fn run_shell(cmd: String, powershell: bool) {
+    sys::run_shell(&cmd, powershell);
+}
+
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) {
+    if url.starts_with("https://") || url.starts_with("http://") {
+        let _ = app.opener().open_url(url, None::<&str>);
+    }
+}
+
 // ---- hotkeys -------------------------------------------------------------------
 
-/// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard.
+/// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
+/// Alt+Space opens the command bar.
 fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
     let toggle = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyI);
     let clipboard = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
+    let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, sc, ev| {
@@ -216,6 +315,8 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                     "toggle"
                 } else if *sc == clipboard {
                     "clipboard"
+                } else if *sc == command {
+                    "command"
                 } else {
                     return;
                 };
@@ -224,7 +325,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             .build(),
     )?;
     // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard] {
+    for sc in [toggle, clipboard, command] {
         let _ = app.global_shortcut().register(sc);
     }
     Ok(())
@@ -313,7 +414,19 @@ pub fn run() {
             note_get,
             note_set,
             take_focus,
-            release_focus
+            release_focus,
+            settings_get,
+            settings_set,
+            agents_answer,
+            agents_connections,
+            agents_connect,
+            controls_get,
+            controls_set,
+            power,
+            apps_list,
+            app_launch,
+            run_shell,
+            open_url
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -327,19 +440,33 @@ pub fn run() {
             let _ = win.set_ignore_cursor_events(true);
             let _ = win.show();
 
-            let tx = sys::spawn(app.handle().clone(), shared.clone());
-            cursor::spawn(app.handle().clone(), shared.clone());
-            sys::spawn_meter(app.handle().clone());
             let data_dir = app.path().app_data_dir()?;
             let _ = std::fs::create_dir_all(&data_dir);
+            let settings = Arc::new(settings::Settings::load(&data_dir));
+            let tx = sys::spawn(app.handle().clone(), shared.clone(), settings.clone());
+            cursor::spawn(app.handle().clone(), shared.clone());
+            sys::spawn_meter(app.handle().clone());
             let clips = Arc::new(Mutex::new(Clips::load(&data_dir)));
-            sys::spawn_clipboard(app.handle().clone(), clips.clone());
+            sys::spawn_clipboard(app.handle().clone(), clips.clone(), settings.clone());
+            let agents = agents::start(app.handle().clone(), settings.clone());
+            // The Start menu is read once in the background for the command bar.
+            let apps = Arc::new(Mutex::new(Vec::new()));
+            {
+                let apps = apps.clone();
+                std::thread::spawn(move || {
+                    let list = sys::start_apps();
+                    *apps.lock().unwrap() = list;
+                });
+            }
             app.manage(Ctl {
                 shared,
                 tx: Mutex::new(tx),
                 clips,
                 shelf: Mutex::new(Shelf::load(&data_dir)),
                 note: Mutex::new(Note::load(&data_dir)),
+                settings,
+                agents,
+                apps,
             });
             register_hotkeys(app.handle())?;
 

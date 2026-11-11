@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { bridge, type Battery, type Bridge, type Clip, type Cursor, type Media, type Presence, type ShelfItem, type Volume } from "./ipc";
+import { bridge, type AgentEvent, type Battery, type Bridge, type Clip, type Cursor, type Media, type Presence, type ShelfItem, type Volume } from "./ipc";
 import { Liquid, type Shape } from "./liquid";
 import {
   BatteryIcon,
@@ -16,20 +16,34 @@ import {
   TabHome,
   TabNote,
   TabShelf,
+  TabControls,
+  TabSettings,
   TimerIcon,
 } from "./components/Icons";
 import { ClipboardTab } from "./panels/Clipboard";
 import { ShelfTab } from "./panels/Shelf";
 import { NoteTab } from "./panels/Note";
+import { ControlsTab } from "./panels/Controls";
+import { SettingsTab } from "./panels/Settings";
+import { CommandBar, commandHeight } from "./panels/CommandBar";
+import { useSettings } from "./settings";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { Buddy, animateBuddies } from "./components/Buddy";
+import { Buddy, animateBuddies, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer";
-type Tab = "home" | "clip" | "shelf" | "note";
-type Card = { key: number; kind: "caps" | "layout" | "timer" | "info"; title: string; sub?: string; sticky?: boolean };
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent";
+type Tab = "home" | "clip" | "shelf" | "note" | "controls" | "settings";
+type Card = {
+  key: number;
+  kind: "caps" | "layout" | "timer" | "info" | "agent";
+  title: string;
+  sub?: string;
+  sticky?: boolean;
+  mood?: Mood;
+  ms?: number;
+};
 
 const EXPAND_DELAY = 110;
 // From the strip the cursor has to rest a bit longer: it is often just
@@ -41,15 +55,25 @@ const CARD_MS = 1400;
 const DEFAULT_ACCENT = "rgb(142 162 255)";
 const PANEL_W = 460;
 
-function sizeOf(mode: Mode, opts: { media?: boolean; battery?: boolean; tab?: Tab } = {}): Shape {
+function sizeOf(
+  mode: Mode,
+  opts: { media?: boolean; battery?: boolean; tab?: Tab; rows?: number; card?: Card | null } = {},
+): Shape {
   switch (mode) {
+    case "command":
+      return { w: 560, h: commandHeight(opts.rows ?? 0) };
+    case "ask":
+      return { w: 410, h: 116 };
+    case "agent":
+      return { w: 300, h: 34 };
     case "expanded":
+      if (opts.tab === "controls") return { w: PANEL_W, h: 226 };
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
       return opts.media ? { w: PANEL_W, h: 246 } : { w: PANEL_W, h: 168 };
     case "strip":
       return { w: 150, h: 5 };
     case "card":
-      return { w: 250, h: 34 };
+      return opts.card?.kind === "agent" ? { w: 380, h: 60 } : { w: 250, h: 34 };
     case "timer":
       return { w: 172, h: 32 };
     case "media":
@@ -83,6 +107,15 @@ export function App() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [shelf, setShelf] = useState<ShelfItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandRows, setCommandRows] = useState(0);
+  // Agents in a terminal: who is working, and a pending permission question.
+  const [working, setWorking] = useState<Record<string, AgentEvent & { at: number }>>({});
+  const [ask, setAsk] = useState<AgentEvent | null>(null);
+  const [settings, setSetting] = useSettings(api);
+  const cardScale = settings.cardLength === "short" ? 0.7 : settings.cardLength === "long" ? 1.8 : 1;
+  const cardScaleRef = useRef(cardScale);
+  cardScaleRef.current = cardScale;
   const sleeping = away && !media?.playing;
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
   const accent2 = useMemo(() => shiftHue(accent, 45), [accent]);
@@ -91,32 +124,42 @@ export function App() {
   const showCard = useCallback((c: Omit<Card, "key">) => {
     clearTimeout(cardTimer.current);
     setCard({ ...c, key: Date.now() });
-    if (!c.sticky) cardTimer.current = window.setTimeout(() => setCard(null), CARD_MS);
+    if (!c.sticky)
+      cardTimer.current = window.setTimeout(() => setCard(null), (c.ms ?? CARD_MS) * cardScaleRef.current);
   }, []);
 
+  const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
   const timer = useTimer((total) => {
     chime();
     showCard({ kind: "timer", title: "Таймер", sub: `${fmtClock(total)} — готово`, sticky: true });
     window.setTimeout(chime, 2500);
   });
 
+  timerRef.current = timer;
   const expanded = (hoverOpen && !suppressed) || pinned;
-  const mode: Mode = expanded
-    ? "expanded"
-    : card
-      ? "card"
-      : hud
-        ? "hud"
-        : presence === "strip"
-          ? "strip"
-          : timer.active
-            ? "timer"
-            : media?.playing
-              ? "media"
-              : "idle";
+  const agentBusy = Object.keys(working).length > 0;
+  const mode: Mode = commandOpen
+    ? "command"
+    : expanded
+      ? "expanded"
+      : ask
+        ? "ask"
+        : card
+          ? "card"
+          : hud
+            ? "hud"
+            : presence === "strip"
+              ? "strip"
+              : agentBusy
+                ? "agent"
+                : timer.active
+                  ? "timer"
+                  : media?.playing
+                    ? "media"
+                    : "idle";
   const target = useMemo(
-    () => sizeOf(mode, { media: !!media, battery: !!battery, tab }),
-    [mode, media, battery, tab],
+    () => sizeOf(mode, { media: !!media, battery: !!battery, tab, rows: commandRows, card }),
+    [mode, media, battery, tab, commandRows, card],
   );
 
   // ---- data from the system --------------------------------------------
@@ -170,8 +213,13 @@ export function App() {
           if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? "включён" : "выключен" });
           else if (k.layout) showCard({ kind: "layout", title: "Раскладка", sub: k.layout });
         }),
+        b.on("agent", (e) => onAgentRef.current(e)),
         b.on("hotkey", (h) => {
           setSuppressed(false);
+          if (h === "command") {
+            setCommandOpen((o) => !o);
+            return;
+          }
           if (h === "clipboard") {
             setTab("clip");
             setPinned(true);
@@ -180,7 +228,10 @@ export function App() {
             setPinned((p) => !(p || expandedRef.current));
           }
         }),
-        b.on("outside_click", () => setPinned(false)),
+        b.on("outside_click", () => {
+          setPinned(false);
+          setCommandOpen(false);
+        }),
         b.on("drag", (d) => {
           if (d.type === "enter") {
             setSuppressed(false);
@@ -213,6 +264,63 @@ export function App() {
     };
   }, [showCard]);
 
+  // ---- agents ----------------------------------------------------------------
+  const onAgentRef = useRef<(e: AgentEvent) => void>(() => {});
+  onAgentRef.current = (e: AgentEvent) => {
+    const name = e.agent === "codex" ? "Codex" : "Claude";
+    const where = e.project ? ` · ${e.project}` : "";
+    const stopWorking = () =>
+      setWorking((w) => {
+        const { [e.session]: _, ...rest } = w;
+        return rest;
+      });
+    const clearAsk = () => setAsk((a) => (a && a.session === e.session ? null : a));
+    switch (e.state) {
+      case "working":
+        setWorking((w) => ({ ...w, [e.session]: { ...e, at: Date.now() } }));
+        clearAsk();
+        break;
+      case "ask":
+        setAsk(e);
+        chime();
+        break;
+      case "waiting":
+        clearAsk();
+        stopWorking();
+        showCard({ kind: "agent", title: `${name} ждёт${where}`, sub: e.detail, mood: "ask", ms: 4000 });
+        break;
+      case "done":
+        clearAsk();
+        stopWorking();
+        showCard({ kind: "agent", title: `${name} закончил${where}`, sub: e.detail || "Готово", mood: "done", ms: 5000 });
+        break;
+      case "info":
+        showCard({ kind: "agent", title: `${name}${where}`, sub: e.detail, mood: "ask", ms: 3500 });
+        break;
+      case "end":
+        clearAsk();
+        stopWorking();
+        break;
+    }
+  };
+  // A session that went quiet for ten minutes is not working any more.
+  useEffect(() => {
+    if (!agentBusy) return;
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      setWorking((w) => {
+        const keep = Object.fromEntries(Object.entries(w).filter(([, v]) => now - v.at < 600_000));
+        return Object.keys(keep).length === Object.keys(w).length ? w : keep;
+      });
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [agentBusy]);
+  const answer = (allow: boolean) => {
+    if (!ask) return;
+    api?.call("agents_answer", { id: ask.askId, allow });
+    setAsk(null);
+  };
+
   // ---- hover -> expand ----------------------------------------------------
   useEffect(() => {
     if (!hovered) setSuppressed(false);
@@ -241,6 +349,40 @@ export function App() {
       api?.call("release_focus");
     }
   }, [expanded, api]);
+  useEffect(() => {
+    if (commandOpen) takeFocus();
+    else if (focusTaken.current && !expanded) {
+      focusTaken.current = false;
+      api?.call("release_focus");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandOpen]);
+  const commandActions = useMemo(
+    () => ({
+      startTimer: (ms: number) => timerRef.current.start(ms),
+      system: (id: string) => {
+        if (id === "settings" || id === "clipboard") {
+          setTab(id === "settings" ? "settings" : "clip");
+          setPinned(true);
+          return;
+        }
+        if (id === "lock" || id === "sleep") {
+          api?.call("power", { action: id });
+          return;
+        }
+        api?.call<{ wifi: boolean; bluetooth: boolean; dark: boolean }>("controls_get").then((c) => {
+          const on = !c[id as "wifi" | "bluetooth" | "dark"];
+          api?.call("controls_set", { what: id, on });
+          showCard({ kind: "info", title: id === "dark" ? "Тема" : id === "wifi" ? "Wi-Fi" : "Bluetooth", sub: on ? (id === "dark" ? "тёмная" : "включён") : id === "dark" ? "светлая" : "выключен" });
+        });
+      },
+      close: () => {
+        setCommandOpen(false);
+        setPinned(false);
+      },
+    }),
+    [api, showCard],
+  );
   const dismiss = useCallback(() => {
     focusTaken.current = false;
     setPinned(false);
@@ -259,7 +401,7 @@ export function App() {
   const drive = useRef({ target, music: 0, reach: true });
   drive.current.target = target;
   // The strip stays calm over full-screen video: no dancing to the music.
-  drive.current.music = media?.playing && mode !== "strip" ? 1 : 0;
+  drive.current.music = media?.playing && mode !== "strip" && mode !== "command" ? 1 : 0;
   drive.current.reach = mode !== "strip";
 
   useEffect(() => {
@@ -345,12 +487,12 @@ export function App() {
   const onWheel = useCallback(
     (e: React.WheelEvent) => {
       // Lists scroll in the other tabs; the wheel is volume only on the pill and Home.
-      if (!api || !volume || (expanded && tab !== "home")) return;
+      if (!api || !volume || commandOpen || (expanded && tab !== "home")) return;
       const step = e.deltaY > 0 ? -0.02 : 0.02;
       api.volumeStep(step);
       setVolume({ ...volume, level: Math.min(1, Math.max(0, volume.level + step)) });
     },
-    [api, volume, expanded, tab],
+    [api, volume, expanded, tab, commandOpen],
   );
 
   const frame = (t: Tab, body: React.ReactNode) => (
@@ -413,7 +555,7 @@ export function App() {
         <View on={mode === "timer"} shape={sizeOf("timer")}>
           <TimerPill timer={timer} />
         </View>
-        <View on={mode === "card"} shape={sizeOf("card")}>
+        <View on={mode === "card"} shape={sizeOf("card", { card })}>
           {card && <CardView card={card} />}
         </View>
         {frame(
@@ -423,6 +565,26 @@ export function App() {
         {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
         {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
         {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} />)}
+        {frame("controls", <ControlsTab api={api} visible={mode === "expanded" && tab === "controls"} />)}
+        {frame(
+          "settings",
+          <SettingsTab
+            api={api}
+            settings={settings}
+            set={setSetting}
+            visible={mode === "expanded" && tab === "settings"}
+            onTypeStart={takeFocus}
+          />,
+        )}
+        <View on={mode === "agent"} shape={sizeOf("agent")}>
+          <AgentPill working={working} />
+        </View>
+        <View on={mode === "ask"} shape={sizeOf("ask")}>
+          {ask && <AskCard ask={ask} onAnswer={answer} />}
+        </View>
+        <View on={mode === "command"} shape={sizeOf("command", { rows: 6 })} top>
+          <CommandBar api={api} open={commandOpen} engine={settings.searchEngine} actions={commandActions} onCount={setCommandRows} />
+        </View>
       </div>
     </div>
   );
@@ -433,6 +595,8 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "clip", label: "Буфер", icon: <TabClip /> },
   { id: "shelf", label: "Полка", icon: <TabShelf /> },
   { id: "note", label: "Заметка и таймер", icon: <TabNote /> },
+  { id: "controls", label: "Управление", icon: <TabControls /> },
+  { id: "settings", label: "Настройки", icon: <TabSettings /> },
 ];
 
 function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; setTab: (t: Tab) => void }) {
@@ -486,6 +650,17 @@ function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
 }
 
 function CardView({ card }: { card: Card }) {
+  if (card.kind === "agent") {
+    return (
+      <div className="compact card card-agent" key={card.key}>
+        <Buddy size={30} mood={card.mood ?? null} />
+        <div className="agent-text">
+          <div className="card-title">{card.title}</div>
+          {card.sub && <div className="agent-sub">{card.sub}</div>}
+        </div>
+      </div>
+    );
+  }
   const icon =
     card.kind === "caps" ? <CapsIcon /> : card.kind === "layout" ? <GlobeIcon /> : card.kind === "timer" ? <TimerIcon /> : null;
   return (
@@ -541,9 +716,9 @@ function paintLight(
 }
 
 /** A view is laid out at its final size and revealed by the growing body. */
-function View({ on, shape, children }: { on: boolean; shape: Shape; children: React.ReactNode }) {
+function View({ on, shape, children, top }: { on: boolean; shape: Shape; children: React.ReactNode; top?: boolean }) {
   return (
-    <div className={`view ${on ? "on" : ""}`} style={{ width: shape.w, height: shape.h }} aria-hidden={!on}>
+    <div className={`view ${on ? "on" : ""}`} style={{ width: shape.w, height: top ? undefined : shape.h }} aria-hidden={!on}>
       {children}
     </div>
   );
@@ -561,7 +736,7 @@ function useClock(everyMs = 1000) {
 }
 
 const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "long" });
 
 function Idle({ battery, sleeping }: { battery: Battery | null; sleeping: boolean }) {
   const now = useClock();
@@ -720,4 +895,55 @@ function appName(id: string) {
   ];
   for (const [k, v] of known) if (s.includes(k)) return v;
   return (id.split(/[\\/!]/).pop() ?? id).replace(/\.exe$/i, "");
+}
+
+function AgentPill({ working }: { working: Record<string, AgentEvent & { at: number }> }) {
+  const list = Object.values(working);
+  const first = list[0];
+  const name = first?.agent === "codex" ? "Codex" : "Claude";
+  return (
+    <div className="compact agent-pill">
+      <Buddy size={24} mood="work" />
+      <span className="agent-label">
+        {list.length > 1 ? `Агентов работает: ${list.length}` : `${name} работает`}
+        {list.length === 1 && first.project ? <span className="agent-project"> · {first.project}</span> : null}
+      </span>
+      <span className="dots">
+        <i />
+        <i />
+        <i />
+      </span>
+    </div>
+  );
+}
+
+function AskCard({ ask, onAnswer }: { ask: AgentEvent; onAnswer: (allow: boolean) => void }) {
+  const [left, setLeft] = useState(ask.seconds);
+  useEffect(() => {
+    setLeft(ask.seconds);
+    const t0 = Date.now();
+    const id = window.setInterval(() => setLeft(Math.max(0, ask.seconds - Math.floor((Date.now() - t0) / 1000))), 250);
+    return () => clearInterval(id);
+  }, [ask]);
+  const name = ask.agent === "codex" ? "Codex" : "Claude";
+  return (
+    <div className="ask">
+      <div className="ask-head">
+        <Buddy size={28} mood="ask" />
+        <div className="ask-title">
+          {name} просит разрешение{ask.project ? <span className="agent-project"> · {ask.project}</span> : null}
+        </div>
+        <Ring size={20} progress={ask.seconds ? left / ask.seconds : 0} color="#d97757" />
+      </div>
+      <div className="ask-detail">{ask.detail}</div>
+      <div className="ask-buttons">
+        <button className="text-btn" onClick={(e) => (e.stopPropagation(), onAnswer(false))}>
+          Запретить
+        </button>
+        <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onAnswer(true))}>
+          Разрешить
+        </button>
+      </div>
+    </div>
+  );
 }

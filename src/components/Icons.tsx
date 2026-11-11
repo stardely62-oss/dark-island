@@ -106,3 +106,8 @@ export function Ring({ size = 18, progress, color }: { size?: number; progress: 
     </svg>
   );
 }
+
+export const TabControls = ({ size = 17 }: P) =>
+  line(size, <><rect x="3.5" y="7" width="17" height="10" rx="5" /><circle cx="15.5" cy="12" r="2.6" /></>);
+export const TabSettings = ({ size = 17 }: P) =>
+  line(size, <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" /></>);
