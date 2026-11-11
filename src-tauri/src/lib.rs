@@ -341,8 +341,14 @@ fn settings_set(
 
 /// Settings in a window of their own: there are too many for the island.
 /// `section` opens a tab by its name (e.g. "ИИ").
+/// Async: on Windows a window built from a synchronous command (or on the
+/// main thread) waits for the main thread, which waits for it — a hang.
 #[tauri::command]
-fn settings_open(app: AppHandle, section: Option<String>) {
+async fn settings_open(app: AppHandle, section: Option<String>) {
+    open_settings_window(app, section);
+}
+
+fn open_settings_window(app: AppHandle, section: Option<String>) {
     if let Some(w) = app.get_webview_window("settings") {
         let _ = w.unminimize();
         let _ = w.show();
@@ -362,6 +368,7 @@ fn settings_open(app: AppHandle, section: Option<String>) {
         .inner_size(860.0, 640.0)
         .min_inner_size(680.0, 460.0)
         .theme(Some(tauri::Theme::Dark))
+        .background_color(tauri::window::Color(20, 20, 22, 255))
         .center()
         .build();
     if let Ok(w) = built {
@@ -1276,7 +1283,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "settings" => settings_open(app.clone(), None),
+            "settings" => {
+                // Off the main thread (see settings_open).
+                let app = app.clone();
+                std::thread::spawn(move || open_settings_window(app, None));
+            }
             "autostart" => {
                 let mgr = app.autolaunch();
                 let enabled = mgr.is_enabled().unwrap_or(false);
