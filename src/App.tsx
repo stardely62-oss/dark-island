@@ -40,15 +40,18 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { Buddy, animateBuddies, buddy, climbOut, sfx, type Mood } from "./components/Buddy";
+import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs";
 type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "ai" | "controls" | "settings";
 type MusicPill = "compact" | "wide" | "player" | "lyrics" | "line";
+type Pomo = { phase: "work" | "rest"; round: number };
 type Card = {
   key: number;
-  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify" | "reminder";
+  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify" | "reminder" | "tour";
+  /** For the tour: which step. */
+  step?: number;
   reminder?: Reminder;
   thumb?: string | null;
   swatch?: string;
@@ -82,6 +85,7 @@ function sizeOf(
     music?: MusicPill;
     temp?: boolean;
     launcher?: boolean;
+    pomo?: boolean;
     /** Measured height of the tab's content, for tabs that fit their content. */
     fit?: number;
   } = {},
@@ -110,13 +114,16 @@ function sizeOf(
     case "strip":
       return { w: 150, h: 5 };
     case "card":
-      return opts.card?.kind === "reminder"
+      return opts.card?.kind === "tour"
+        ? { w: 430, h: 104 }
+        : opts.card?.kind === "reminder"
         ? { w: 400, h: 92 }
         : opts.card?.kind === "agent" || opts.card?.kind === "capture" || opts.card?.kind === "notify"
         ? { w: 380, h: 60 }
-        : { w: 250, h: 34 };
+        : // A one-line card grows with its words, up to a point.
+          { w: Math.round(Math.min(440, Math.max(250, 60 + ((opts.card?.title.length ?? 0) + (opts.card?.sub?.length ?? 0)) * 7.4))), h: 34 };
     case "timer":
-      return { w: 172, h: 32 };
+      return { w: opts.pomo ? 236 : 172, h: 32 };
     case "media":
       return opts.music === "wide"
         ? { w: 340, h: 38 }
@@ -198,8 +205,9 @@ export function App() {
         hat: settings.buddyHat,
         name: settings.buddyName || "Клодик",
         sounds: settings.buddySounds,
+        birthday: (settings.userBirthday as string) ?? "",
       }),
-    [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName, settings.buddySounds],
+    [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName, settings.buddySounds, settings.userBirthday],
   );
   const buddyScale = settings.buddyScale;
   useEffect(() => document.documentElement.style.setProperty("--bd-size", `${Math.round(20 * buddyScale)}px`), [buddyScale]);
@@ -219,12 +227,67 @@ export function App() {
   }, []);
 
   const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
+  // ---- pomodoro: 25 minutes of work, 5 of rest (15 after every fourth) ----
+  const [pomo, setPomoState] = useState<Pomo | null>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("island.pomo") ?? "null");
+    } catch {
+      return null;
+    }
+  });
+  const pomoRef = useRef(pomo);
+  const setPomo = useCallback((p: Pomo | null) => {
+    pomoRef.current = p;
+    setPomoState(p);
+    buddy.setFocus(p?.phase ?? null);
+    try {
+      localStorage.setItem("island.pomo", JSON.stringify(p));
+    } catch {
+      /* no storage */
+    }
+  }, []);
   const timer = useTimer((total) => {
     chime();
+    const p = pomoRef.current;
+    if (p) {
+      if (p.phase === "work") {
+        buddy.count("pomodoro");
+        const rest = p.round % 4 === 0 ? 15 : 5;
+        setPomo({ phase: "rest", round: p.round });
+        timerRef.current.start(rest * 60_000);
+        buddy.act("coffee", 4000);
+        showCard({ kind: "info", title: `Помидор ${p.round} готов`, sub: `Перерыв ${rest} минут — встань, потянись`, ms: 6000 });
+      } else {
+        setPomo({ phase: "work", round: p.round + 1 });
+        timerRef.current.start(25 * 60_000);
+        buddy.act("laptop", 4400);
+        showCard({ kind: "info", title: "За работу", sub: `Помидор ${p.round + 1}: 25 минут`, ms: 5000 });
+      }
+      return;
+    }
     buddy.react("excited", 3000);
     showCard({ kind: "timer", title: "Таймер", sub: `${fmtClock(total)} — готово`, sticky: true });
     window.setTimeout(chime, 2500);
   });
+  useEffect(() => buddy.setFocus(pomoRef.current?.phase ?? null), []);
+  // A reset or a fresh timer by hand ends the pomodoro.
+  useEffect(() => {
+    if (!timer.active && pomoRef.current) setPomo(null);
+  }, [timer.active, setPomo]);
+  const pomodoro = useCallback(
+    (on: boolean) => {
+      if (on) {
+        setPomo({ phase: "work", round: 1 });
+        timerRef.current.start(25 * 60_000);
+        buddy.act("laptop", 4400);
+        showCard({ kind: "info", title: "Помодоро", sub: "25 минут работы, потом перерыв", ms: 3500 });
+      } else {
+        setPomo(null);
+        timerRef.current.reset();
+      }
+    },
+    [setPomo, showCard],
+  );
 
   timerRef.current = timer;
   const expanded = (hoverOpen && !suppressed) || pinned;
@@ -274,8 +337,9 @@ export function App() {
         temp: !!weather && settings.weatherOnPill,
         launcher: launcherOn,
         fit: FIT.includes(tab) ? fits[tab] : undefined,
+        pomo: !!pomo,
       }),
-    [mode, media, battery, tab, commandRows, card, musicPill, lyrics, weather, settings.weatherOnPill, launcherOn, fits],
+    [mode, media, battery, tab, commandRows, card, musicPill, lyrics, weather, settings.weatherOnPill, launcherOn, fits, pomo],
   );
 
   // ---- data from the system --------------------------------------------
@@ -298,7 +362,17 @@ export function App() {
       offs.push(
         b.on("media", setMedia),
         b.on("battery", setBattery),
-        b.on("presence", setPresence),
+        b.on("presence", (p) => {
+          setPresence((before) => {
+            // Into a game: he waves good luck before the island goes away.
+            if (p === "hidden" && before !== "hidden") {
+              buddy.act("wave", 1500);
+              buddy.count("game");
+              showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1500 });
+            }
+            return p;
+          });
+        }),
         b.on("away", setAway),
         b.on("clips", (c) => {
           setClips(c);
@@ -531,6 +605,40 @@ export function App() {
     const id = window.setInterval(check, 15_000);
     return () => clearInterval(id);
   }, [setSetting, showCard]);
+  // ---- the first-run tour: a few cards, Клодик explains ----
+  const tourStep = useCallback(
+    (next: number | null) => {
+      if (next === null || next >= TOUR.length) {
+        setCard(null);
+        try {
+          localStorage.setItem("island.tour", "done");
+        } catch {
+          /* no storage */
+        }
+        if (next !== null) buddy.react("happy", 1500);
+        return;
+      }
+      buddy.act(next === 0 ? "wave" : next === 3 ? "juggle" : "think", 2600);
+      showCard({ kind: "tour", title: "", step: next, sticky: true });
+    },
+    [showCard],
+  );
+  useEffect(() => {
+    const start = () => tourStep(0);
+    window.addEventListener("island-tour", start);
+    let done = false;
+    try {
+      done = localStorage.getItem("island.tour") === "done";
+    } catch {
+      /* no storage */
+    }
+    const t = done ? 0 : window.setTimeout(start, 2500);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("island-tour", start);
+    };
+  }, [tourStep]);
+
   const snooze = (r: Reminder) => {
     setReminders([...remRef.current, { ...r, id: `${r.id}s`, repeat: undefined, at: Date.now() + 10 * 60_000 }]);
     setCard(null);
@@ -562,6 +670,77 @@ export function App() {
     const wx = !cur ? "" : /snow|sleet/.test(sym) ? "snow" : /rain|drizzle|thunder/.test(sym) ? "rain" : cur.temp >= 27 ? "hot" : cur.temp <= -5 ? "snow" : "";
     buddy.configure({ weather: wx });
   }, [weather]);
+  // Loud music: headphones on.
+  useEffect(() => {
+    buddy.configure({ music: !!media?.playing && !!volume && !volume.muted && volume.level >= 0.5 });
+  }, [media?.playing, volume]);
+  // A new sticker for the album.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const st = (e as CustomEvent<{ title: string; hint: string }>).detail;
+      showCard({ kind: "info", title: `Новая наклейка: ${st.title}`, sub: st.hint, ms: 4000 });
+    };
+    window.addEventListener("buddy-sticker", on);
+    return () => window.removeEventListener("buddy-sticker", on);
+  }, [showCard]);
+  // Birthdays: yours (from the settings) and his (a year and more after you met).
+  useEffect(() => {
+    const check = () => {
+      const who = birthdayToday();
+      if (!who) return;
+      const key = new Date().toDateString();
+      try {
+        if (localStorage.getItem("island.bday") === key) return;
+        localStorage.setItem("island.bday", key);
+      } catch {
+        /* no storage: celebrate anyway */
+      }
+      buddy.act("cake", 4200);
+      buddy.count("bday");
+      chime();
+      showCard({
+        kind: "info",
+        title: who === "user" ? "С днём рождения!" : `У ${buddy.look.name} день рождения!`,
+        sub: who === "user" ? `${buddy.look.name} испёк торт` : `Ему ${buddyAge()} — погладь его сегодня`,
+        ms: 7000,
+      });
+    };
+    const first = window.setTimeout(check, 4000);
+    const id = window.setInterval(check, 30 * 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [settings.userBirthday, showCard]);
+  // A break now and then: after a long stretch at the computer he asks you to rest.
+  const activeSince = useRef(Date.now());
+  const nudgedAt = useRef(0);
+  useEffect(() => {
+    if (away) {
+      // Rested after he asked: that counts.
+      if (nudgedAt.current && Date.now() - nudgedAt.current < 15 * 60_000) {
+        buddy.count("rest");
+        nudgedAt.current = 0;
+      }
+      return;
+    }
+    activeSince.current = Date.now();
+  }, [away]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const every = ((settings.breakMinutes as number) ?? 50) * 60_000;
+      if (!settings.breakReminder || away || pomoRef.current) return;
+      const since = Math.max(activeSince.current, nudgedAt.current);
+      if (Date.now() - since < every) return;
+      nudgedAt.current = Date.now();
+      buddy.act("stretch", 1400);
+      window.setTimeout(() => buddy.act("coffee", 4000), 1500);
+      const m = Math.round((Date.now() - activeSince.current) / 60_000);
+      showCard({ kind: "info", title: `${buddy.look.name}: может, перерыв?`, sub: `Ты за компьютером уже ${m} мин — встань, разомнись`, ms: 9000 });
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [settings.breakReminder, settings.breakMinutes, away, showCard]);
+
   // The charger went in: a jolt of energy.
   const wasCharging = useRef<boolean | null>(null);
   useEffect(() => {
@@ -653,7 +832,7 @@ export function App() {
   // A card you can act on (show the file, answer an agent, a reminder) stays a
   // card under the cursor: it doesn't turn into the open island and doesn't
   // vanish while you aim at it.
-  const cardHold = !!card && (!!card.open || card.kind === "agent" || card.kind === "reminder");
+  const cardHold = !!card && (!!card.open || card.kind === "agent" || card.kind === "reminder" || card.kind === "tour");
   const held = useRef(false);
   useEffect(() => {
     if (hovered && cardHold) {
@@ -723,6 +902,10 @@ export function App() {
         }
         if (id === "lock" || id === "sleep") {
           api?.call("power", { action: id });
+          return;
+        }
+        if (id === "pomodoro") {
+          pomodoro(!pomoRef.current);
           return;
         }
         if (id === "vpn") {
@@ -938,7 +1121,7 @@ export function App() {
             api?.call("dictate_toggle");
             return;
           }
-          if (mode === "card" && card?.kind === "reminder") return;
+          if (mode === "card" && (card?.kind === "reminder" || card?.kind === "tour")) return;
           if (mode === "card" && card?.open) {
             if (card.open.path) api?.call("open_path", { path: card.open.path });
             if (card.open.url) api?.call("open_url", { url: card.open.url });
@@ -984,11 +1167,11 @@ export function App() {
         <View on={mode === "hud"} shape={sizeOf("hud")}>
           {volume && <VolumeHud volume={volume} />}
         </View>
-        <View on={mode === "timer"} shape={sizeOf("timer")}>
-          <TimerPill timer={timer} />
+        <View on={mode === "timer"} shape={sizeOf("timer", { pomo: !!pomo })}>
+          <TimerPill timer={timer} pomo={pomo} />
         </View>
         <View on={mode === "card"} shape={sizeOf("card", { card })}>
-          {card && <CardView card={card} onDone={() => setCard(null)} onSnooze={snooze} />}
+          {card && <CardView card={card} onDone={() => setCard(null)} onSnooze={snooze} onTour={tourStep} />}
         </View>
         <TabBuddy tab={tab} shown={mode === "expanded"} sleeping={sleeping} scale={buddyScale} life={settings.buddyLife} />
         {frame(
@@ -1010,7 +1193,10 @@ export function App() {
         )}
         {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
         {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
-        {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} reminders={reminders} setReminders={setReminders} />)}
+        {frame(
+          "note",
+          <NoteTab api={api} timer={timer} onTypeStart={takeFocus} reminders={reminders} setReminders={setReminders} pomo={pomo} onPomodoro={pomodoro} />,
+        )}
         {frame(
           "ai",
           <AiTab
@@ -1135,7 +1321,7 @@ function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; s
   );
 }
 
-function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
+function TimerPill({ timer, pomo }: { timer: ReturnType<typeof useTimer>; pomo: Pomo | null }) {
   const [, tick] = useState(0);
   useEffect(() => {
     if (!timer.running) return;
@@ -1145,14 +1331,61 @@ function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
   const left = remaining(timer.state);
   return (
     <div className="compact timer-pill">
-      <Ring size={18} progress={timer.state.total ? left / timer.state.total : 0} color="#ff9f43" />
-      <Buddy size={22} />
+      <Ring size={18} progress={timer.state.total ? left / timer.state.total : 0} color={pomo?.phase === "rest" ? "#7cbf5a" : pomo ? "#e0445e" : "#ff9f43"} />
+      <Buddy size={22} mood={pomo?.phase === "work" ? "work" : null} />
+      {pomo && <span className="pomo-label">{pomo.phase === "work" ? `работа ${pomo.round}` : "отдых"}</span>}
       <span className={`time ${timer.running ? "" : "paused"}`}>{fmtClock(left)}</span>
     </div>
   );
 }
 
-function CardView({ card, onDone, onSnooze }: { card: Card; onDone: () => void; onSnooze: (r: Reminder) => void }) {
+const TOUR: [string, string][] = [
+  ["Привет! Я {name}", "Живу в этом острове. Наведи на него курсор — он раскроется, уведи — свернётся."],
+  ["Вкладки", "Сверху: главная, буфер, полка, заметки, погода, ИИ, управление и настройки. Я буду прыгать за тобой."],
+  ["Горячие клавиши", "Ctrl+Alt+I — открыть остров, Alt+Space — командная строка, Ctrl+Alt+S — скриншот, Ctrl+Alt+V — буфер."],
+  ["Я питомец", "Гладь меня курсором, правый клик — покормить и поиграть. Наряды и альбом наклеек — в настройках."],
+];
+
+function CardView({
+  card,
+  onDone,
+  onSnooze,
+  onTour,
+}: {
+  card: Card;
+  onDone: () => void;
+  onSnooze: (r: Reminder) => void;
+  onTour: (next: number | null) => void;
+}) {
+  if (card.kind === "tour") {
+    const i = card.step ?? 0;
+    const [title, text] = TOUR[i];
+    const last = i === TOUR.length - 1;
+    return (
+      <div className="compact card tour-card" key={card.key}>
+        <Buddy size={40} />
+        <div className="tour-text">
+          <div className="card-title">{title.replace("{name}", buddy.look.name)}</div>
+          <div className="tour-sub">{text}</div>
+          <div className="tour-foot">
+            <span className="tour-dots">
+              {TOUR.map((_, k) => (
+                <i key={k} className={k === i ? "on" : ""} />
+              ))}
+            </span>
+            {!last && (
+              <button className="text-btn" onClick={(e) => (e.stopPropagation(), onTour(null))}>
+                Пропустить
+              </button>
+            )}
+            <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onTour(i + 1))}>
+              {last ? "Понятно" : "Дальше"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (card.kind === "reminder" && card.reminder) {
     const r = card.reminder;
     return (

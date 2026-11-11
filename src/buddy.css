@@ -1184,3 +1184,88 @@
   90% { transform: translateY(-3px) scale(0.95, 1.06); }
   100% { transform: translateY(0); }
 }
+
+/* birthday: a cake with a candle, confetti, happy eyes */
+.buddy.act-cake .bd-p-cake {
+  opacity: 1;
+}
+.buddy.act-cake .bd-flame {
+  animation: bd-flicker 0.3s steps(1) infinite;
+}
+.buddy.act-cake .bd-confetti rect {
+  animation: bd-confetti 1.2s linear infinite;
+}
+.buddy.act-cake .bd-confetti rect:nth-child(2n) {
+  animation-delay: -0.6s;
+}
+.buddy.act-cake .bd-confetti rect:nth-child(3n) {
+  animation-delay: -0.3s;
+}
+.buddy.act-cake .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-cake .bd-happy {
+  opacity: 1;
+}
+.buddy.act-cake .bd-jump {
+  animation: bd-hop 0.6s ease-out 7;
+}
+@keyframes bd-flicker {
+  50% { transform: translate(0.3px, -0.3px) scale(1, 1.3); fill: #ff9f43; }
+}
+@keyframes bd-confetti {
+  0% { transform: translateY(-2px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(12px) rotate(180deg); opacity: 0; }
+}
+
+/* settings: stickers */
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+.sticker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.04);
+  text-align: center;
+}
+.sticker i {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 15px;
+  color: #1a1a1a;
+  background: var(--st);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9), 0 3px 8px rgb(0 0 0 / 0.4);
+  transform: rotate(-6deg);
+  font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+}
+.sticker:nth-child(2n) i {
+  transform: rotate(5deg);
+}
+.sticker b {
+  font-size: 11px;
+  font-weight: 600;
+}
+.sticker small {
+  font-size: 10px;
+  color: var(--fg-3);
+  line-height: 1.2;
+}
+.sticker.locked i {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--fg-3);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.15);
+}
+.sticker.locked b {
+  color: var(--fg-3);
+}

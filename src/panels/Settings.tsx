@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
-import { Buddy, COLORS, HATS, buddy, usePet } from "../components/Buddy";
+import { Buddy, COLORS, HATS, STICKERS, buddy, usePet } from "../components/Buddy";
 
 type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean };
 
@@ -361,6 +361,67 @@ export function SettingsTab({
           </button>
         </div>
       </div>
+      <div className="look-label">
+        Альбом наклеек · {Object.keys(buddy.stickers).length} из {STICKERS.length}
+      </div>
+      <div className="sticker-grid">
+        {STICKERS.map((st) => {
+          const got = buddy.stickers[st.id];
+          return (
+            <div key={st.id} className={`sticker ${got ? "" : "locked"}`} title={got ? `Получена ${new Date(got).toLocaleDateString("ru")}` : st.hint}>
+              <i style={{ "--st": st.color } as React.CSSProperties}>{got ? st.icon : "?"}</i>
+              <b>{st.title}</b>
+              <small>{st.hint}</small>
+            </div>
+          );
+        })}
+      </div>
+      <Row title="Твой день рождения" sub={`${settings.buddyName || "Клодик"} поздравит и испечёт торт`}>
+        <select
+          className="search set-input select narrow"
+          value={(settings.userBirthday as string)?.split("-")[1] ?? ""}
+          onChange={(e) => {
+            const m = (settings.userBirthday as string)?.split("-")[0] || "01";
+            set({ userBirthday: e.target.value ? `${m}-${e.target.value}` : "" });
+          }}
+        >
+          <option value="">—</option>
+          {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0")).map((d) => (
+            <option key={d} value={d}>
+              {Number(d)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="search set-input select"
+          value={(settings.userBirthday as string)?.split("-")[0] ?? ""}
+          onChange={(e) => {
+            const d = (settings.userBirthday as string)?.split("-")[1] || "01";
+            set({ userBirthday: e.target.value ? `${e.target.value}-${d}` : "" });
+          }}
+        >
+          <option value="">не указан</option>
+          {["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"].map((name, i) => (
+            <option key={name} value={String(i + 1).padStart(2, "0")}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row title="Звать на перерыв" sub="Если долго сидишь за компьютером без отдыха; во время помодоро молчит">
+        {settings.breakReminder && (
+          <Segmented
+            value={String(settings.breakMinutes)}
+            options={[
+              ["30", "30 мин"],
+              ["50", "50 мин"],
+              ["90", "1,5 ч"],
+            ]}
+            onChange={(v) => set({ breakMinutes: Number(v) })}
+          />
+        )}
+        <Toggle on={settings.breakReminder} onChange={(v) => set({ breakReminder: v })} />
+      </Row>
       <Row
         title="Живёт своей жизнью"
         sub={
@@ -829,6 +890,12 @@ export function SettingsTab({
             Проверить
           </button>
         )}
+      </Row>
+
+      <Row title="Знакомство" sub="Короткий тур по острову, как при первом запуске">
+        <button className="text-btn solid" onClick={() => window.dispatchEvent(new Event("island-tour"))}>
+          Показать снова
+        </button>
       </Row>
 
       <div className="set-group">Если что-то не работает</div>

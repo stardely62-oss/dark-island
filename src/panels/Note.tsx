@@ -13,9 +13,13 @@ export function NoteTab({
   onTypeStart,
   reminders,
   setReminders,
+  pomo,
+  onPomodoro,
 }: {
   api: Bridge | null;
   timer: ReturnType<typeof useTimer>;
+  pomo: { phase: "work" | "rest"; round: number } | null;
+  onPomodoro: (on: boolean) => void;
   onTypeStart: () => void;
   reminders: Reminder[];
   setReminders: (r: Reminder[]) => void;
@@ -140,6 +144,13 @@ export function NoteTab({
             <ResetIcon />
           </button>
         </div>
+        <button
+          className={`chip pomo-btn ${pomo ? "on" : ""}`}
+          title="25 минут работы, 5 минут отдыха; каждый четвёртый перерыв — 15. Клодик работает и отдыхает вместе с тобой"
+          onClick={() => onPomodoro(!pomo)}
+        >
+          {pomo ? (pomo.phase === "work" ? `Помидор ${pomo.round} · стоп` : "Отдых · стоп") : "Помодоро"}
+        </button>
       </div>
     </div>
   );

@@ -276,7 +276,14 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
             if p != before {
                 if let Some(w) = app.get_webview_window("island") {
                     if p == Presence::Hidden {
-                        let _ = w.hide();
+                        // A moment for Клодик to wish good luck, then away.
+                        let (w, shared) = (w.clone(), shared.clone());
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_millis(1500));
+                            if shared.snap.lock().unwrap().presence == Presence::Hidden {
+                                let _ = w.hide();
+                            }
+                        });
                     } else if before == Presence::Hidden {
                         let _ = w.show();
                     }

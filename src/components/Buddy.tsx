@@ -99,20 +99,40 @@ export type BuddyLook = {
   name: string;
   /** What the weather outside asks for: rain → umbrella, snow → scarf, hot → sunglasses. */
   weather: "" | "rain" | "snow" | "hot";
+  /** Your birthday as "MM-DD", or "". */
+  birthday: string;
+  /** Loud music is on: he puts headphones on (unless he wears something). */
+  music: boolean;
 };
-let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "" };
+let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "", birthday: "", music: false };
 
 // ------------------------------------------------------------------ the pet ----
 
+function fresh(): Pet {
+  return { fed: Date.now(), love: 0, asleep: false, born: Date.now(), counts: {}, hats: [], stickers: {} };
+}
+
 /** A pet's needs, kept on this computer: when he last ate, how close you are, whether he sleeps. */
-type Pet = { fed: number; love: number; asleep: boolean };
+type Pet = {
+  fed: number;
+  love: number;
+  asleep: boolean;
+  /** When you met (his birthday). */
+  born: number;
+  /** How many times things happened, for the stickers. */
+  counts: Record<string, number>;
+  /** Outfits he has tried on. */
+  hats: string[];
+  /** Stickers you have, with when they were got. */
+  stickers: Record<string, number>;
+};
 const PET_KEY = "island.pet";
 const HUNGRY_AFTER = 4 * 3600_000;
 let pet: Pet = (() => {
   try {
-    return { fed: Date.now(), love: 0, asleep: false, ...JSON.parse(localStorage.getItem(PET_KEY) ?? "{}") };
+    return { ...fresh(), ...JSON.parse(localStorage.getItem(PET_KEY) ?? "{}") };
   } catch {
-    return { fed: Date.now(), love: 0, asleep: false };
+    return fresh();
   }
 })();
 function savePet() {
@@ -127,7 +147,80 @@ const isHungry = () => look.life && Date.now() - pet.fed > HUNGRY_AFTER;
 export const hearts = () => Math.min(10, Math.floor(Math.sqrt(pet.love)));
 
 /** Seasons dress him up when he wears nothing of his own. */
+/** Whose birthday it is today, if anyone's: yours, or his (a year and more after you met). */
+export function birthdayToday(now = new Date()): "user" | "buddy" | null {
+  const md = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (look.birthday && look.birthday === md) return "user";
+  const b = new Date(pet.born);
+  if (now.getFullYear() > b.getFullYear() && b.getMonth() === now.getMonth() && b.getDate() === now.getDate()) return "buddy";
+  return null;
+}
+export const buddyAge = () => new Date().getFullYear() - new Date(pet.born).getFullYear();
+
+// ---- stickers ----
+
+export type Sticker = { id: string; title: string; hint: string; icon: string; color: string };
+export const STICKERS: Sticker[] = [
+  { id: "first", title: "Знакомство", hint: "Познакомиться", icon: "★", color: "#ffd84a" },
+  { id: "feed10", title: "Сытый", hint: "Покормить 10 раз", icon: "●", color: "#c98a4b" },
+  { id: "pet25", title: "Любимчик", hint: "Погладить 25 раз", icon: "♥", color: "#ff6f9c" },
+  { id: "play10", title: "Игрок", hint: "Поиграть 10 раз", icon: "◓", color: "#ff8fb4" },
+  { id: "furious", title: "Не тронь!", hint: "Довести его до бешенства", icon: "!", color: "#ff4d3d" },
+  { id: "dizzy5", title: "Карусель", hint: "Закружить ему голову 5 раз", icon: "@", color: "#c27ce0" },
+  { id: "fashion", title: "Модник", hint: "Примерить 5 нарядов", icon: "♛", color: "#f5c451" },
+  { id: "owl", title: "Ночная сова", hint: "Заглянуть к нему с 2 до 4 ночи", icon: "☾", color: "#6f8dff" },
+  { id: "lark", title: "Жаворонок", hint: "Заглянуть к нему с 5 до 7 утра", icon: "☼", color: "#ffb347" },
+  { id: "week", title: "Неделя вместе", hint: "7 дней вместе", icon: "7", color: "#7cbf5a" },
+  { id: "month", title: "Месяц вместе", hint: "30 дней вместе", icon: "30", color: "#4fb3c8" },
+  { id: "friends", title: "Лучшие друзья", hint: "Набрать 10 сердечек", icon: "♥♥", color: "#ff5f93" },
+  { id: "focus4", title: "Фокус", hint: "Пройти 4 помидора подряд", icon: "◷", color: "#e0445e" },
+  { id: "rest", title: "Перерыв", hint: "Отдохнуть, когда он попросит", icon: "≈", color: "#9fd8ff" },
+  { id: "gamer", title: "Удачи!", hint: "Он проводил тебя в игру", icon: "►", color: "#59a85c" },
+  { id: "bday", title: "Праздник", hint: "Отметить день рождения", icon: "✦", color: "#ff9f43" },
+];
+
+const DAY = 86_400_000;
+function earned(id: string): boolean {
+  const c = (k: string) => pet.counts[k] ?? 0;
+  const days = (Date.now() - pet.born) / DAY;
+  switch (id) {
+    case "first": return true;
+    case "feed10": return c("feed") >= 10;
+    case "pet25": return c("pet") >= 25;
+    case "play10": return c("play") >= 10;
+    case "furious": return c("furious") >= 1;
+    case "dizzy5": return c("dizzy") >= 5;
+    case "fashion": return pet.hats.length >= 5;
+    case "owl": return c("owl") >= 1;
+    case "lark": return c("lark") >= 1;
+    case "week": return days >= 7;
+    case "month": return days >= 30;
+    case "friends": return hearts() >= 10;
+    case "focus4": return c("pomodoro") >= 4;
+    case "rest": return c("rest") >= 1;
+    case "gamer": return c("game") >= 1;
+    case "bday": return c("bday") >= 1;
+  }
+  return false;
+}
+/** Gives the stickers just earned; each new one is announced. */
+function checkStickers() {
+  let fresh = false;
+  for (const st of STICKERS) {
+    if (pet.stickers[st.id] || !earned(st.id)) continue;
+    pet.stickers[st.id] = Date.now();
+    fresh = true;
+    window.dispatchEvent(new CustomEvent("buddy-sticker", { detail: st }));
+  }
+  if (fresh) {
+    savePet();
+    buddy.react("excited", 1800);
+  }
+}
+
 function seasonalHat() {
+  if (birthdayToday()) return "party";
+  if (look.music) return "headphones";
   const d = new Date();
   const m = d.getMonth() + 1;
   const day = d.getDate();
@@ -160,8 +253,15 @@ export const COLORS: [string, string][] = [
   ["#9aa0a6", "Графит"],
 ];
 
+/** "work" or "rest" while a pomodoro runs: he works with you, then rests. */
+let focus: "work" | "rest" | null = null;
+const WORK = ["laptop", "paper", "read", "think", "magnify"];
+const REST = ["coffee", "juggle", "ball", "kite", "dance", "water"];
+
 /** Whims weigh differently by the hour: coffee in the morning, nodding off at night. */
 function weight(name: string, w: number) {
+  if (focus === "work") return WORK.includes(name) ? w * 6 : w * 0.2;
+  if (focus === "rest") return REST.includes(name) ? w * 5 : w * 0.3;
   const h = new Date().getHours();
   if (h >= 6 && h < 11 && name === "coffee") return w * 3;
   if ((h >= 23 || h < 5) && (name === "nod" || name === "yawn")) return w * 3;
@@ -176,7 +276,11 @@ function startLife() {
   if (lifeStarted) return;
   lifeStarted = true;
   // Hunger comes with time: look again every minute.
-  window.setInterval(notify, 60_000);
+  window.setInterval(() => {
+    checkStickers();
+    notify();
+  }, 60_000);
+  window.setTimeout(checkStickers, 2500);
   const next = () => {
     const wait = 4000 + Math.random() * 9000;
     window.setTimeout(() => {
@@ -217,6 +321,11 @@ export const buddy = {
   },
   configure(l: Partial<BuddyLook> & { sounds?: boolean }) {
     if (l.sounds !== undefined) setSounds(l.sounds);
+    if (l.hat && l.hat !== "none" && l.hat !== look.hat && !pet.hats.includes(l.hat)) {
+      pet.hats.push(l.hat);
+      savePet();
+      checkStickers();
+    }
     look = { ...look, ...l };
     document.documentElement.style.setProperty("--bd-color", look.color);
     if (!look.life) action = null;
@@ -225,8 +334,27 @@ export const buddy = {
   get look() {
     return look;
   },
+  /** Something happened that counts for stickers (also: who visits him at night or at dawn). */
+  count(name: string, n = 1) {
+    pet.counts[name] = (pet.counts[name] ?? 0) + n;
+    if (["feed", "pet", "play", "dizzy", "poke"].includes(name)) {
+      const h = new Date().getHours();
+      if (h >= 2 && h < 4) pet.counts.owl = (pet.counts.owl ?? 0) + 1;
+      if (h >= 5 && h < 7) pet.counts.lark = (pet.counts.lark ?? 0) + 1;
+    }
+    savePet();
+    checkStickers();
+  },
+  /** A pomodoro phase: what he busies himself with follows yours. */
+  setFocus(f: "work" | "rest" | null) {
+    focus = f;
+  },
+  get stickers() {
+    return { ...pet.stickers };
+  },
   /** A cookie: he chomps it and likes you more. */
   feed() {
+    buddy.count("feed");
     pet.fed = Date.now();
     pet.love += 3;
     pet.asleep = false;
@@ -239,6 +367,7 @@ export const buddy = {
   },
   /** A ball to kick around. */
   play() {
+    buddy.count("play");
     pet.love += 2;
     pet.asleep = false;
     savePet();
@@ -282,7 +411,7 @@ function snapshot() {
   const act = action && action.until > now ? action.name : "";
   const hat = look.hat === "none" ? seasonalHat() : look.hat;
   const st = pet.asleep ? "" : isHungry() ? "hungry" : look.life ? (state ?? "") : "";
-  return `${re}|${look.life && !pet.asleep ? act : ""}|${st}|${pet.asleep ? "nightcap" : hat}|${look.name}|${look.weather}|${pet.asleep ? 1 : 0}|${hearts()}`;
+  return `${re}|${look.life && !pet.asleep ? act : ""}|${st}|${pet.asleep ? "nightcap" : hat}|${look.name}|${look.weather}|${pet.asleep ? 1 : 0}|${hearts()}|${Object.keys(pet.stickers).length}`;
 }
 
 function useLife() {
@@ -351,11 +480,15 @@ export function Buddy({
         p.flips = 0;
         buddy.react("love", 2600);
         buddy.befriend(1);
+        buddy.count("pet");
       }
     }
   };
   // Scrolling over him makes his head spin; a double click is a trick.
-  const onWheel = () => buddy.react("dizzy", 1600);
+  const onWheel = () => {
+    if (!(reaction && reaction.name === "dizzy" && reaction.until > Date.now())) buddy.count("dizzy");
+    buddy.react("dizzy", 1600);
+  };
   const onDouble = (e: React.MouseEvent) => {
     e.stopPropagation();
     const tricks = ["flip", "spin", "dance", "juggle"];
@@ -372,6 +505,7 @@ export function Buddy({
     const now = Date.now();
     k.n = now - k.since < 1500 ? k.n + 1 : 1;
     k.since = now;
+    if (k.n === 7) buddy.count("furious");
     if (k.n >= 7) buddy.react("furious", 2600);
     else if (k.n >= 4) buddy.react("angry", 1800);
     else buddy.react(k.n === 1 ? "surprised" : "hop", 900);
@@ -682,6 +816,13 @@ function Props() {
         <g className="bd-rain">{r(-1, 0, 1, 1, "#9fd8ff", "a")}{r(15, -1, 1, 1, "#9fd8ff", "b")}{r(17, 2, 1, 1, "#9fd8ff", "c")}</g>
       </g>
       <g className="bd-bolt">{r(13, -3, 2, 1, "#ffd84a")}{r(12, -2, 2, 1, "#ffd84a")}{r(13, -1, 2, 1, "#ffd84a")}{r(12, 0, 2, 1, "#ffd84a")}</g>
+      <g className="bd-p bd-p-cake">
+        {r(14, 6, 7, 4, "#f7d9e3")}{r(14, 6, 7, 1, "#ff6f9c")}{r(14, 8, 7, 1, "#c98a4b")}{r(17, 4, 1, 2, "#6f8dff")}
+        <g className="bd-flame">{r(17, 3, 1, 1, "#ffd84a")}</g>
+        <g className="bd-confetti">
+          {r(2, -3, 1, 1, "#ff6f9c", "1")}{r(7, -5, 1, 1, "#ffd84a", "2")}{r(12, -3, 1, 1, "#7fd0ff", "3")}{r(18, -4, 1, 1, "#7cbf5a", "4")}{r(-1, -2, 1, 1, "#c27ce0", "5")}
+        </g>
+      </g>
       <g className="bd-p bd-p-think">
         {r(14, 1, 1, 1, "#e6e6e6")}{r(15, 0, 1, 1, "#e6e6e6")}
         <g className="bd-cloud">{r(16, -3, 7, 3, "#f2f2f2")}{r(17, -4, 5, 1, "#f2f2f2")}{r(17, 0, 5, 1, "#f2f2f2")}
