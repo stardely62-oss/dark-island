@@ -240,10 +240,12 @@ fn hash_of(bytes: &[u8]) -> u64 {
     h.finish()
 }
 
-fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
+pub fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     {
         let mut enc = png::Encoder::new(&mut out, w, h);
+        // Screens are big: favour speed, the ratio is still decent.
+        enc.set_compression(png::Compression::Fast);
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         let mut writer = enc.write_header().ok()?;
@@ -252,7 +254,7 @@ fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+pub fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
     dec.set_transformations(png::Transformations::EXPAND | png::Transformations::ALPHA);
     let mut reader = dec.read_info().ok()?;
@@ -266,7 +268,7 @@ fn decode_png(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 }
 
 /// Box-filtered downscale to fit `THUMB` px.
-fn thumbnail(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
+pub fn thumbnail(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     let scale = (THUMB as f32 / w.max(h) as f32).min(1.0);
     let tw = ((w as f32 * scale).round() as u32).max(1);
     let th = ((h as f32 * scale).round() as u32).max(1);

@@ -32,9 +32,20 @@ use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDev
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::core::{w, PCWSTR};
+use windows::core::{w, HSTRING, PCWSTR};
+use windows::Globalization::Language;
+use windows::Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat, SoftwareBitmap};
+use windows::Media::Ocr::OcrEngine;
+use windows::Storage::Streams::{DataWriter, InMemoryRandomAccessStream};
+use windows::Win32::Graphics::Gdi::{
+    BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, SRCCOPY,
+};
+use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
 use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::{FILETIME, LPARAM, WPARAM};
+use windows::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
+use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
 use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
 use windows::Win32::System::Power::SetSuspendState;
 use windows::Win32::System::Shutdown::LockWorkStation;
@@ -921,4 +932,146 @@ pub fn run_shell(cmd: &str, powershell: bool) {
         c
     };
     let _ = c.creation_flags(CREATE_NEW_CONSOLE).spawn();
+}
+
+// --------------------------------------------------------------- screen ----
+
+/// A frozen picture of one monitor, in physical pixels.
+pub struct Frame {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    pub rgba: Vec<u8>,
+}
+
+/// Captures the monitor under the cursor. Windows marked as excluded from
+/// capture (the island, unless the user asked otherwise) are left out.
+pub fn capture_monitor() -> Option<Frame> {
+    unsafe {
+        let mut p = POINT::default();
+        GetCursorPos(&mut p).ok()?;
+        let mon = MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY);
+        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if !GetMonitorInfoW(mon, &mut mi).as_bool() {
+            return None;
+        }
+        let r = mi.rcMonitor;
+        let (w, h) = ((r.right - r.left) as i32, (r.bottom - r.top) as i32);
+        let screen = GetDC(None);
+        let mem = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(mem, bmp.into());
+        let ok = BitBlt(mem, 0, 0, w, h, Some(screen), r.left, r.top, SRCCOPY | CAPTUREBLT).is_ok();
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h, // top-down
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        let lines = GetDIBits(mem, bmp, 0, h as u32, Some(px.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS);
+        SelectObject(mem, old);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(mem);
+        ReleaseDC(None, screen);
+        if !ok || lines == 0 {
+            return None;
+        }
+        for c in px.chunks_exact_mut(4) {
+            c.swap(0, 2); // BGRA -> RGBA
+            c[3] = 255;
+        }
+        Some(Frame { x: r.left, y: r.top, w: w as u32, h: h as u32, rgba: px })
+    }
+}
+
+/// Keeps a window out of screenshots, recordings and screen sharing.
+pub fn exclude_from_capture(win: &WebviewWindow, exclude: bool) {
+    let Ok(h) = win.hwnd() else { return };
+    unsafe {
+        let _ = SetWindowDisplayAffinity(HWND(h.0 as _), if exclude { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE });
+    }
+}
+
+pub fn bring_to_front(win: &WebviewWindow) {
+    let Ok(h) = win.hwnd() else { return };
+    unsafe { force_foreground(HWND(h.0 as _)) };
+}
+
+fn ocr_with(engine: &OcrEngine, bmp: &SoftwareBitmap) -> Vec<String> {
+    engine
+        .RecognizeAsync(bmp)
+        .and_then(|op| op.join())
+        .and_then(|r| r.Lines())
+        .map(|lines| lines.into_iter().filter_map(|l| l.Text().ok()).map(|t| t.to_string_lossy()).collect())
+        .unwrap_or_default()
+}
+
+/// Text from a picture (PNG) with Windows' own recognisers. When both Russian
+/// and English are installed, each line is taken from the recogniser whose
+/// alphabet dominates it.
+pub fn ocr(png: &[u8]) -> Option<String> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+    let stream = InMemoryRandomAccessStream::new().ok()?;
+    let writer = DataWriter::CreateDataWriter(&stream).ok()?;
+    writer.WriteBytes(png).ok()?;
+    writer.StoreAsync().ok()?.join().ok()?;
+    writer.FlushAsync().ok()?.join().ok()?;
+    let _ = writer.DetachStream();
+    stream.Seek(0).ok()?;
+    let decoder = BitmapDecoder::CreateAsync(&stream).ok()?.join().ok()?;
+    let bmp = decoder.GetSoftwareBitmapAsync().ok()?.join().ok()?;
+    let bmp = SoftwareBitmap::Convert(&bmp, BitmapPixelFormat::Bgra8).ok()?;
+
+    let lang = |tag: &str| Language::CreateLanguage(&HSTRING::from(tag)).ok().and_then(|l| OcrEngine::TryCreateFromLanguage(&l).ok());
+    let ru = lang("ru");
+    let en = lang("en-US").or_else(|| lang("en"));
+    let lines = match (&ru, &en) {
+        (Some(ru), Some(en)) => {
+            let a = ocr_with(ru, &bmp);
+            let b = ocr_with(en, &bmp);
+            if a.len() == b.len() {
+                a.into_iter()
+                    .zip(b)
+                    .map(|(r, e)| {
+                        let cyr = r.chars().filter(|c| ('а'..='я').contains(&c.to_lowercase().next().unwrap_or(' ')) || *c == 'ё' || *c == 'Ё').count();
+                        let letters = r.chars().filter(|c| c.is_alphabetic()).count().max(1);
+                        if cyr * 2 >= letters { r } else { e }
+                    })
+                    .collect()
+            } else if a.iter().map(|l| l.len()).sum::<usize>() >= b.iter().map(|l| l.len()).sum::<usize>() {
+                a
+            } else {
+                b
+            }
+        }
+        _ => {
+            let engine = OcrEngine::TryCreateFromUserProfileLanguages().ok()?;
+            ocr_with(&engine, &bmp)
+        }
+    };
+    let text = lines.join("\n");
+    (!text.trim().is_empty()).then_some(text)
+}
+
+/// Local time offset from UTC, in seconds.
+pub fn utc_offset_secs() -> i64 {
+    unsafe {
+        let utc = GetSystemTimeAsFileTime();
+        let mut local = FILETIME::default();
+        if FileTimeToLocalFileTime(&utc, &mut local).is_err() {
+            return 0;
+        }
+        let v = |f: FILETIME| ((f.dwHighDateTime as i64) << 32) | f.dwLowDateTime as i64;
+        (v(local) - v(utc)) / 10_000_000
+    }
 }

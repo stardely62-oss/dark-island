@@ -17,7 +17,27 @@ const RESTART = line(<><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v4.5h-
 const POWER = line(<><path d="M12 3v8.5" /><path d="M6.5 6.8a7.5 7.5 0 1 0 11 0" /></>);
 
 /** Wi-Fi, Bluetooth and the dark theme in one press; lock, sleep, restart, shut down. */
-export function ControlsTab({ api, visible }: { api: Bridge | null; visible: boolean }) {
+const TOOLS: [string, string, React.ReactNode][] = [
+  ["area", "Область", line(<><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /></>)],
+  ["full", "Экран", line(<><rect x="3" y="4.5" width="18" height="12.5" rx="1.5" /><path d="M9 20.5h6" /></>)],
+  ["ocr", "Текст", line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
+  ["qr", "QR", line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
+  ["color", "Пипетка", line(<><path d="m14.5 6.5 3 3M16 5l3 3-9.5 9.5H6.5v-3Z" /><path d="M6.5 17.5 4 20" /></>)],
+];
+
+export function ControlsTab({
+  api,
+  visible,
+  colors,
+  onTool,
+  onCopyColor,
+}: {
+  api: Bridge | null;
+  visible: boolean;
+  colors: string[];
+  onTool: (mode: string) => void;
+  onCopyColor: (c: string) => void;
+}) {
   const [c, setC] = useState<Controls | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -67,6 +87,21 @@ export function ControlsTab({ api, visible }: { api: Bridge | null; visible: boo
         {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
         {tile("dark", MOON, "Тёмная тема", c?.dark ?? false, c?.dark ? "включена" : "выключена")}
       </div>
+      <div className="tools-row">
+        {TOOLS.map(([id, label, icon]) => (
+          <button key={id} className="power-btn" onClick={() => onTool(id)}>
+            {icon}
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      {colors.length > 0 && (
+        <div className="swatches">
+          {colors.map((c) => (
+            <button key={c} title={`${c} — скопировать`} style={{ background: c }} onClick={() => onCopyColor(c)} />
+          ))}
+        </div>
+      )}
       <div className="power-row">
         {[
           ["lock", LOCK, "Блокировка", false],

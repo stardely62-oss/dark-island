@@ -126,6 +126,14 @@ export function SettingsTab({
         />
       </Row>
 
+      <div className="set-group">Скриншоты</div>
+      <Row title="Сохранять в папку" sub="Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда">
+        <Toggle on={settings.screenshotSave !== false} onChange={(v) => set({ screenshotSave: v })} />
+      </Row>
+      <Row title="Показывать остров на скриншотах" sub="И в записи экрана, и на трансляциях">
+        <Toggle on={settings.showInCaptures === true} onChange={(v) => set({ showInCaptures: v })} />
+      </Row>
+
       <div className="set-group">Поиск в командной строке</div>
       <Row title="Поисковик">
         <Segmented
@@ -140,6 +148,11 @@ export function SettingsTab({
         <span>Ctrl+Alt+I</span> открыть или закрыть остров
         <span>Alt+Space</span> командная строка
         <span>Ctrl+Alt+V</span> история буфера
+        <span>Ctrl+Alt+S</span> скриншот области
+        <span>Ctrl+Alt+Shift+S</span> скриншот экрана
+        <span>Ctrl+Alt+O</span> текст с экрана
+        <span>Ctrl+Alt+Q</span> QR-код с экрана
+        <span>Ctrl+Alt+C</span> пипетка
       </div>
     </div>
   );

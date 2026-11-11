@@ -37,7 +37,11 @@ type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" |
 type Tab = "home" | "clip" | "shelf" | "note" | "controls" | "settings";
 type Card = {
   key: number;
-  kind: "caps" | "layout" | "timer" | "info" | "agent";
+  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture";
+  thumb?: string | null;
+  swatch?: string;
+  /** What a click on the card does. */
+  open?: { path?: string; url?: string };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -67,13 +71,12 @@ function sizeOf(
     case "agent":
       return { w: 300, h: 34 };
     case "expanded":
-      if (opts.tab === "controls") return { w: PANEL_W, h: 226 };
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
       return opts.media ? { w: PANEL_W, h: 246 } : { w: PANEL_W, h: 168 };
     case "strip":
       return { w: 150, h: 5 };
     case "card":
-      return opts.card?.kind === "agent" ? { w: 380, h: 60 } : { w: 250, h: 34 };
+      return opts.card?.kind === "agent" || opts.card?.kind === "capture" ? { w: 380, h: 60 } : { w: 250, h: 34 };
     case "timer":
       return { w: 172, h: 32 };
     case "media":
@@ -227,6 +230,22 @@ export function App() {
             setTab("home");
             setPinned((p) => !(p || expandedRef.current));
           }
+        }),
+        b.on("capture", (r) => {
+          const first = r.text.split("\n")[0];
+          if (r.kind === "shot")
+            showCard({ kind: "capture", title: "Снимок готов", sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
+          else if (r.kind === "text") showCard({ kind: "capture", title: "Текст скопирован", sub: first, ms: 4000 });
+          else if (r.kind === "qr")
+            showCard({
+              kind: "capture",
+              title: "QR-код скопирован",
+              sub: first,
+              open: /^https?:\/\//.test(r.text) ? { url: r.text } : undefined,
+              ms: 5000,
+            });
+          else if (r.kind === "color") showCard({ kind: "capture", title: "Цвет скопирован", sub: r.text, swatch: r.text, ms: 3000 });
+          else showCard({ kind: "info", title: "Снимок", sub: r.text });
         }),
         b.on("outside_click", () => {
           setPinned(false);
@@ -536,7 +555,11 @@ export function App() {
         className={`box mode-${mode}`}
         onWheel={onWheel}
         onClick={() => {
-          if (card?.sticky) setCard(null);
+          if (mode === "card" && card?.open) {
+            if (card.open.path) api?.call("open_path", { path: card.open.path });
+            if (card.open.url) api?.call("open_url", { url: card.open.url });
+            setCard(null);
+          } else if (card?.sticky) setCard(null);
           else if (!expanded) {
             setSuppressed(false);
             setPinned(true);
@@ -565,7 +588,22 @@ export function App() {
         {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
         {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
         {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} />)}
-        {frame("controls", <ControlsTab api={api} visible={mode === "expanded" && tab === "controls"} />)}
+        {frame(
+          "controls",
+          <ControlsTab
+            api={api}
+            visible={mode === "expanded" && tab === "controls"}
+            colors={(settings.colorHistory as string[] | undefined) ?? []}
+            onTool={(m) => {
+              dismiss();
+              api?.call("capture_start", { mode: m });
+            }}
+            onCopyColor={(c) => {
+              navigator.clipboard?.writeText(c).catch(() => {});
+              showCard({ kind: "capture", title: "Цвет скопирован", sub: c, swatch: c, ms: 2500 });
+            }}
+          />,
+        )}
         {frame(
           "settings",
           <SettingsTab
@@ -650,6 +688,26 @@ function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
 }
 
 function CardView({ card }: { card: Card }) {
+  if (card.kind === "capture") {
+    return (
+      <div className={`compact card card-agent ${card.open ? "clickable" : ""}`} key={card.key}>
+        {card.thumb ? (
+          <img className="card-thumb" src={card.thumb} alt="" />
+        ) : card.swatch ? (
+          <span className="card-swatch" style={{ background: card.swatch }} />
+        ) : (
+          <span className="card-icon">
+            <TabClip size={20} />
+          </span>
+        )}
+        <div className="agent-text">
+          <div className="card-title">{card.title}</div>
+          {card.sub && <div className="agent-sub">{card.sub}</div>}
+        </div>
+        {card.open && <span className="card-open">{card.open.url ? "Открыть" : "Показать"}</span>}
+      </div>
+    );
+  }
   if (card.kind === "agent") {
     return (
       <div className="compact card card-agent" key={card.key}>

@@ -35,6 +35,7 @@ type Events = {
   hotkey: "toggle" | "clipboard" | "command";
   agent: AgentEvent;
   settings: Record<string, unknown>;
+  capture: { kind: "shot" | "text" | "qr" | "color" | "error"; text: string; thumb: string | null; path: string | null };
   outside_click: null;
   /** Files dragged over the island from another window. */
   drag: { type: "enter" | "leave" | "drop"; paths: string[] };
@@ -259,6 +260,19 @@ function mockBridge(): Bridge {
       { Name: "Visual Studio Code", AppID: "code" },
       { Name: "Steam", AppID: "steam" },
     ],
+    capture_start: (a) => {
+      setTimeout(() => {
+        const r =
+          a.mode === "color"
+            ? { kind: "color", text: "#D97757", thumb: null, path: null }
+            : a.mode === "ocr"
+              ? { kind: "text", text: "Выручка выросла на 12%\nОтчёт за ноябрь", thumb: null, path: null }
+              : a.mode === "qr"
+                ? { kind: "qr", text: "https://github.com/stardely62-oss/dark-island", thumb: null, path: null }
+                : { kind: "shot", text: "В буфере и в папке", thumb: mockCover(), path: "C:\\Users\\me\\Pictures\\Снимок.png" };
+        emit("capture", r);
+      }, 400);
+    },
     note_get: () => note,
     note_set: (a) => {
       note = a.text as string;

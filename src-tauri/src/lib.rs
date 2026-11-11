@@ -1,4 +1,5 @@
 mod agents;
+mod capture;
 mod clip;
 mod settings;
 mod cursor;
@@ -218,7 +219,11 @@ fn settings_set(
     ctl: State<'_, Ctl>,
     patch: serde_json::Map<String, serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
+    let captures = patch.get("showInCaptures").and_then(|v| v.as_bool());
     let all = ctl.settings.merge(patch);
+    if let (Some(show), Some(w)) = (captures, app.get_webview_window("island")) {
+        sys::exclude_from_capture(&w, !show);
+    }
     let _ = app.emit_to("island", "settings", all.clone());
     all
 }
@@ -297,6 +302,34 @@ fn open_url(app: AppHandle, url: String) {
     }
 }
 
+// ---- screen tools -------------------------------------------------------------
+
+#[tauri::command]
+async fn capture_start(app: AppHandle, mode: String) {
+    capture::start(&app, &mode);
+}
+
+#[tauri::command]
+fn overlay_ready(app: AppHandle) {
+    capture::ready(&app);
+}
+
+#[tauri::command]
+fn overlay_cancel(app: AppHandle) {
+    capture::hide(&app);
+}
+
+#[tauri::command]
+async fn capture_done(app: AppHandle, png: String, action: String) {
+    let settings = app.state::<Ctl>().settings.clone();
+    capture::done(&app, &settings, &png, &action);
+}
+
+#[tauri::command]
+fn color_done(app: AppHandle, ctl: State<'_, Ctl>, hex: String) {
+    capture::color(&app, &ctl.settings, &hex);
+}
+
 // ---- hotkeys -------------------------------------------------------------------
 
 /// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
@@ -305,10 +338,24 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
     let toggle = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyI);
     let clipboard = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
     let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let ca = Some(Modifiers::CONTROL | Modifiers::ALT);
+    let screen: [(Shortcut, &str); 5] = [
+        (Shortcut::new(ca, Code::KeyS), "area"),
+        (Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyS), "full"),
+        (Shortcut::new(ca, Code::KeyO), "ocr"),
+        (Shortcut::new(ca, Code::KeyQ), "qr"),
+        (Shortcut::new(ca, Code::KeyC), "color"),
+    ];
+    let screen_keys: Vec<Shortcut> = screen.iter().map(|(s, _)| *s).collect();
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, sc, ev| {
                 if ev.state() != ShortcutState::Pressed {
+                    return;
+                }
+                if let Some((_, mode)) = screen.iter().find(|(s, _)| s == sc) {
+                    let (app, mode) = (app.clone(), mode.to_string());
+                    std::thread::spawn(move || capture::start(&app, &mode));
                     return;
                 }
                 let name = if *sc == toggle {
@@ -325,7 +372,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             .build(),
     )?;
     // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard, command] {
+    for sc in [toggle, clipboard, command].into_iter().chain(screen_keys) {
         let _ = app.global_shortcut().register(sc);
     }
     Ok(())
@@ -393,6 +440,7 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_drag::init())
+        .register_uri_scheme_protocol("frame", |_ctx, _req| capture::protocol())
         .invoke_handler(tauri::generate_handler![
             get_state,
             set_hit_rect,
@@ -426,7 +474,12 @@ pub fn run() {
             apps_list,
             app_launch,
             run_shell,
-            open_url
+            open_url,
+            capture_start,
+            overlay_ready,
+            overlay_cancel,
+            capture_done,
+            color_done
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -469,6 +522,12 @@ pub fn run() {
                 apps,
             });
             register_hotkeys(app.handle())?;
+            capture::create_overlay(app.handle())?;
+            // By default the island stays out of screenshots, recordings and streams.
+            let show_in_captures = app.state::<Ctl>().settings.bool("showInCaptures", false);
+            if let Some(w) = app.get_webview_window("island") {
+                sys::exclude_from_capture(&w, !show_in_captures);
+            }
 
             build_tray(app.handle())?;
             Ok(())

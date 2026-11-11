@@ -64,3 +64,22 @@ pub fn start_apps() -> Vec<App> {
 }
 pub fn launch_app(_id: &str) {}
 pub fn run_shell(_cmd: &str, _powershell: bool) {}
+
+pub struct Frame {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    pub rgba: Vec<u8>,
+}
+pub fn capture_monitor() -> Option<Frame> {
+    None
+}
+pub fn exclude_from_capture(_win: &WebviewWindow, _exclude: bool) {}
+pub fn bring_to_front(_win: &WebviewWindow) {}
+pub fn ocr(_png: &[u8]) -> Option<String> {
+    None
+}
+pub fn utc_offset_secs() -> i64 {
+    0
+}
