@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { calc, convert, fmtNumber, SYSTEM, timerPhrase } from "../command";
 import { ENGINES } from "../settings";
+import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
 export type AppEntry = { Name: string; AppID: string };
 
 type Result = { key: string; icon: string; title: string; sub: string; run: () => void };
 
 export type CommandActions = {
+  ask: (q: string) => void;
+  remind: (r: Reminder) => void;
   startTimer: (ms: number) => void;
   system: (id: string) => void;
   close: () => void;
@@ -86,6 +89,12 @@ export function CommandBar({
       });
     }
 
+    if (/^напомни/i.test(text)) {
+      const r = parseReminder(text);
+      if (r)
+        out.push({ key: "remind", icon: "⏰", title: `${r.text} — ${describeWhen(r)}`, sub: "Напомнить", run: () => actions.remind(r) });
+    }
+
     const f = fold(text);
     for (const c of SYSTEM) {
       if (c.words.some((w) => w.startsWith(f) || f === w)) {
@@ -115,13 +124,20 @@ export function CommandBar({
 
     const e = ENGINES[engine] ?? ENGINES.google;
     out.push({
+      key: "ai",
+      icon: "✦",
+      title: `Спросить ИИ: «${text}»`,
+      sub: "Tab",
+      run: () => actions.ask(text),
+    });
+    out.push({
       key: "web",
       icon: "⌕",
       title: `Найти «${text}»`,
       sub: e.name,
       run: () => api?.call("open_url", { url: e.url.replace("%s", encodeURIComponent(text)) }),
     });
-    return out.slice(0, 6);
+    return out.slice(0, 7);
   }, [q, apps, api, engine, actions]);
 
   useEffect(() => setSel(0), [q]);
@@ -157,6 +173,9 @@ export function CommandBar({
             } else if (e.key === "Enter") {
               e.preventDefault();
               runAt(sel);
+            } else if (e.key === "Tab" && q.trim()) {
+              e.preventDefault();
+              actions.ask(q.trim());
             } else if (e.key === "Escape") {
               e.preventDefault();
               actions.close();

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./overlay.css";
 
-type Mode = "area" | "full" | "ocr" | "qr" | "color";
+type Mode = "area" | "full" | "ocr" | "qr" | "color" | "record";
 type Tool = "arrow" | "rect" | "marker" | "text" | "blur";
 type Pt = { x: number; y: number };
 type Rect = { x: number; y: number; w: number; h: number };
@@ -233,7 +233,7 @@ export function Overlay() {
   }, [img, sel, shapes, dpr]);
 
   const finish = useCallback(
-    (action: "copy" | "save" | "ocr" | "qr", rect?: Rect) => {
+    (action: "copy" | "save" | "ocr" | "qr" | "upload", rect?: Rect) => {
       const r = rect ?? sel;
       if (!img || !r || busy) return;
       setBusy(true);
@@ -298,6 +298,14 @@ export function Overlay() {
     if (phase === "select" && drag) {
       const r = norm(drag, mouse);
       setDrag(null);
+      if (mode === "record" && img) {
+        // A click records the whole screen.
+        const area = r.w < 4 || r.h < 4 ? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight } : r;
+        reset();
+        setImg(null);
+        call("record_start", { x: Math.round(area.x), y: Math.round(area.y), w: Math.round(area.w), h: Math.round(area.h) });
+        return;
+      }
       if (r.w < 4 || r.h < 4) {
         // A click selects the whole screen.
         if (mode === "area" && img) {
@@ -397,7 +405,14 @@ export function Overlay() {
 
       {phase === "select" && (
         <div className="ov-hint">
-          {mode === "ocr" ? "Выдели текст" : mode === "qr" ? "Выдели QR-код" : "Выдели область · клик — весь экран"} · Esc — отмена
+          {mode === "ocr"
+            ? "Выдели текст"
+            : mode === "qr"
+              ? "Выдели QR-код"
+              : mode === "record"
+                ? "Запись экрана: выдели область · клик — весь экран"
+                : "Выдели область · клик — весь экран"}{" "}
+          · Esc — отмена
         </div>
       )}
       {phase === "select" && drag && (
@@ -462,6 +477,9 @@ export function Overlay() {
           </button>
           <button className="txt" title="Прочитать QR-код" onClick={() => finish("qr")}>
             QR
+          </button>
+          <button className="txt" title="Загрузить и скопировать ссылку" onClick={() => finish("upload")}>
+            Ссылка
           </button>
           <button className="txt" title="Сохранить (Ctrl+S)" onClick={() => finish("save")}>
             Сохранить

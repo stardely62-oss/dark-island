@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
+import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
 
 type Conn = { claude: boolean; codex: boolean; codex_busy: boolean };
 
@@ -58,6 +59,48 @@ export function SettingsTab({
   useEffect(() => {
     if (visible && settings.showNotifications) api?.call<string>("notifications_access", { ask: false }).then(setAccess);
   }, [api, visible, settings.showNotifications]);
+  // ---- keys ----
+  const [keyStatus, setKeyStatus] = useState<Record<string, boolean>>({});
+  const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
+  const [models, setModels] = useState<string[]>([]);
+  const [modelErr, setModelErr] = useState<string | null>(null);
+  const [monitors, setMonitors] = useState<{ index: number; name: string; width: number; height: number; primary: boolean }[]>([]);
+  const refreshKeys = () =>
+    api
+      ?.call<Record<string, boolean>>("ai_key_status", { ids: [...PROVIDERS.map((p) => p.id), "imgbb", "imgur"] })
+      .then((m) => setKeyStatus(m ?? {}));
+  useEffect(() => {
+    if (!visible) return;
+    refreshKeys();
+    api?.call<typeof monitors>("monitors_list").then((m) => setMonitors(m ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, visible]);
+  const provider = providerOf(settings);
+  const preset = PROVIDERS.find((p) => p.id === provider.id) ?? PROVIDERS[0];
+  const keyRow = ({ id, title, sub, url }: { id: string; title: string; sub?: string; url?: string }) => (
+    <Row title={title} sub={keyStatus[id] ? "Ключ сохранён (зашифрован Windows)" : sub}>
+      <input
+        className="search set-input"
+        type="password"
+        placeholder={keyStatus[id] ? "••••••••" : "вставь ключ"}
+        value={keyDraft[id] ?? ""}
+        onFocus={onTypeStart}
+        onChange={(e) => setKeyDraft({ ...keyDraft, [id]: e.target.value })}
+        onBlur={() => {
+          const k = keyDraft[id];
+          if (k === undefined) return;
+          api?.call("ai_key_set", { id, key: k }).then(refreshKeys);
+          setKeyDraft({ ...keyDraft, [id]: "" });
+        }}
+      />
+      {url && !keyStatus[id] && (
+        <button className="text-btn solid" onClick={() => api?.call("open_url", { url })}>
+          Получить
+        </button>
+      )}
+    </Row>
+  );
+
   const list = (v: string) =>
     v
       .split(",")
@@ -106,6 +149,162 @@ export function SettingsTab({
       <Row title="Сквозной режим" sub="Свёрнутый остров пропускает клики и не раскрывается под курсором (Ctrl+Alt+T)">
         <Toggle on={!!settings.through} onChange={(v) => set({ through: v })} />
       </Row>
+
+      <div className="set-group">Вид</div>
+      <Row title="Тема острова">
+        <Segmented
+          value={(settings.islandTheme as string) ?? "dark"}
+          options={[
+            ["dark", "Тёмная"],
+            ["light", "Светлая"],
+            ["system", "Как в Windows"],
+          ]}
+          onChange={(v) => set({ islandTheme: v })}
+        />
+      </Row>
+      <Row title="Размер" sub={`${Math.round(((settings.islandScale as number) ?? 1) * 100)}%`}>
+        <input
+          className="range"
+          type="range"
+          min={0.8}
+          max={2}
+          step={0.1}
+          value={(settings.islandScale as number) ?? 1}
+          onChange={(e) => set({ islandScale: Number(e.target.value) })}
+        />
+      </Row>
+      <Row title="Прозрачность свёрнутого" sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
+        <input className="range" type="range" min={0.3} max={1} step={0.05} value={(settings.pillOpacity as number) ?? 1} onChange={(e) => set({ pillOpacity: Number(e.target.value) })} />
+      </Row>
+      <Row title="Прозрачность открытого" sub={`${Math.round(((settings.openOpacity as number) ?? 1) * 100)}%`}>
+        <input className="range" type="range" min={0.5} max={1} step={0.05} value={(settings.openOpacity as number) ?? 1} onChange={(e) => set({ openOpacity: Number(e.target.value) })} />
+      </Row>
+      {monitors.length > 1 && (
+        <Row title="Монитор">
+          <Segmented
+            value={String((settings.islandMonitor as number) ?? -1)}
+            options={[["-1", "Основной"], ...monitors.map((m) => [String(m.index), `${m.index + 1}: ${m.width}×${m.height}`] as [string, string])]}
+            onChange={(v) => set({ islandMonitor: Number(v) })}
+          />
+        </Row>
+      )}
+      <Row title="Сдвиг вдоль края" sub={`${(settings.islandOffset as number) ?? 0} px`}>
+        <input className="range" type="range" min={-800} max={800} step={20} value={(settings.islandOffset as number) ?? 0} onChange={(e) => set({ islandOffset: Number(e.target.value) })} />
+      </Row>
+
+      <div className="set-group">ИИ</div>
+      <Row title="Сервис" sub={preset.note}>
+        <select className="search set-input select" value={provider.id} onChange={(e) => set({ aiProvider: e.target.value })}>
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </Row>
+      {keyRow({ id: provider.id, title: `Ключ ${preset.name}`, sub: "Хранится только на этом компьютере", url: preset.keyUrl })}
+      {provider.id === "custom" && (
+        <Row title="Адрес" sub="OpenAI-совместимый, например Ollama или LM Studio">
+          <input className="search set-input" defaultValue={provider.base} onFocus={onTypeStart} onBlur={(e) => set({ [`aiBase_${provider.id}`]: e.target.value })} />
+        </Row>
+      )}
+      <Row title="Модель" sub={modelErr ?? undefined}>
+        <input
+          className="search set-input"
+          list="ai-models"
+          key={provider.id}
+          defaultValue={provider.model}
+          onFocus={onTypeStart}
+          onBlur={(e) => set({ [`aiModel_${provider.id}`]: e.target.value })}
+        />
+        <datalist id="ai-models">
+          {(provider.protocol === "anthropic" && !models.length ? CLAUDE_MODELS : models).map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <button
+          className="text-btn solid"
+          onClick={() => {
+            setModelErr(null);
+            api
+              ?.call<string[]>("ai_models", { provider })
+              .then((m) => setModels(m ?? []))
+              .catch((e) => setModelErr(String(e)));
+          }}
+        >
+          Список
+        </button>
+      </Row>
+
+      <div className="set-group">Голос в текст (Ctrl+Alt+D)</div>
+      <Row title="Сервис распознавания" sub="Whisper; ключ тот же, что для ИИ этого сервиса">
+        <Segmented
+          value={(settings.sttService as string) ?? "groq"}
+          options={[
+            ["groq", "Groq"],
+            ["openai", "OpenAI"],
+          ]}
+          onChange={(v) => set({ sttService: v })}
+        />
+      </Row>
+      {!keyStatus[(settings.sttService as string) ?? "groq"] &&
+        keyRow({
+          id: (settings.sttService as string) ?? "groq",
+          title: "Ключ для диктовки",
+          url: PROVIDERS.find((p) => p.id === ((settings.sttService as string) ?? "groq"))?.keyUrl,
+        })}
+      <Row title="Язык">
+        <Segmented
+          value={(settings.sttLang as string) ?? "ru"}
+          options={[
+            ["ru", "Русский"],
+            ["en", "English"],
+            ["", "Авто"],
+          ]}
+          onChange={(v) => set({ sttLang: v })}
+        />
+      </Row>
+      <Row title="Сразу вставлять в окно" sub="Иначе текст только в буфере">
+        <Toggle on={settings.dictationPaste !== false} onChange={(v) => set({ dictationPaste: v })} />
+      </Row>
+
+      <div className="set-group">Запись экрана (Ctrl+Alt+R)</div>
+      <Row title="Кадров в секунду" sub="MP4 (H.264) в «Видео → Dark Island»">
+        <Segmented
+          value={String((settings.recordFps as number) ?? 30)}
+          options={[
+            ["30", "30"],
+            ["60", "60"],
+          ]}
+          onChange={(v) => set({ recordFps: Number(v) })}
+        />
+      </Row>
+      <Row title="Качество">
+        <Segmented
+          value={(settings.recordQuality as string) ?? "normal"}
+          options={[
+            ["normal", "Обычное"],
+            ["high", "Высокое"],
+          ]}
+          onChange={(v) => set({ recordQuality: v })}
+        />
+      </Row>
+
+      <div className="set-group">Ссылка на скриншот</div>
+      <Row title="Сервис" sub="Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается">
+        <Segmented
+          value={(settings.uploadService as string) ?? "imgbb"}
+          options={[
+            ["imgbb", "ImgBB"],
+            ["imgur", "Imgur"],
+          ]}
+          onChange={(v) => set({ uploadService: v })}
+        />
+      </Row>
+      {keyRow({id: (settings.uploadService as string) ?? "imgbb",
+        title: (settings.uploadService as string) === "imgur" ? "Client ID Imgur" : "Ключ ImgBB",
+        url: (settings.uploadService as string) === "imgur" ? "https://api.imgur.com/oauth2/addclient" : "https://api.imgbb.com/",
+      })}
 
       <div className="set-group">Музыка</div>
       <Row title="Пилюля во время музыки">
@@ -236,6 +435,10 @@ export function SettingsTab({
         <span>Ctrl+Alt+C</span> пипетка
         <span>Ctrl+Alt+M</span> микрофон: выключить и включить
         <span>Ctrl+Alt+T</span> сквозной режим
+        <span>Ctrl+Alt+A</span> чат с ИИ
+        <span>Ctrl+Alt+D</span> голос в текст
+        <span>Ctrl+Alt+R</span> запись экрана
+        <span>Ctrl+Alt+Shift+V</span> вставить без форматирования
       </div>
     </div>
   );

@@ -21,6 +21,8 @@ use crate::sys;
 /// The frozen screen, as PNG, served to the overlay at `frame://`.
 static FRAME: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 static SHOT: AtomicU64 = AtomicU64::new(0);
+/// Top-left corner of the frozen monitor, to place a recording area.
+pub static ORIGIN: Mutex<(i32, i32)> = Mutex::new((0, 0));
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +37,7 @@ struct Start {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureResult {
-    /// shot | text | qr | color | error
+    /// shot | text | qr | link | color | error
     pub kind: &'static str,
     pub text: String,
     pub thumb: Option<String>,
@@ -79,6 +81,7 @@ pub fn start(app: &AppHandle, mode: &str) {
     let Some(frame) = sys::capture_monitor() else { return };
     let Some(png) = encode_png(frame.w, frame.h, &frame.rgba) else { return };
     *FRAME.lock().unwrap() = Some(png);
+    *ORIGIN.lock().unwrap() = (frame.x, frame.y);
     let id = SHOT.fetch_add(1, Ordering::Relaxed) + 1;
     let _ = overlay.set_position(PhysicalPosition::new(frame.x, frame.y));
     let _ = overlay.set_size(PhysicalSize::new(frame.w, frame.h));
@@ -141,7 +144,7 @@ fn civil(z: i64) -> (i64, u32, u32) {
 }
 
 /// The overlay finished: `png` is the marked-up selection.
-pub fn done(app: &AppHandle, settings: &crate::settings::Settings, png_b64: &str, action: &str) {
+pub fn done(app: &AppHandle, settings: &crate::settings::Settings, keys: &crate::ai::Keys, png_b64: &str, action: &str) {
     hide(app);
     let Ok(png) = B64.decode(png_b64.trim_start_matches("data:image/png;base64,")) else { return };
     match action {
@@ -153,6 +156,16 @@ pub fn done(app: &AppHandle, settings: &crate::settings::Settings, png_b64: &str
                     report(app, CaptureResult { kind: "text", text: t, thumb: None, path: None });
                 }
                 None => report(app, CaptureResult { kind: "error", text: "Текст не найден".into(), thumb: None, path: None }),
+            }
+        }
+        "upload" => {
+            let service = settings.all().get("uploadService").and_then(Value::as_str).unwrap_or("imgbb").to_string();
+            match crate::ai::upload(keys, &service, &png) {
+                Ok(url) => {
+                    put_text(&url);
+                    report(app, CaptureResult { kind: "link", text: url, thumb: None, path: None });
+                }
+                Err(e) => report(app, CaptureResult { kind: "error", text: e, thumb: None, path: None }),
             }
         }
         "qr" => match decode_qr(&png) {

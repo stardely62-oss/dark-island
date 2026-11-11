@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { Pause, Play, ResetIcon, Ring } from "../components/Icons";
 import { fmtClock, remaining, type useTimer } from "../timer";
+import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
 const PRESETS = [1, 3, 5, 10, 15, 25];
 
@@ -10,11 +11,18 @@ export function NoteTab({
   api,
   timer,
   onTypeStart,
+  reminders,
+  setReminders,
 }: {
   api: Bridge | null;
   timer: ReturnType<typeof useTimer>;
   onTypeStart: () => void;
+  reminders: Reminder[];
+  setReminders: (r: Reminder[]) => void;
 }) {
+  const [view, setView] = useState<"note" | "remind">("note");
+  const [phrase, setPhrase] = useState("");
+  const parsed = phrase.trim() ? parseReminder(phrase) : null;
   const [text, setText] = useState<string | null>(null);
   const saveTimer = useRef(0);
   const [pick, setPick] = useState(5); // minutes for the next start
@@ -34,6 +42,52 @@ export function NoteTab({
 
   return (
     <div className="tab-note">
+      <div className="note-col">
+        <div className="segmented">
+          <button className={view === "note" ? "on" : ""} onClick={() => setView("note")}>
+            Заметка
+          </button>
+          <button className={view === "remind" ? "on" : ""} onClick={() => setView("remind")}>
+            Напоминания{reminders.length ? ` · ${reminders.length}` : ""}
+          </button>
+        </div>
+        {view === "remind" ? (
+          <div className="reminders">
+            <input
+              className="search"
+              placeholder="позвонить маме завтра в 9"
+              value={phrase}
+              onFocus={onTypeStart}
+              onChange={(e) => setPhrase(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && parsed) {
+                  setReminders([...reminders, parsed].sort((a, b) => a.at - b.at));
+                  setPhrase("");
+                }
+              }}
+            />
+            <div className="hint-line">
+              {phrase.trim()
+                ? parsed
+                  ? `${parsed.text} — ${describeWhen(parsed)} · Enter`
+                  : "Не понял, когда: «завтра в 9», «через 20 минут», «каждый день в 23:00»"
+                : "Одной фразой: что и когда"}
+            </div>
+            <div className="list">
+              {reminders.map((r) => (
+                <div key={r.id} className="clip">
+                  <div className="clip-text">{r.text}</div>
+                  <span className="meta">{describeWhen(r)}</span>
+                  <span className="actions">
+                    <button aria-label="Удалить" onClick={() => setReminders(reminders.filter((x) => x.id !== r.id))}>
+                      ✕
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
       <textarea
         className="note"
         placeholder="Заметка: всё, что напишешь, сохранится само"
@@ -48,6 +102,8 @@ export function NoteTab({
           saveTimer.current = window.setTimeout(() => api?.call("note_set", { text: t }), 400);
         }}
       />
+        )}
+      </div>
       <div className="timer">
         <div
           className="timer-face"

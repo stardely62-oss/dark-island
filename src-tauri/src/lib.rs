@@ -1,4 +1,5 @@
 mod agents;
+mod ai;
 mod capture;
 mod clip;
 mod live;
@@ -12,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
@@ -25,11 +26,59 @@ use types::{Cmd, Geometry, MediaAction, Rect, Snapshot};
 pub const WINDOW_W: f64 = 640.0;
 pub const WINDOW_H: f64 = 300.0;
 
-#[derive(Default)]
 pub struct Shared {
     pub snap: Mutex<Snapshot>,
     pub hit: Mutex<Rect>,
     pub geom: Mutex<Geometry>,
+    /// Where and how big the island is: (zoom, monitor index or -1 for the
+    /// primary one, horizontal offset in logical px).
+    pub place: Mutex<(f64, i64, f64)>,
+}
+
+impl Default for Shared {
+    fn default() -> Self {
+        Self {
+            snap: Mutex::default(),
+            hit: Mutex::default(),
+            geom: Mutex::default(),
+            place: Mutex::new((1.0, -1, 0.0)),
+        }
+    }
+}
+
+fn read_place(s: &settings::Settings) -> (f64, i64, f64) {
+    let all = s.all();
+    let zoom = all.get("islandScale").and_then(|v| v.as_f64()).unwrap_or(1.0).clamp(0.8, 2.0);
+    let monitor = all.get("islandMonitor").and_then(|v| v.as_i64()).unwrap_or(-1);
+    let offset = all.get("islandOffset").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    (zoom, monitor, offset)
+}
+
+#[derive(serde::Serialize)]
+struct MonitorInfo {
+    index: usize,
+    name: String,
+    width: u32,
+    height: u32,
+    primary: bool,
+}
+
+#[tauri::command]
+fn monitors_list(app: AppHandle) -> Vec<MonitorInfo> {
+    let Some(w) = app.get_webview_window("island") else { return Vec::new() };
+    let primary = w.primary_monitor().ok().flatten().map(|m| *m.position());
+    w.available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+        .map(|(i, m)| MonitorInfo {
+            index: i,
+            name: m.name().cloned().unwrap_or_else(|| format!("Монитор {}", i + 1)),
+            width: m.size().width,
+            height: m.size().height,
+            primary: Some(*m.position()) == primary,
+        })
+        .collect()
 }
 
 struct Ctl {
@@ -41,6 +90,11 @@ struct Ctl {
     settings: Arc<settings::Settings>,
     agents: Arc<agents::Agents>,
     apps: Arc<Mutex<Vec<sys::App>>>,
+    keys: Arc<ai::Keys>,
+    runs: Arc<ai::Runs>,
+    /// Set while dictating / recording the screen; setting it stops them.
+    dictation: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
+    recording: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>,
 }
 
 impl Ctl {
@@ -222,9 +276,18 @@ fn settings_set(
 ) -> serde_json::Map<String, serde_json::Value> {
     let captures = patch.get("showInCaptures").and_then(|v| v.as_bool());
     let city_changed = patch.contains_key("weatherCity");
+    let place_changed = ["islandScale", "islandMonitor", "islandOffset"].iter().any(|k| patch.contains_key(*k));
     let all = ctl.settings.merge(patch);
     if let (Some(show), Some(w)) = (captures, app.get_webview_window("island")) {
         sys::exclude_from_capture(&w, !show);
+    }
+    if place_changed {
+        *ctl.shared.place.lock().unwrap() = read_place(&ctl.settings);
+        if let Some(w) = app.get_webview_window("island") {
+            let s = ctl.shared.clone();
+            let w2 = w.clone();
+            let _ = w.run_on_main_thread(move || place_window(&w2, &s));
+        }
     }
     if city_changed {
         let (app, s) = (app.clone(), ctl.settings.clone());
@@ -327,8 +390,9 @@ fn overlay_cancel(app: AppHandle) {
 
 #[tauri::command]
 async fn capture_done(app: AppHandle, png: String, action: String) {
-    let settings = app.state::<Ctl>().settings.clone();
-    capture::done(&app, &settings, &png, &action);
+    let ctl = app.state::<Ctl>();
+    let (settings, keys) = (ctl.settings.clone(), ctl.keys.clone());
+    capture::done(&app, &settings, &keys, &png, &action);
 }
 
 #[tauri::command]
@@ -381,6 +445,173 @@ fn open_windows_settings(app: AppHandle, page: String) {
     let _ = app.opener().open_url(uri, None::<&str>);
 }
 
+// ---- AI ------------------------------------------------------------------------
+
+#[tauri::command]
+fn ai_key_set(ctl: State<'_, Ctl>, id: String, key: String) {
+    ctl.keys.set(&id, &key);
+}
+
+#[tauri::command]
+fn ai_key_status(ctl: State<'_, Ctl>, ids: Vec<String>) -> std::collections::HashMap<String, bool> {
+    ids.into_iter().map(|id| (id.clone(), ctl.keys.has(&id))).collect()
+}
+
+#[tauri::command]
+fn ai_chat(app: AppHandle, id: String, provider: ai::Provider, system: String, messages: Vec<ai::Msg>) {
+    std::thread::spawn(move || {
+        let ctl = app.state::<Ctl>();
+        let (keys, runs) = (ctl.keys.clone(), ctl.runs.clone());
+        ai::chat(app.clone(), &keys, &runs, id, provider, system, messages);
+    });
+}
+
+#[tauri::command]
+fn ai_cancel(ctl: State<'_, Ctl>, id: String) {
+    ctl.runs.cancel(&id);
+}
+
+#[tauri::command]
+async fn ai_models(app: AppHandle, provider: ai::Provider) -> Result<Vec<String>, String> {
+    let keys = app.state::<Ctl>().keys.clone();
+    ai::models(&keys, &provider)
+}
+
+#[tauri::command]
+fn clip_current_text() -> Option<String> {
+    arboard::Clipboard::new().ok()?.get_text().ok()
+}
+
+/// Puts text on the clipboard and, if asked, pastes it where the user was typing.
+#[tauri::command]
+async fn paste_text(app: AppHandle, text: String, paste: bool) {
+    if let Some(w) = app.get_webview_window("island") {
+        sys::release_focus(&w);
+    }
+    if put_on_clipboard(ClipData::Text(text)) && paste {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        sys::send_paste();
+    }
+}
+
+// ---- dictation -------------------------------------------------------------------
+
+#[tauri::command]
+fn dictate_toggle(app: AppHandle) {
+    dictate(&app);
+}
+
+fn dictate(app: &AppHandle) {
+    let ctl = app.state::<Ctl>();
+    if let Some(stop) = ctl.dictation.lock().unwrap().take() {
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        *ctl.dictation.lock().unwrap() = Some(stop.clone());
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let emit = |state: &str, extra: serde_json::Value| {
+                let mut v = serde_json::json!({ "state": state });
+                if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+                    o.extend(e.clone());
+                }
+                let _ = app.emit_to("island", "dictation", v);
+            };
+            emit("rec", serde_json::json!({ "level": 0 }));
+            let samples = sys::record::record_mic(stop, |l| emit("rec", serde_json::json!({ "level": l })));
+            let ctl = app.state::<Ctl>();
+            *ctl.dictation.lock().unwrap() = None;
+            let samples = match samples {
+                Ok(s) if s.len() > 16_000 / 3 => s,
+                Ok(_) => return emit("error", serde_json::json!({ "text": "Слишком коротко" })),
+                Err(e) => return emit("error", serde_json::json!({ "text": e })),
+            };
+            emit("busy", serde_json::json!({}));
+            let s = ctl.settings.all();
+            let get = |k: &str, d: &str| s.get(k).and_then(|v| v.as_str()).unwrap_or(d).to_string();
+            let service = get("sttService", "groq");
+            let (base, model) = match service.as_str() {
+                "openai" => ("https://api.openai.com/v1".to_string(), "whisper-1".to_string()),
+                _ => ("https://api.groq.com/openai/v1".to_string(), "whisper-large-v3-turbo".to_string()),
+            };
+            match ai::transcribe(&ctl.keys, &service, &base, &model, ai::wav(&samples, 16_000), &get("sttLang", "ru")) {
+                Ok(text) if !text.is_empty() => {
+                    let paste = ctl.settings.bool("dictationPaste", true);
+                    if put_on_clipboard(ClipData::Text(text.clone())) && paste {
+                        std::thread::sleep(std::time::Duration::from_millis(80));
+                        sys::send_paste();
+                    }
+                    emit("done", serde_json::json!({ "text": text }));
+                }
+                Ok(_) => emit("error", serde_json::json!({ "text": "Речь не распознана" })),
+                Err(e) => emit("error", serde_json::json!({ "text": e })),
+            }
+        });
+    }
+}
+
+// ---- screen recording --------------------------------------------------------------
+
+fn record_toggle(app: &AppHandle) {
+    let ctl = app.state::<Ctl>();
+    if let Some(stop) = ctl.recording.lock().unwrap().take() {
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || capture::start(&app, "record"));
+}
+
+#[tauri::command]
+fn record_toggle_cmd(app: AppHandle) {
+    record_toggle(&app);
+}
+
+/// The overlay picked an area (physical px inside the frozen monitor).
+#[tauri::command]
+fn record_start(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
+    capture::hide(&app);
+    #[cfg(windows)]
+    {
+        let ctl = app.state::<Ctl>();
+        let (ox, oy) = *capture::ORIGIN.lock().unwrap();
+        let s = ctl.settings.all();
+        let fps = s.get("recordFps").and_then(|v| v.as_u64()).unwrap_or(30).clamp(10, 60) as u32;
+        let high = s.get("recordQuality").and_then(|v| v.as_str()) == Some("high");
+        let dir = s
+            .get("recordDir")
+            .and_then(|v| v.as_str())
+            .map(std::path::PathBuf::from)
+            .or_else(|| app.path().video_dir().ok().map(|p| p.join("Dark Island")));
+        let Some(dir) = dir else { return };
+        let _ = std::fs::create_dir_all(&dir);
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let path = dir.join(format!("Запись {secs}.mp4")).to_string_lossy().into_owned();
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        *ctl.recording.lock().unwrap() = Some(stop.clone());
+        let _ = app.emit_to("island", "recording", serde_json::json!({ "on": true }));
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            let area = sys::record::Area { x: ox + x, y: oy + y, w, h };
+            let r = sys::record::record_screen(&path, area, fps, high, stop);
+            *app2.state::<Ctl>().recording.lock().unwrap() = None;
+            let _ = app2.emit_to(
+                "island",
+                "recording",
+                match r {
+                    Ok(()) => serde_json::json!({ "on": false, "path": path }),
+                    Err(e) => serde_json::json!({ "on": false, "error": e }),
+                },
+            );
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = (x, y, w, h);
+}
+
 // ---- hotkeys -------------------------------------------------------------------
 
 /// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
@@ -391,6 +622,10 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
     let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
     let mic = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyM);
     let through = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT);
+    let dictation = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
+    let record = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyR);
+    let chat = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA);
+    let plain = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
     let ca = Some(Modifiers::CONTROL | Modifiers::ALT);
     let screen: [(Shortcut, &str); 5] = [
         (Shortcut::new(ca, Code::KeyS), "area"),
@@ -419,6 +654,28 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                     "command"
                 } else if *sc == through {
                     "through"
+                } else if *sc == chat {
+                    "chat"
+                } else if *sc == dictation {
+                    dictate(app);
+                    return;
+                } else if *sc == record {
+                    record_toggle(app);
+                    return;
+                } else if *sc == plain {
+                    // Paste without formatting: the clipboard's text only.
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        let text = arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok());
+                        if let Some(t) = text {
+                            if put_on_clipboard(ClipData::Text(t)) {
+                                std::thread::sleep(std::time::Duration::from_millis(120));
+                                sys::send_paste();
+                            }
+                        }
+                        let _ = app;
+                    });
+                    return;
                 } else if *sc == mic {
                     let app = app.clone();
                     std::thread::spawn(move || {
@@ -435,7 +692,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             .build(),
     )?;
     // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard, command, mic, through].into_iter().chain(screen_keys) {
+    for sc in [toggle, clipboard, command, mic, through, dictation, record, chat, plain].into_iter().chain(screen_keys) {
         let _ = app.global_shortcut().register(sc);
     }
     Ok(())
@@ -444,19 +701,27 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
 /// Centres the window on the top edge of the primary monitor and remembers
 /// where it ended up, so the cursor thread can map screen coordinates.
 pub fn place_window(win: &WebviewWindow, shared: &Shared) {
-    let monitor = win
-        .primary_monitor()
-        .ok()
-        .flatten()
+    let (zoom, index, offset) = *shared.place.lock().unwrap();
+    let chosen = (index >= 0)
+        .then(|| win.available_monitors().ok().and_then(|list| list.into_iter().nth(index as usize)))
+        .flatten();
+    let monitor = chosen
+        .or_else(|| win.primary_monitor().ok().flatten())
         .or_else(|| win.current_monitor().ok().flatten());
     let Some(m) = monitor else { return };
-    let scale = m.scale_factor();
+    let scale = m.scale_factor() * zoom;
     let (mx, my) = (m.position().x as f64, m.position().y as f64);
     let mw = m.size().width as f64;
     let w = (WINDOW_W * scale).round();
-    let x = (mx + (mw - w) / 2.0).round();
-    let y = my;
-    let _ = win.set_size(tauri::LogicalSize::new(WINDOW_W, WINDOW_H));
+    let shift = (offset * m.scale_factor()).clamp(-(mw - w) / 2.0, (mw - w) / 2.0);
+    let x = (mx + (mw - w) / 2.0 + shift).round();
+    // With the taskbar at the top of the screen the island stands under it.
+    let y = (m.work_area().position.y as f64).max(my);
+    let size = PhysicalSize::new(w as u32, (WINDOW_H * scale).round() as u32);
+    if win.outer_size().ok() != Some(size) {
+        let _ = win.set_size(size);
+        let _ = win.set_zoom(zoom);
+    }
     let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
     if let Ok(mut g) = shared.geom.lock() {
         *g = Geometry { x, y, scale };
@@ -549,7 +814,18 @@ pub fn run() {
             lyrics_get,
             mic_toggle,
             notifications_access,
-            open_windows_settings
+            open_windows_settings,
+            ai_key_set,
+            ai_key_status,
+            ai_chat,
+            ai_cancel,
+            ai_models,
+            clip_current_text,
+            paste_text,
+            dictate_toggle,
+            record_toggle_cmd,
+            record_start,
+            monitors_list
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -557,15 +833,17 @@ pub fn run() {
                 .get_webview_window("island")
                 .expect("window `island` is declared in tauri.conf.json");
 
+            let data_dir = app.path().app_data_dir()?;
+            let _ = std::fs::create_dir_all(&data_dir);
+            let settings = Arc::new(settings::Settings::load(&data_dir));
+            *shared.place.lock().unwrap() = read_place(&settings);
             place_window(&win, &shared);
+            let _ = win.set_zoom(shared.place.lock().unwrap().0);
             sys::prepare_window(&win);
             // Clicks pass through until the cursor is over the island itself.
             let _ = win.set_ignore_cursor_events(true);
             let _ = win.show();
 
-            let data_dir = app.path().app_data_dir()?;
-            let _ = std::fs::create_dir_all(&data_dir);
-            let settings = Arc::new(settings::Settings::load(&data_dir));
             let tx = sys::spawn(app.handle().clone(), shared.clone(), settings.clone());
             cursor::spawn(app.handle().clone(), shared.clone());
             sys::spawn_meter(app.handle().clone());
@@ -593,6 +871,10 @@ pub fn run() {
                 settings,
                 agents,
                 apps,
+                keys: Arc::new(ai::Keys::load(&data_dir)),
+                runs: Arc::new(ai::Runs::new()),
+                dictation: Mutex::new(None),
+                recording: Mutex::new(None),
             });
             register_hotkeys(app.handle())?;
             capture::create_overlay(app.handle())?;

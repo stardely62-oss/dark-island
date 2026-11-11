@@ -32,7 +32,7 @@ type Events = {
   audio: number[];
   clips: Clip[];
   keys: { caps: boolean; layout: string; what: "caps" | "layout" };
-  hotkey: "toggle" | "clipboard" | "command" | "through";
+  hotkey: "toggle" | "clipboard" | "command" | "through" | "chat";
   agent: AgentEvent;
   settings: Record<string, unknown>;
   weather: import("./weather").Weather | null;
@@ -43,7 +43,11 @@ type Events = {
   download_done: { name: string; path: string; size: number };
   notification: { app: string; aumid: string; title: string; body: string };
   foreground: string;
-  capture: { kind: "shot" | "text" | "qr" | "color" | "error"; text: string; thumb: string | null; path: string | null };
+  ai_delta: { id: string; text: string };
+  ai_done: { id: string; error: string | null };
+  dictation: { state: "rec" | "busy" | "done" | "error"; level?: number; text?: string };
+  recording: { on: boolean; path?: string; error?: string };
+  capture: { kind: "shot" | "text" | "qr" | "link" | "color" | "error"; text: string; thumb: string | null; path: string | null };
   outside_click: null;
   /** Files dragged over the island from another window. */
   drag: { type: "enter" | "leave" | "drop"; paths: string[] };
@@ -309,6 +313,16 @@ function mockBridge(): Bridge {
     ],
     lyrics_get: () => "[00:00.00] Ночной проспект, огни вдали\n[01:00.00] Мы едем вдоль пустой реки\n[01:08.00] И город шепчет: не спеши\n[01:16.00] Пока играет midnight drive",
     mic_toggle: () => true,
+    ai_key_status: (a) => Object.fromEntries((a.ids as string[]).map((i) => [i, i === "anthropic"])),
+    ai_key_set: () => null,
+    ai_chat: (a) => {
+      const words = "Конечно! Вот коротко: остров показывает музыку, буфер обмена, погоду и статус агентов — и всё это без лишнего шума.".split(" ");
+      words.forEach((w, i) => setTimeout(() => emit("ai_delta", { id: a.id, text: (i ? " " : "") + w }), 60 * i));
+      setTimeout(() => emit("ai_done", { id: a.id, error: null }), 60 * words.length + 50);
+    },
+    ai_models: () => ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+    clip_current_text: () => "ghbdtn? rfr ltkf&",
+    paste_text: () => null,
     notifications_access: () => "allowed",
     note_get: () => note,
     note_set: (a) => {

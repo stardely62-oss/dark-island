@@ -91,3 +91,10 @@ pub fn notifications_access(_ask: bool) -> String {
     "unsupported".into()
 }
 pub fn spawn_notifications(_app: AppHandle, _settings: Arc<crate::settings::Settings>) {}
+
+pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    Some(data.to_vec())
+}
+pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    Some(data.to_vec())
+}

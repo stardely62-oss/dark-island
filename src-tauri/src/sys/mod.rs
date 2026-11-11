@@ -4,12 +4,14 @@
 #[cfg(windows)]
 mod meter;
 #[cfg(windows)]
+pub mod record;
+#[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub use self::meter::spawn as spawn_meter;
 #[cfg(windows)]
 pub use self::windows::{
-    bring_to_front, capture_monitor, mic_toggle, notifications_access, spawn_notifications, controls_get, cursor_pos, exclude_from_capture, launch_app, ocr, utc_offset_secs, mouse_down, power, prepare_window, radio_set, release_focus, run_shell,
+    bring_to_front, capture_monitor, protect, unprotect, mic_toggle, notifications_access, spawn_notifications, controls_get, cursor_pos, exclude_from_capture, launch_app, ocr, utc_offset_secs, mouse_down, power, prepare_window, radio_set, release_focus, run_shell,
     send_paste, set_dark, spawn, spawn_clipboard, start_apps, take_focus, App, Controls,
 };
 

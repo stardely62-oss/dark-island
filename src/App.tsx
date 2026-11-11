@@ -19,6 +19,7 @@ import {
   TabControls,
   TabSettings,
   TabWeather,
+  TabAi,
   BellIcon,
   TimerIcon,
 } from "./components/Icons";
@@ -28,9 +29,11 @@ import { NoteTab } from "./panels/Note";
 import { ControlsTab } from "./panels/Controls";
 import { SettingsTab } from "./panels/Settings";
 import { CommandBar, commandHeight } from "./panels/CommandBar";
-import { useSettings, type Shortcut } from "./settings";
+import { applyTheme, useSettings, type Shortcut } from "./settings";
 import { WeatherTab } from "./panels/Weather";
 import { Launcher } from "./panels/Launcher";
+import { AiTab } from "./panels/Ai";
+import { nextRepeat, type Reminder } from "./reminders";
 import { describe as weatherOf, fmtTemp, rainSoon, type Weather } from "./weather";
 import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
@@ -39,12 +42,13 @@ import { Bars } from "./components/Bars";
 import { Buddy, animateBuddies, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download";
-type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "controls" | "settings";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording";
+type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "ai" | "controls" | "settings";
 type MusicPill = "compact" | "wide" | "player" | "lyrics";
 type Card = {
   key: number;
-  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify";
+  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify" | "reminder";
+  reminder?: Reminder;
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
@@ -84,6 +88,10 @@ function sizeOf(
       return { w: 160, h: 0 };
     case "download":
       return { w: 300, h: 34 };
+    case "dictation":
+      return { w: 230, h: 34 };
+    case "recording":
+      return { w: 180, h: 32 };
     case "command":
       return { w: 560, h: commandHeight(opts.rows ?? 0) };
     case "ask":
@@ -96,7 +104,9 @@ function sizeOf(
     case "strip":
       return { w: 150, h: 5 };
     case "card":
-      return opts.card?.kind === "agent" || opts.card?.kind === "capture" || opts.card?.kind === "notify"
+      return opts.card?.kind === "reminder"
+        ? { w: 400, h: 92 }
+        : opts.card?.kind === "agent" || opts.card?.kind === "capture" || opts.card?.kind === "notify"
         ? { w: 380, h: 60 }
         : { w: 250, h: 34 };
     case "timer":
@@ -151,6 +161,11 @@ export function App() {
   const [foreground, setForeground] = useState("");
   const [lyrics, setLyrics] = useState<Line[] | null>(null);
   const musicPill = settings.musicPill as MusicPill;
+  const [dictation, setDictation] = useState<{ state: string; level: number } | null>(null);
+  const [recording, setRecording] = useState<number | null>(null);
+  const [aiAsk, setAiAsk] = useState<string | null>(null);
+  const reminders = (settings.reminders as Reminder[] | undefined) ?? [];
+  useEffect(() => applyTheme((settings.islandTheme as string) ?? "dark"), [settings.islandTheme]);
   const cardScale = settings.cardLength === "short" ? 0.7 : settings.cardLength === "long" ? 1.8 : 1;
   const cardScaleRef = useRef(cardScale);
   cardScaleRef.current = cardScale;
@@ -189,7 +204,11 @@ export function App() {
           ? "card"
           : hud
             ? "hud"
-            : tucked
+            : dictation
+              ? "dictation"
+              : recording
+                ? "recording"
+                : tucked
               ? "tucked"
               : presence === "strip"
                 ? "strip"
@@ -271,6 +290,22 @@ export function App() {
         }),
         b.on("agent", (e) => onAgentRef.current(e)),
         b.on("weather", setWeather),
+        b.on("dictation", (d) => {
+          if (d.state === "rec" || d.state === "busy") setDictation({ state: d.state, level: d.level ?? 0 });
+          else {
+            setDictation(null);
+            if (d.state === "done") showCard({ kind: "capture", title: "Текст вставлен", sub: d.text, ms: 3500 });
+            else showCard({ kind: "info", title: "Диктовка", sub: d.text ?? "ошибка", ms: 3500 });
+          }
+        }),
+        b.on("recording", (r) => {
+          if (r.on) setRecording(Date.now());
+          else {
+            setRecording(null);
+            if (r.path) showCard({ kind: "capture", title: "Запись сохранена", sub: r.path.split(/[\\/]/).pop(), open: { reveal: r.path }, ms: 5000 });
+            else if (r.error) showCard({ kind: "info", title: "Запись экрана", sub: r.error, ms: 4000 });
+          }
+        }),
         b.on("privacy", setPrivacy),
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
@@ -300,6 +335,11 @@ export function App() {
         ),
         b.on("hotkey", (h) => {
           setSuppressed(false);
+          if (h === "chat") {
+            setTab("ai");
+            setPinned(true);
+            return;
+          }
           if (h === "through") {
             setThroughRef.current();
             return;
@@ -329,6 +369,8 @@ export function App() {
               open: /^https?:\/\//.test(r.text) ? { url: r.text } : undefined,
               ms: 5000,
             });
+          else if (r.kind === "link")
+            showCard({ kind: "capture", title: "Ссылка скопирована", sub: r.text, open: { url: r.text }, ms: 5000 });
           else if (r.kind === "color") showCard({ kind: "capture", title: "Цвет скопирован", sub: r.text, swatch: r.text, ms: 3000 });
           else showCard({ kind: "info", title: "Снимок", sub: r.text });
         }),
@@ -391,6 +433,32 @@ export function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songKey, api]);
+
+  // Reminders: a card with a chime that waits for an answer.
+  const remRef = useRef(reminders);
+  remRef.current = reminders;
+  const setReminders = useCallback((r: Reminder[]) => setSetting({ reminders: r }), [setSetting]);
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      const due = remRef.current.find((r) => r.at <= now);
+      if (!due) return;
+      // Move it on first (repeating ones to the next time), so it fires once.
+      const rest = remRef.current
+        .map((r) => (r.id === due.id ? (r.repeat ? { ...r, at: nextRepeat(r.repeat, new Date(now + 60_000)) } : null) : r))
+        .filter((r): r is Reminder => r !== null);
+      setSetting({ reminders: rest });
+      chime();
+      showCard({ kind: "reminder", title: "Напоминание", sub: due.text, sticky: true, reminder: due });
+    };
+    check();
+    const id = window.setInterval(check, 15_000);
+    return () => clearInterval(id);
+  }, [setSetting, showCard]);
+  const snooze = (r: Reminder) => {
+    setReminders([...remRef.current, { ...r, id: `${r.id}s`, repeat: undefined, at: Date.now() + 10 * 60_000 }]);
+    setCard(null);
+  };
 
   // A card about an hour before rain or snow, once per spell.
   const rainShown = useRef(0);
@@ -524,8 +592,18 @@ export function App() {
         setCommandOpen(false);
         setPinned(false);
       },
+      ask: (q: string) => {
+        setCommandOpen(false);
+        setTab("ai");
+        setPinned(true);
+        setAiAsk(q);
+      },
+      remind: (r: Reminder) => {
+        setSetting({ reminders: [...remRef.current, r].sort((a, b) => a.at - b.at) });
+        showCard({ kind: "info", title: "Напомню", sub: r.text, ms: 2000 });
+      },
     }),
-    [api, showCard],
+    [api, showCard, setSetting],
   );
   const dismiss = useCallback(() => {
     focusTaken.current = false;
@@ -654,7 +732,10 @@ export function App() {
   );
 
   return (
-    <div className="stage">
+    <div
+      className="stage"
+      style={{ opacity: (expanded || commandOpen ? (settings.openOpacity as number) ?? 1 : (settings.pillOpacity as number) ?? 1) as number }}
+    >
       <div ref={glowRef} className="glow" style={{ "--a": accent, "--b": accent2 } as React.CSSProperties} />
       <svg className="body" width="100%" height="100%">
         <defs>
@@ -693,6 +774,15 @@ export function App() {
         className={`box mode-${mode}`}
         onWheel={onWheel}
         onClick={() => {
+          if (mode === "recording") {
+            api?.call("record_toggle_cmd");
+            return;
+          }
+          if (mode === "dictation") {
+            api?.call("dictate_toggle");
+            return;
+          }
+          if (mode === "card" && card?.kind === "reminder") return;
           if (mode === "card" && card?.open) {
             if (card.open.path) api?.call("open_path", { path: card.open.path });
             if (card.open.url) api?.call("open_url", { url: card.open.url });
@@ -714,6 +804,12 @@ export function App() {
             {media && <CompactMedia media={media} accent={accent} live={live} style={style} api={api} lyrics={lyrics} />}
           </View>
         ))}
+        <View on={mode === "dictation"} shape={sizeOf("dictation")}>
+          {dictation && <DictationPill state={dictation.state} level={dictation.level} />}
+        </View>
+        <View on={mode === "recording"} shape={sizeOf("recording")}>
+          {recording && <RecordingPill since={recording} />}
+        </View>
         <View on={mode === "download"} shape={sizeOf("download")}>
           <DownloadPill list={downloads} />
         </View>
@@ -724,7 +820,7 @@ export function App() {
           <TimerPill timer={timer} />
         </View>
         <View on={mode === "card"} shape={sizeOf("card", { card })}>
-          {card && <CardView card={card} />}
+          {card && <CardView card={card} onDone={() => setCard(null)} onSnooze={snooze} />}
         </View>
         {frame(
           "home",
@@ -744,7 +840,19 @@ export function App() {
         )}
         {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
         {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
-        {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} />)}
+        {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} reminders={reminders} setReminders={setReminders} />)}
+        {frame(
+          "ai",
+          <AiTab
+            api={api}
+            settings={settings}
+            visible={mode === "expanded" && tab === "ai"}
+            onTypeStart={takeFocus}
+            ask={aiAsk}
+            onAsked={() => setAiAsk(null)}
+            openSettings={() => setTab("settings")}
+          />,
+        )}
         {frame(
           "weather",
           <WeatherTab
@@ -807,6 +915,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "shelf", label: "Полка", icon: <TabShelf /> },
   { id: "note", label: "Заметка и таймер", icon: <TabNote /> },
   { id: "weather", label: "Погода", icon: <TabWeather /> },
+  { id: "ai", label: "ИИ: чат и текст", icon: <TabAi /> },
   { id: "controls", label: "Управление", icon: <TabControls /> },
   { id: "settings", label: "Настройки", icon: <TabSettings /> },
 ];
@@ -861,7 +970,29 @@ function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
   );
 }
 
-function CardView({ card }: { card: Card }) {
+function CardView({ card, onDone, onSnooze }: { card: Card; onDone: () => void; onSnooze: (r: Reminder) => void }) {
+  if (card.kind === "reminder" && card.reminder) {
+    const r = card.reminder;
+    return (
+      <div className="reminder-card" key={card.key}>
+        <div className="rc-head">
+          <Buddy size={28} mood="ask" />
+          <div className="agent-text">
+            <div className="card-title">Напоминание</div>
+            <div className="rc-text">{r.text}</div>
+          </div>
+        </div>
+        <div className="ask-buttons">
+          <button className="text-btn" onClick={(e) => (e.stopPropagation(), onSnooze(r))}>
+            Через 10 минут
+          </button>
+          <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onDone())}>
+            Готово
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (card.kind === "capture" || card.kind === "notify") {
     return (
       <div className={`compact card card-agent ${card.open ? "clickable" : ""}`} key={card.key}>
@@ -1284,6 +1415,39 @@ function AskCard({ ask, onAnswer }: { ask: AgentEvent; onAnswer: (allow: boolean
           Разрешить
         </button>
       </div>
+    </div>
+  );
+}
+
+function DictationPill({ state, level }: { state: string; level: number }) {
+  return (
+    <div className="compact dictation-pill" title="Клик или Ctrl+Alt+D — закончить">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff6b5e" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+        <rect x="9" y="3" width="6" height="11" rx="3" fill="#ff6b5e" />
+        <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+      </svg>
+      <span className="dl-name">{state === "busy" ? "Распознаю…" : "Говори…"}</span>
+      {state === "rec" && (
+        <span className="level">
+          {[0.5, 0.8, 1, 0.8, 0.5].map((k, i) => (
+            <i key={i} style={{ transform: `scaleY(${(0.15 + 0.85 * Math.min(1, level * k * 1.3)).toFixed(2)})` }} />
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function RecordingPill({ since }: { since: number }) {
+  const now = useClock(500);
+  const s = Math.max(0, Math.floor((now.getTime() - since) / 1000));
+  return (
+    <div className="compact recording-pill" title="Клик — остановить (Ctrl+Alt+R)">
+      <span className="rec-dot" />
+      <span className="time">
+        {Math.floor(s / 60)}:{String(s % 60).padStart(2, "0")}
+      </span>
+      <span className="muted">стоп</span>
     </div>
   );
 }

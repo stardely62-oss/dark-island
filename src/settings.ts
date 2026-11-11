@@ -49,3 +49,9 @@ export function useSettings(api: Bridge | null) {
   );
   return [values, set] as const;
 }
+
+/** The island's own theme: dark, light, or as Windows has it. */
+export function applyTheme(theme: string) {
+  const light = theme === "light" || (theme === "system" && window.matchMedia("(prefers-color-scheme: light)").matches);
+  document.documentElement.classList.toggle("theme-light", light);
+}

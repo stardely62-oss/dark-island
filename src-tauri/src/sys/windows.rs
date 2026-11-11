@@ -35,7 +35,8 @@ use windows::Win32::System::SystemInformation::GetTickCount;
 use windows::core::{w, HSTRING, PCWSTR, PWSTR as PWSTR2};
 use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
 use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds};
-use windows::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
+use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HLOCAL, LocalFree};
+use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
 use windows::Win32::Media::Audio::{eCapture, eCommunications};
 use windows::Win32::NetworkManagement::IpHelper::{
     GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH,
@@ -1348,5 +1349,30 @@ pub fn foreground_exe() -> String {
         }
         let path = process_path(pid).to_lowercase();
         path.rsplit('\\').next().unwrap_or("").trim_end_matches(".exe").to_string()
+    }
+}
+
+// ------------------------------------------------------------- secrets ----
+
+/// Encrypts with DPAPI for the current Windows user.
+pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    unsafe {
+        let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+        let mut out = CRYPT_INTEGER_BLOB::default();
+        CryptProtectData(&input, w!("Dark Island key"), None, None, None, 0, &mut out).ok()?;
+        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        let _ = LocalFree(Some(HLOCAL(out.pbData as *mut _)));
+        Some(v)
+    }
+}
+
+pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    unsafe {
+        let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+        let mut out = CRYPT_INTEGER_BLOB::default();
+        CryptUnprotectData(&input, None, None, None, None, 0, &mut out).ok()?;
+        let v = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        let _ = LocalFree(Some(HLOCAL(out.pbData as *mut _)));
+        Some(v)
     }
 }

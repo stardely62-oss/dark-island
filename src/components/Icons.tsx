@@ -115,3 +115,5 @@ export const TabWeather = ({ size = 17 }: P) =>
   line(size, <><path d="M7.5 18.5h9a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7.5 18.5Z" /></>);
 export const BellIcon = ({ size = 20 }: P) =>
   line(size, <><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15Z" /><path d="M10 20.5a2.2 2.2 0 0 0 4 0" /></>);
+export const TabAi = ({ size = 17 }: P) =>
+  line(size, <><path d="M12 3.5 13.8 9 19.5 10.8 13.8 12.6 12 18.2 10.2 12.6 4.5 10.8 10.2 9Z" /><path d="M18.5 16v4M16.5 18h4" /></>);
