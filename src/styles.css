@@ -8,6 +8,8 @@
   font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  /* Fixed, so Segoe UI and other fonts lay out the same. */
+  line-height: 1.3;
   color: var(--fg);
   user-select: none;
   -webkit-user-select: none;
@@ -71,32 +73,35 @@ body.preview {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  overflow: hidden;
+  /* clip, not hidden: a hidden box can still be scrolled sideways by wide
+     content and focus, which shifted whole tabs to the left. */
+  overflow: clip;
 }
 
 .view {
+  overflow: clip;
   position: absolute;
   top: 0;
   left: 50%;
   translate: -50% 0;
   opacity: 0;
-  scale: 0.94;
-  filter: blur(6px);
+  scale: 0.96;
+  transform-origin: 50% 0;
   pointer-events: none;
+  will-change: opacity, scale;
+  /* Leaving: quick fade, so two views never fight for attention. */
   transition:
-    opacity 0.16s ease,
-    scale 0.36s var(--ease),
-    filter 0.2s ease;
+    opacity 0.12s ease-out,
+    scale 0.3s var(--ease);
 }
 .view.on {
   opacity: 1;
   scale: 1;
-  filter: none;
   pointer-events: auto;
+  /* Arriving: waits a beat for the body to start growing, then settles. */
   transition:
-    opacity 0.26s ease 0.07s,
-    scale 0.45s var(--ease),
-    filter 0.3s ease 0.05s;
+    opacity 0.24s ease-out 0.06s,
+    scale 0.5s var(--ease);
 }
 
 /* ---- collapsed ---- */
@@ -224,11 +229,12 @@ body.preview {
   padding: 12px 22px 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  overflow: clip;
 }
 .expanded header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   height: 20px;
 }
@@ -302,11 +308,19 @@ body.preview {
   justify-content: center;
   align-items: center;
   gap: 34px;
-  margin-top: -4px;
+  margin: -6px 0 -4px;
 }
 
+button svg,
+.cmd-icon svg,
+.card-icon svg {
+  display: block;
+  flex: none;
+}
 button {
   all: unset;
+  box-sizing: border-box;
+  line-height: 1.2;
   display: grid;
   place-items: center;
   color: var(--fg);
@@ -800,7 +814,6 @@ textarea.note::placeholder {
   gap: 9px;
   padding: 0 16px 0 12px;
   justify-content: flex-start;
-  animation: card-in 0.35s var(--ease);
 }
 .card-icon {
   display: grid;
@@ -1048,8 +1061,12 @@ textarea.note::placeholder {
   background: rgb(255 255 255 / 0.12);
 }
 .ctl-title {
+  max-width: 100%;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ctl-sub {
   max-width: 100%;
@@ -1483,10 +1500,7 @@ textarea.note::placeholder {
   align-items: center;
   gap: 12px;
 }
-.w-icon {
-  font-size: 40px;
-  line-height: 1;
-}
+
 .w-main {
   flex: 1;
   min-width: 0;
@@ -1500,13 +1514,38 @@ textarea.note::placeholder {
   margin-top: 3px;
   font-size: 12px;
   color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .w-facts {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 1px 6px;
   font-size: 11px;
-  color: var(--fg-2);
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.w-facts span {
+  display: contents;
+}
+.w-facts i {
+  font-style: normal;
+  color: var(--fg-3);
+  text-align: right;
+}
+.w-icon {
+  display: grid;
+  place-items: center;
+}
+.wicon {
+  display: block;
+  flex: none;
+}
+.pill-temp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .w-city {
   all: unset;
@@ -1518,11 +1557,15 @@ textarea.note::placeholder {
   cursor: pointer;
 }
 .w-hours {
+  flex: none;
   display: flex;
   gap: 2px;
   overflow-x: auto;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   padding-bottom: 2px;
+  /* A soft fade shows there is more to the right. */
+  mask-image: linear-gradient(to right, #000 88%, transparent);
 }
 .w-hour {
   flex: none;
@@ -1541,10 +1584,9 @@ textarea.note::placeholder {
   font-size: 10.5px;
   font-weight: 500;
 }
-.w-h-icon {
-  font-size: 16px;
-}
+
 .w-days {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 2px;

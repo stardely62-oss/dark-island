@@ -90,7 +90,7 @@ export function ControlsTab({
       <div className="ctl-grid">
         {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
         {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
-        {tile("dark", MOON, "Тёмная тема", c?.dark ?? false, c?.dark ? "включена" : "выключена")}
+        {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
         {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
       </div>
       <div className="tools-row">

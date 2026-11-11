@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { describe, fmtTemp, shape, type Weather } from "../weather";
+import { WeatherIcon } from "../components/WeatherIcon";
 
 type Place = { name: string; full: string; lat: number; lon: number };
 
@@ -82,32 +83,44 @@ export function WeatherTab({
 
   const { cur, hours, days } = data;
   const d = describe(cur.symbol);
-  const today = days[0];
   return (
     <div className="tab-weather">
       <div className="w-now">
-        <span className="w-icon">{d.icon}</span>
+        <span className="w-icon">
+          <WeatherIcon symbol={cur.symbol} size={46} />
+        </span>
         <div className="w-main">
           <div className="w-temp">{fmtTemp(cur.temp)}</div>
           <div className="w-desc">
             {d.text}
-            {today ? ` · ${fmtTemp(today.max)} / ${fmtTemp(today.min)}` : ""}
           </div>
         </div>
         <div className="w-facts">
-          <span>💨 {Math.round(cur.wind)} м/с</span>
-          <span>💧 {Math.round(cur.humidity)}%</span>
-          <span>⏲ {Math.round(cur.pressure * 0.750062)} мм</span>
+          <span>
+            <i>ветер</i> {Math.round(cur.wind)} м/с
+          </span>
+          <span>
+            <i>влажность</i> {Math.round(cur.humidity)}%
+          </span>
+          <span>
+            <i>давление</i> {Math.round(cur.pressure * 0.750062)} мм
+          </span>
         </div>
         <button className="w-city" title="Сменить город" onClick={() => setSearching(true)}>
           {weather.city}
         </button>
       </div>
-      <div className="w-hours">
+      <div
+        className="w-hours"
+        onWheel={(e) => {
+          // The wheel scrolls the hours sideways.
+          e.currentTarget.scrollLeft += e.deltaY;
+        }}
+      >
         {hours.map((h, i) => (
           <div key={h.t} className="w-hour">
             <span className="muted">{i === 0 ? "Сейчас" : hourFmt.format(h.t)}</span>
-            <span className="w-h-icon">{describe(h.symbol).icon}</span>
+            <WeatherIcon symbol={h.symbol} size={22} />
             <span>{fmtTemp(h.temp)}</span>
           </div>
         ))}
@@ -116,9 +129,9 @@ export function WeatherTab({
         {days.map((day, i) => (
           <div key={day.t} className="w-day">
             <span className="w-d-name">{i === 0 ? "Сегодня" : dayFmt.format(day.t)}</span>
-            <span>{describe(day.symbol).icon}</span>
-            <span className="muted">{fmtTemp(day.min)}</span>
+            <WeatherIcon symbol={day.symbol} size={22} />
             <span>{fmtTemp(day.max)}</span>
+            <span className="muted">{fmtTemp(day.min)}</span>
           </div>
         ))}
       </div>

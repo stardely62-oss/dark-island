@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { providerOf, useAi, type AiMsg } from "../ai";
 import type { Settings } from "../settings";
+import { TabAi } from "../components/Icons";
 import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit } from "../textTools";
 
 const CHAT_KEY = "island.chat";
@@ -198,11 +199,15 @@ export function AiTab({
             />
             {busy ? (
               <button className="send" aria-label="Остановить" onClick={() => (stopRef.current?.(), setBusy(false))}>
-                ■
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                  <rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor" />
+                </svg>
               </button>
             ) : (
               <button className="send" aria-label="Отправить" disabled={!input.trim()} onClick={() => send(input)}>
-                ↑
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 19V5M6 11l6-6 6 6" />
+                </svg>
               </button>
             )}
           </div>
@@ -219,8 +224,8 @@ export function AiTab({
                 ["Аа", () => local(sentence)],
                 ["Аа Бб", () => local(title)],
                 ["Транслит", () => local(translit)],
-                ["JSON", () => local(prettyJson)],
-                ["JSON→1", () => local(minJson)],
+                ["JSON красиво", () => local(prettyJson)],
+                ["JSON в строку", () => local(minJson)],
                 ["Base64", () => local(b64enc)],
                 ["из Base64", () => local(b64dec)],
                 ["URL", () => local(encodeURIComponent)],
@@ -241,7 +246,7 @@ export function AiTab({
               ] as [string, string][]
             ).map(([label, prompt]) => (
               <button key={label} className="chip ai" disabled={toolBusy || !hasKey} onClick={() => aiAction(prompt)}>
-                ✦ {label}
+                <TabAi size={11} /> {label}
               </button>
             ))}
           </div>

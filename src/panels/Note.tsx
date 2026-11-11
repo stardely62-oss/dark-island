@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
-import { Pause, Play, ResetIcon, Ring } from "../components/Icons";
+import { CloseIcon, Pause, Play, ResetIcon, Ring } from "../components/Icons";
 import { fmtClock, remaining, type useTimer } from "../timer";
 import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
@@ -80,7 +80,7 @@ export function NoteTab({
                   <span className="meta">{describeWhen(r)}</span>
                   <span className="actions">
                     <button aria-label="Удалить" onClick={() => setReminders(reminders.filter((x) => x.id !== r.id))}>
-                      ✕
+                      <CloseIcon size={11} />
                     </button>
                   </span>
                 </div>

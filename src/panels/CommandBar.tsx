@@ -8,6 +8,17 @@ export type AppEntry = { Name: string; AppID: string };
 
 type Result = { key: string; icon: string; title: string; sub: string; run: () => void };
 
+const ICONS: Record<string, React.ReactNode> = {
+  calc: <path d="M5 8h5M7.5 5.5v5M14 8h5M5 16.5l4-4M9 16.5l-4-4M14 15h5M14 18h5" />,
+  conv: <path d="M5 8h13l-3-3M19 16H6l3 3" />,
+  timer: <><circle cx="12" cy="13" r="7" /><path d="M12 9.5V13l2.3 1.6M9.5 3h5" /></>,
+  sys: <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" /></>,
+  web: <><circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5 5" /></>,
+  ai: <path d="M12 3.5 13.8 9 19.5 10.8 13.8 12.6 12 18.2 10.2 12.6 4.5 10.8 10.2 9Z" />,
+  remind: <><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15Z" /><path d="M10 20.5a2.2 2.2 0 0 0 4 0" /></>,
+  shell: <path d="m5 7 5 5-5 5M12 18h7" />,
+};
+
 export type CommandActions = {
   ask: (q: string) => void;
   remind: (r: Reminder) => void;
@@ -62,7 +73,7 @@ export function CommandBar({
       if (cmd)
         out.push({
           key: "shell",
-          icon: ps ? "PS" : ">_",
+          icon: "shell",
           title: cmd,
           sub: ps ? "Выполнить в PowerShell" : "Выполнить в командной строке",
           run: () => api?.call("run_shell", { cmd, powershell: ps }),
@@ -73,16 +84,16 @@ export function CommandBar({
     const v = calc(text);
     if (v !== null) {
       const s = fmtNumber(v);
-      out.push({ key: "calc", icon: "=", title: s, sub: "Enter — скопировать результат", run: () => copy(s.replace(",", ".")) });
+      out.push({ key: "calc", icon: "calc", title: s, sub: "Enter — скопировать результат", run: () => copy(s.replace(",", ".")) });
     }
     const conv = convert(text);
-    if (conv) out.push({ key: "conv", icon: "⇄", title: conv.text, sub: "Enter — скопировать", run: () => copy(conv.value) });
+    if (conv) out.push({ key: "conv", icon: "conv", title: conv.text, sub: "Enter — скопировать", run: () => copy(conv.value) });
     const ms = timerPhrase(text);
     if (ms) {
       const min = ms / 60_000;
       out.push({
         key: "timer",
-        icon: "⏱",
+        icon: "timer",
         title: `Таймер на ${min >= 1 ? `${fmtNumber(+min.toFixed(2))} мин` : `${ms / 1000} с`}`,
         sub: "Запустить",
         run: () => actions.startTimer(ms),
@@ -92,13 +103,13 @@ export function CommandBar({
     if (/^напомни/i.test(text)) {
       const r = parseReminder(text);
       if (r)
-        out.push({ key: "remind", icon: "⏰", title: `${r.text} — ${describeWhen(r)}`, sub: "Напомнить", run: () => actions.remind(r) });
+        out.push({ key: "remind", icon: "remind", title: `${r.text} — ${describeWhen(r)}`, sub: "Напомнить", run: () => actions.remind(r) });
     }
 
     const f = fold(text);
     for (const c of SYSTEM) {
       if (c.words.some((w) => w.startsWith(f) || f === w)) {
-        out.push({ key: `sys-${c.id}`, icon: "⚙", title: c.title, sub: "Команда", run: () => actions.system(c.id) });
+        out.push({ key: `sys-${c.id}`, icon: "sys", title: c.title, sub: "Команда", run: () => actions.system(c.id) });
       }
     }
 
@@ -125,14 +136,14 @@ export function CommandBar({
     const e = ENGINES[engine] ?? ENGINES.google;
     out.push({
       key: "ai",
-      icon: "✦",
+      icon: "ai",
       title: `Спросить ИИ: «${text}»`,
       sub: "Tab",
       run: () => actions.ask(text),
     });
     out.push({
       key: "web",
-      icon: "⌕",
+      icon: "web",
       title: `Найти «${text}»`,
       sub: e.name,
       run: () => api?.call("open_url", { url: e.url.replace("%s", encodeURIComponent(text)) }),
@@ -192,7 +203,15 @@ export function CommandBar({
               onMouseEnter={() => setSel(i)}
               onClick={() => runAt(i)}
             >
-              <span className="cmd-icon">{r.icon}</span>
+              <span className="cmd-icon">
+                {ICONS[r.icon] ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    {ICONS[r.icon]}
+                  </svg>
+                ) : (
+                  r.icon
+                )}
+              </span>
               <span className="cmd-title">{r.title}</span>
               <span className="cmd-sub">{r.sub}</span>
             </div>

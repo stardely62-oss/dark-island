@@ -49,9 +49,13 @@ const DROP_NECK = 0.11; // s the drop stays joined to the edge by a thinning nec
 const N = 28; // points along the lower edge
 const SUB = 3; // physics substeps per frame
 
-// Size springs: a little under critical damping gives one soft overshoot.
-const SIZE_K = 260;
-const SIZE_C = 25;
+// Size springs. Growing: a little under critical damping, one soft
+// overshoot like a drop of liquid. Shrinking: close to critical, so the
+// island settles into the pill without bouncing back out.
+const GROW_K = 220;
+const GROW_C = 22;
+const SHRINK_K = 150;
+const SHRINK_C = 24;
 
 // Edge chain.
 const EDGE_K = 70; // pull towards the target shape
@@ -150,8 +154,10 @@ export class Liquid {
 
     // Body size.
     const tw = d.target.w + BASS_GROW * bass;
-    const aw = SIZE_K * (tw - this.w) - SIZE_C * this.vw;
-    const ah = SIZE_K * (d.target.h - this.h) - SIZE_C * this.vh;
+    const [kw, cw] = tw >= this.w ? [GROW_K, GROW_C] : [SHRINK_K, SHRINK_C];
+    const [kh, ch] = d.target.h >= this.h ? [GROW_K, GROW_C] : [SHRINK_K, SHRINK_C];
+    const aw = kw * (tw - this.w) - cw * this.vw;
+    const ah = kh * (d.target.h - this.h) - ch * this.vh;
     this.vw += aw * dt;
     this.vh += ah * dt;
     if (hit) {

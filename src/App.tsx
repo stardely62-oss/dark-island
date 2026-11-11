@@ -34,7 +34,8 @@ import { WeatherTab } from "./panels/Weather";
 import { Launcher } from "./panels/Launcher";
 import { AiTab } from "./panels/Ai";
 import { nextRepeat, type Reminder } from "./reminders";
-import { describe as weatherOf, fmtTemp, rainSoon, type Weather } from "./weather";
+import { fmtTemp, rainSoon, type Weather } from "./weather";
+import { WeatherIcon } from "./components/WeatherIcon";
 import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
@@ -87,7 +88,7 @@ function sizeOf(
     case "tucked":
       return { w: 160, h: 0 };
     case "download":
-      return { w: 300, h: 34 };
+      return { w: 340, h: 34 };
     case "dictation":
       return { w: 230, h: 34 };
     case "recording":
@@ -100,7 +101,7 @@ function sizeOf(
       return { w: 300, h: 34 };
     case "expanded":
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
-      return opts.media ? { w: PANEL_W, h: opts.launcher ? 290 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
+      return opts.media ? { w: PANEL_W, h: opts.launcher ? 292 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
     case "strip":
       return { w: 150, h: 5 };
     case "card":
@@ -924,8 +925,9 @@ function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; s
   const now = useClock();
   return (
     <header>
-      <span className="clock">{timeFmt.format(now)}</span>
-      <span className="date">{dateFmt.format(now)}</span>
+      <span className="clock" title={dateFmt.format(now)}>
+        {timeFmt.format(now)}
+      </span>
       <span className="grow" />
       {battery && (
         <span className="battery">
@@ -1007,7 +1009,7 @@ function CardView({ card, onDone, onSnooze }: { card: Card; onDone: () => void; 
           <div className="card-title">{card.title}</div>
           {card.sub && <div className="agent-sub">{card.sub}</div>}
         </div>
-        {card.open && <span className="card-open">{card.open.url ? "Открыть" : "Показать"}</span>}
+        {card.open && <span className="card-open">{card.open.reveal ? "Показать" : "Открыть"}</span>}
       </div>
     );
   }
@@ -1053,7 +1055,9 @@ function paintLight(
   const reach = Math.max(0, half - 26);
   const speeds = [0.11, 0.17, 0.23];
   const phases = [0, 2.1, 4.2];
-  const k = tall ? 1 : 0.7; // a small pill is mostly light already: keep it subtler
+  // A small pill is mostly light already, and an open panel is for reading:
+  // keep both subtler than the island's edge itself.
+  const k = tall ? 0.5 : 0.7;
   blobs.forEach((el, i) => {
     if (!el) return;
     const level = parts[i];
@@ -1110,7 +1114,8 @@ function Idle({ battery, sleeping, weather }: { battery: Battery | null; sleepin
       <span className="time">{timeFmt.format(now)}</span>
       {cur && (
         <span className="pill-temp" title={weather?.city}>
-          {weatherOf(cur.symbol).icon} {fmtTemp(cur.temp)}
+          <WeatherIcon symbol={cur.symbol} size={17} />
+          {fmtTemp(cur.temp)}
         </span>
       )}
       {battery && (
@@ -1282,7 +1287,7 @@ function HomeTab({
       {media ? (
         <>
           <div className="track-info">
-            <Cover src={media.cover} size={56} radius={13} />
+            <Cover src={media.cover} size={52} radius={12} />
             <div className="titles">
               <div className="title" title={media.title}>
                 {media.title}
