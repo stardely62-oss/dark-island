@@ -13,7 +13,9 @@ export type Media = {
 };
 export type Volume = { level: number; muted: boolean };
 export type Battery = { percent: number; charging: boolean };
-export type Snapshot = { media: Media | null; volume: Volume | null; battery: Battery | null };
+/** normal: desktop / ordinary windows; strip: another app is full-screen; hidden: a game is. */
+export type Presence = "normal" | "strip" | "hidden";
+export type Snapshot = { media: Media | null; volume: Volume | null; battery: Battery | null; presence: Presence };
 export type Cursor = { x: number; y: number; near: boolean; inside: boolean };
 export type Rect = { x: number; y: number; w: number; h: number };
 export type MediaAction = "toggle" | "next" | "prev";
@@ -23,6 +25,7 @@ type Events = {
   volume: Volume | null;
   battery: Battery | null;
   cursor: Cursor;
+  presence: Presence;
   /** Loudness of 6 frequency bands (low → high), 0..1, ~30 times a second. */
   audio: number[];
 };
@@ -87,11 +90,13 @@ function mockBridge(): Bridge {
     },
     volume: { level: 0.42, muted: false },
     battery: { percent: 76, charging: false },
+    presence: "normal",
   };
   let rect: Rect = { x: 0, y: 0, w: 0, h: 0 };
   const params = new URLSearchParams(location.search);
   if (params.has("nomedia")) state.media = null;
   if (params.has("nobattery")) state.battery = null;
+  if (params.has("strip")) state.presence = "strip";
 
   window.addEventListener("pointermove", (e) => {
     const inside = e.clientX >= rect.x && e.clientX <= rect.x + rect.w && e.clientY <= rect.y + rect.h;

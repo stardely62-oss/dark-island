@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { bridge, type Battery, type Bridge, type Cursor, type Media, type Volume } from "./ipc";
+import { bridge, type Battery, type Bridge, type Cursor, type Media, type Presence, type Volume } from "./ipc";
 import { Liquid, type Shape } from "./liquid";
 import { BatteryIcon, Next, Note, Pause, Play, Prev, Speaker } from "./components/Icons";
 import { Bars } from "./components/Bars";
 import { useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip";
 
 const EXPAND_DELAY = 110;
+// From the strip the cursor has to rest a bit longer: it is often just
+// passing by the top edge of a full-screen video.
+const EXPAND_DELAY_STRIP = 260;
 const COLLAPSE_DELAY = 380;
 const HUD_MS = 1500;
 const DEFAULT_ACCENT = "rgb(142 162 255)";
@@ -16,6 +19,8 @@ function sizeOf(mode: Mode, hasMedia: boolean, hasBattery: boolean): Shape {
   switch (mode) {
     case "expanded":
       return hasMedia ? { w: 420, h: 232 } : { w: 380, h: 138 };
+    case "strip":
+      return { w: 150, h: 5 };
     case "media":
     case "hud":
       return { w: 236, h: 34 };
@@ -34,9 +39,18 @@ export function App() {
   const [hud, setHud] = useState(false);
   // True while real audio levels arrive; otherwise the bars use a CSS loop.
   const [live, setLive] = useState(false);
+  const [presence, setPresence] = useState<Presence>("normal");
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
 
-  const mode: Mode = expanded ? "expanded" : hud ? "hud" : media?.playing ? "media" : "idle";
+  const mode: Mode = expanded
+    ? "expanded"
+    : hud
+      ? "hud"
+      : presence === "strip"
+        ? "strip"
+        : media?.playing
+          ? "media"
+          : "idle";
   const target = useMemo(() => sizeOf(mode, !!media, !!battery), [mode, media, battery]);
 
   // ---- data from the system --------------------------------------------
@@ -56,6 +70,7 @@ export function App() {
       offs.push(
         b.on("media", setMedia),
         b.on("battery", setBattery),
+        b.on("presence", setPresence),
         b.on("volume", (v) => {
           const before = knownVolume.current;
           knownVolume.current = v;
@@ -86,6 +101,7 @@ export function App() {
       setMedia(s.media);
       setVolume(s.volume);
       setBattery(s.battery);
+      setPresence(s.presence);
       knownVolume.current = s.volume;
     });
     return () => {
@@ -96,9 +112,10 @@ export function App() {
 
   // ---- hover -> expand ----------------------------------------------------
   useEffect(() => {
-    const t = window.setTimeout(() => setExpanded(hovered), hovered ? EXPAND_DELAY : COLLAPSE_DELAY);
+    const delay = !hovered ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : EXPAND_DELAY;
+    const t = window.setTimeout(() => setExpanded(hovered), delay);
     return () => clearTimeout(t);
-  }, [hovered]);
+  }, [hovered, presence]);
   useEffect(() => {
     if (expanded) setHud(false);
   }, [expanded]);
@@ -108,9 +125,11 @@ export function App() {
   const boxRef = useRef<HTMLDivElement>(null);
   const liquid = useRef<Liquid | null>(null);
   if (!liquid.current) liquid.current = new Liquid(target);
-  const drive = useRef({ target, music: 0 });
+  const drive = useRef({ target, music: 0, reach: true });
   drive.current.target = target;
-  drive.current.music = media?.playing ? 1 : 0;
+  // The strip stays calm over full-screen video: no dancing to the music.
+  drive.current.music = media?.playing && mode !== "strip" ? 1 : 0;
+  drive.current.reach = mode !== "strip";
 
   useEffect(() => {
     if (!api) return;
@@ -129,7 +148,7 @@ export function App() {
         target: drive.current.target,
         music: drive.current.music,
         bands: bandsRef.current,
-        cursor: c ? { x: c.x - cx, y: c.y } : null,
+        cursor: c && drive.current.reach ? { x: c.x - cx, y: c.y } : null,
       });
 
       pathRef.current?.setAttribute("d", L.path(cx));
@@ -182,7 +201,7 @@ export function App() {
     };
   }, [api]);
 
-  useEffect(() => kickRef.current(), [target, media?.playing]);
+  useEffect(() => kickRef.current(), [target, media?.playing, mode]);
 
   // ---- input -------------------------------------------------------------
   const onWheel = useCallback(

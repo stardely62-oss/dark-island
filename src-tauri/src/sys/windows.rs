@@ -19,25 +19,32 @@ use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as PlaybackStatus,
 };
 use windows::Storage::Streams::DataReader;
-use windows::Win32::Foundation::{HWND, POINT};
+use windows::core::PWSTR;
+use windows::Win32::Foundation::{CloseHandle, HWND, POINT, RECT};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY,
+};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
-use windows::Win32::UI::Shell::{
-    SHQueryUserNotificationState, QUNS_BUSY, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
-};
+use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
+    IsIconic, IsWindowVisible, IsZoomed, SetWindowLongPtrW, GWL_EXSTYLE, GWL_STYLE, WS_CAPTION, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW,
 };
 
-use crate::types::{Battery, Cmd, Media, MediaAction, Volume};
+use crate::types::{Battery, Cmd, Media, MediaAction, Presence, Volume};
 use crate::Shared;
 
 const TICK: Duration = Duration::from_millis(150);
 const MEDIA_EVERY: Duration = Duration::from_millis(900);
 const BATTERY_EVERY: Duration = Duration::from_secs(30);
-const FULLSCREEN_EVERY: Duration = Duration::from_millis(700);
+const PRESENCE_EVERY: Duration = Duration::from_millis(400);
 
 pub fn spawn(app: AppHandle, shared: Arc<Shared>) -> Sender<Cmd> {
     let (tx, rx) = channel();
@@ -73,8 +80,8 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
     let mut audio = Audio::default();
     let mut last_media = Instant::now() - MEDIA_EVERY;
     let mut last_battery = Instant::now() - BATTERY_EVERY;
-    let mut last_fullscreen = Instant::now();
-    let mut hidden = false;
+    let mut last_presence = Instant::now();
+    let mut games = GameCache::default();
 
     loop {
         let mut media_dirty = false;
@@ -136,14 +143,20 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
             }
         }
 
-        if last_fullscreen.elapsed() >= FULLSCREEN_EVERY {
-            last_fullscreen = Instant::now();
-            let busy = fullscreen_app_in_front();
-            if busy != hidden {
-                hidden = busy;
+        if last_presence.elapsed() >= PRESENCE_EVERY {
+            last_presence = Instant::now();
+            let g = *shared.geom.lock().unwrap();
+            let p = presence(POINT { x: g.x as i32 + 8, y: g.y as i32 + 8 }, &mut games);
+            let before = std::mem::replace(&mut shared.snap.lock().unwrap().presence, p);
+            if p != before {
                 if let Some(w) = app.get_webview_window("island") {
-                    let _ = if busy { w.hide() } else { w.show() };
+                    if p == Presence::Hidden {
+                        let _ = w.hide();
+                    } else if before == Presence::Hidden {
+                        let _ = w.show();
+                    }
                 }
+                let _ = app.emit_to("island", "presence", p);
             }
         }
     }
@@ -338,10 +351,120 @@ fn battery() -> Option<Battery> {
     Some(Battery { percent: s.BatteryLifePercent, charging: s.ACLineStatus == 1 })
 }
 
-/// True while a game, a full-screen video or a presentation is in front.
-fn fullscreen_app_in_front() -> bool {
-    match unsafe { SHQueryUserNotificationState() } {
-        Ok(state) => state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE,
-        Err(_) => false,
+/// What the island should do about the window in front, on the island's monitor.
+fn presence(island: POINT, games: &mut GameCache) -> Presence {
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg.is_invalid() || !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() {
+            return Presence::Normal;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(fg, Some(&mut pid));
+        if pid == std::process::id() {
+            return Presence::Normal;
+        }
+        let class = class_name(fg);
+        // The desktop and the taskbar are never "full-screen apps".
+        if matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+            return Presence::Normal;
+        }
+        let monitor = MonitorFromPoint(island, MONITOR_DEFAULTTOPRIMARY);
+        if MonitorFromWindow(fg, MONITOR_DEFAULTTONULL) != monitor {
+            return Presence::Normal;
+        }
+        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        let mut r = RECT::default();
+        if !GetMonitorInfoW(monitor, &mut mi).as_bool() || GetWindowRect(fg, &mut r).is_err() {
+            return Presence::Normal;
+        }
+        let m = mi.rcMonitor;
+        let covers = r.left <= m.left && r.top <= m.top && r.right >= m.right && r.bottom >= m.bottom;
+        // A maximised window with a title bar can cover the screen too
+        // (auto-hiding taskbar); that is an ordinary window, not full-screen.
+        let titled = GetWindowLongPtrW(fg, GWL_STYLE) as u32 & WS_CAPTION.0 == WS_CAPTION.0;
+        if !covers || (IsZoomed(fg).as_bool() && titled) {
+            return Presence::Normal;
+        }
+        if games.is_game(fg, pid, &class) {
+            Presence::Hidden
+        } else {
+            Presence::Strip
+        }
+    }
+}
+
+unsafe fn class_name(hwnd: HWND) -> String {
+    let mut buf = [0u16; 256];
+    let n = GetClassNameW(hwnd, &mut buf);
+    String::from_utf16_lossy(&buf[..n.max(0) as usize])
+}
+
+/// Window classes of common game engines.
+const GAME_CLASSES: &[&str] = &[
+    "UnityWndClass",
+    "UnrealWindow",
+    "LaunchUnrealUWindowsClient",
+    "SDL_app",
+    "GLFW30",
+    "Valve001",
+    "CryENGINE",
+    "RiotWindowClass",
+    "OgreD3D11Wnd",
+    "Engine",
+];
+
+/// Folders where launchers install games.
+const GAME_DIRS: &[&str] = &[
+    "\\steamapps\\",
+    "\\epic games\\",
+    "\\riot games\\",
+    "\\gog galaxy\\games\\",
+    "\\gog games\\",
+    "\\ubisoft game launcher\\games\\",
+    "\\ea games\\",
+    "\\origin games\\",
+    "\\xboxgames\\",
+    "\\battle.net\\",
+    "\\games\\",
+];
+
+/// Remembers the verdict for the last window, so the process path is not
+/// looked up several times a second.
+#[derive(Default)]
+struct GameCache {
+    hwnd: isize,
+    game: bool,
+}
+
+impl GameCache {
+    fn is_game(&mut self, hwnd: HWND, pid: u32, class: &str) -> bool {
+        // Exclusive full-screen Direct3D is a game for sure, whatever the window.
+        if unsafe { SHQueryUserNotificationState() }.is_ok_and(|s| s == QUNS_RUNNING_D3D_FULL_SCREEN) {
+            return true;
+        }
+        if hwnd.0 as isize == self.hwnd {
+            return self.game;
+        }
+        let path = process_path(pid).to_lowercase();
+        self.hwnd = hwnd.0 as isize;
+        self.game = GAME_CLASSES.contains(&class) || GAME_DIRS.iter().any(|d| path.contains(d));
+        self.game
+    }
+}
+
+fn process_path(pid: u32) -> String {
+    unsafe {
+        let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return String::new();
+        };
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len).is_ok();
+        let _ = CloseHandle(h);
+        if ok {
+            String::from_utf16_lossy(&buf[..len as usize])
+        } else {
+            String::new()
+        }
     }
 }

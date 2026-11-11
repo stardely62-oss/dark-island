@@ -182,7 +182,7 @@ export class Liquid {
     const w = this.w;
     const h = this.h;
     const r = this.radius;
-    const f = SHOULDER;
+    const f = Math.min(SHOULDER, h / 3);
     const k = 0.5523; // cubic approximation of a quarter circle
     const x0 = cx - w / 2;
     const x1 = cx + w / 2;

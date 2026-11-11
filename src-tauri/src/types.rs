@@ -35,6 +35,20 @@ pub struct Snapshot {
     pub media: Option<Media>,
     pub volume: Option<Volume>,
     pub battery: Option<Battery>,
+    pub presence: Presence,
+}
+
+/// How the island shows itself, depending on what is in front.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Presence {
+    /// Desktop or ordinary windows.
+    #[default]
+    Normal,
+    /// Another app is full-screen (video, browser F11, slides): a thin strip.
+    Strip,
+    /// A game is full-screen: the island is gone.
+    Hidden,
 }
 
 /// Area of the island inside the window, in logical (CSS) pixels.
