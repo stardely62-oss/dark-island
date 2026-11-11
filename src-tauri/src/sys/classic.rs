@@ -174,3 +174,16 @@ unsafe fn aimp_info() -> Option<(String, String)> {
     let _ = CloseHandle(map);
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::winamp_title;
+
+    #[test]
+    fn winamp_titles() {
+        assert_eq!(winamp_title("12. Kino - Gruppa krovi - Winamp"), Some(("Kino".into(), "Gruppa krovi".into())));
+        assert_eq!(winamp_title("3. Track only - Winamp [Paused]"), Some((String::new(), "Track only".into())));
+        assert_eq!(winamp_title("Winamp"), None);
+        assert_eq!(winamp_title("1. A - B - C - Winamp [Stopped]"), Some(("A".into(), "B - C".into())));
+    }
+}

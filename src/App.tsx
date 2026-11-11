@@ -40,7 +40,7 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { Buddy, animateBuddies, buddy, climbOut, type Mood } from "./components/Buddy";
+import { Buddy, animateBuddies, buddy, climbOut, sfx, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs";
@@ -191,8 +191,15 @@ export function App() {
   const reminders = (settings.reminders as Reminder[] | undefined) ?? [];
   useEffect(() => applyTheme((settings.islandTheme as string) ?? "dark"), [settings.islandTheme]);
   useEffect(
-    () => buddy.configure({ life: settings.buddyLife, color: settings.buddyColor, hat: settings.buddyHat, name: settings.buddyName || "Клодик" }),
-    [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName],
+    () =>
+      buddy.configure({
+        life: settings.buddyLife,
+        color: settings.buddyColor,
+        hat: settings.buddyHat,
+        name: settings.buddyName || "Клодик",
+        sounds: settings.buddySounds,
+      }),
+    [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName, settings.buddySounds],
   );
   const buddyScale = settings.buddyScale;
   useEffect(() => document.documentElement.style.setProperty("--bd-size", `${Math.round(20 * buddyScale)}px`), [buddyScale]);
@@ -643,13 +650,28 @@ export function App() {
     window.addEventListener("buddy-hover", on);
     return () => window.removeEventListener("buddy-hover", on);
   }, []);
+  // A card you can act on (show the file, answer an agent, a reminder) stays a
+  // card under the cursor: it doesn't turn into the open island and doesn't
+  // vanish while you aim at it.
+  const cardHold = !!card && (!!card.open || card.kind === "agent" || card.kind === "reminder");
+  const held = useRef(false);
+  useEffect(() => {
+    if (hovered && cardHold) {
+      held.current = true;
+      clearTimeout(cardTimer.current);
+    } else if (held.current) {
+      held.current = false;
+      if (cardHold && card && !card.sticky) cardTimer.current = window.setTimeout(() => setCard(null), 2500);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovered, cardHold]);
   useEffect(() => {
     if (!hovered) setSuppressed(false);
-    const want = hovered && !(overBuddy && !hoverOpenRef.current);
+    const want = hovered && !cardHold && !(overBuddy && !hoverOpenRef.current);
     const delay = !want ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : overBuddy ? 600 : EXPAND_DELAY;
     const t = window.setTimeout(() => setHoverOpen(want), delay);
     return () => clearTimeout(t);
-  }, [hovered, presence, overBuddy]);
+  }, [hovered, presence, overBuddy, cardHold]);
   useEffect(() => {
     if (expanded) setHud(false);
   }, [expanded]);
@@ -927,6 +949,9 @@ export function App() {
               setTab("ai");
               setSuppressed(false);
               setPinned(true);
+            } else {
+              // Done with the card: the island stays small until the cursor leaves.
+              setSuppressed(true);
             }
             setCard(null);
           } else if (card?.sticky) setCard(null);
@@ -1290,7 +1315,7 @@ function Idle({ battery, sleeping, weather, scale }: { battery: Battery | null; 
     : null;
   return (
     <div className={`idle ${battery ? "with-battery" : ""}`}>
-      <Buddy sleeping={sleeping} size={Math.round(26 * Math.min(1.15, scale))} />
+      <PillBuddy sleeping={sleeping} size={Math.round(26 * Math.min(1.15, scale))} />
       <span className="time">{timeFmt.format(now)}</span>
       {cur && (
         <span className="pill-temp" title={weather?.city}>
@@ -1305,6 +1330,42 @@ function Idle({ battery, sleeping, weather, scale }: { battery: Battery | null; 
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * Клодик on the collapsed pill. Now and then, on his own, he runs to the far
+ * end and back, ducks under the edge and peeks out, or dives over the top
+ * and drops back in.
+ */
+function PillBuddy({ sleeping, size }: { sleeping: boolean; size: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [trick, setTrick] = useState("");
+  useEffect(() => {
+    if (sleeping) return;
+    let t = 0;
+    const next = () => {
+      t = window.setTimeout(() => {
+        const el = ref.current;
+        const pill = el?.closest<HTMLElement>(".compact, .idle");
+        if (el && pill && buddy.look.life && !document.hidden) {
+          const run = pill.offsetWidth - el.offsetWidth - 2 * el.offsetLeft;
+          el.style.setProperty("--run", `${Math.max(20, run)}px`);
+          const pick = ["run", "run", "peek", "dive"][Math.floor(Math.random() * 4)];
+          setTrick(pick);
+          if (pick === "run") sfx("hop");
+          window.setTimeout(() => setTrick(""), pick === "run" ? 3200 : 2600);
+        }
+        next();
+      }, 25_000 + Math.random() * 35_000);
+    };
+    next();
+    return () => clearTimeout(t);
+  }, [sleeping]);
+  return (
+    <span ref={ref} className={`pill-buddy ${trick}`}>
+      <Buddy sleeping={sleeping} size={size} />
+    </span>
   );
 }
 
@@ -1825,6 +1886,7 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
       frames.push({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${sc.toFixed(3)})` });
     }
     el.animate(frames, { duration, easing: "linear" });
+    sfx("hop");
     body.animate(hopStyle(Math.sign(dx) || 1), { duration, easing: "ease-in-out" });
     // k changes a render before pos does: the flight waits for the new place.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -78,3 +78,14 @@ pub fn read(path: &str) -> Result<String, String> {
     }
     Ok(cut(text))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::strip_xml;
+
+    #[test]
+    fn word_paragraphs_and_entities() {
+        let xml = "<w:p><w:r><w:t>Привет &amp; пока</w:t></w:r></w:p><w:p><w:r><w:t>Вторая</w:t></w:r></w:p>";
+        assert_eq!(strip_xml(xml, "w:p").trim(), "Привет & пока\nВторая");
+    }
+}

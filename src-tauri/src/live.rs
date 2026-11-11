@@ -385,3 +385,22 @@ pub fn favicon(url: &str) -> Option<String> {
     use base64::Engine;
     Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::vdf_value;
+
+    #[test]
+    fn steam_manifest_values() {
+        let acf = "\"AppState\"\n{\n\t\"appid\"\t\t\"730\"\n\t\"name\"\t\t\"Counter-Strike 2\"\n\t\"BytesToDownload\"\t\t\"34000\"\n\t\"BytesDownloaded\"\t\t\"21000\"\n}";
+        assert_eq!(vdf_value(acf, "name").as_deref(), Some("Counter-Strike 2"));
+        assert_eq!(vdf_value(acf, "BytesDownloaded").as_deref(), Some("21000"));
+        assert_eq!(vdf_value(acf, "missing"), None);
+    }
+
+    #[test]
+    fn steam_library_paths_unescape() {
+        let vdf = "\"0\"\n{\n\t\"path\"\t\t\"D:\\\\SteamLibrary\"\n}";
+        assert_eq!(vdf_value(vdf, "path").as_deref(), Some("D:\\SteamLibrary"));
+    }
+}

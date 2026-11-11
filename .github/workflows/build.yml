@@ -25,6 +25,14 @@ jobs:
 
       - run: npm ci
 
+      - name: Tests (interface)
+        run: npm test
+
+      - name: Tests (Windows side)
+        run: |
+          npm run build
+          cargo test --manifest-path src-tauri/Cargo.toml
+
       - run: npx tauri build
 
       - uses: actions/upload-artifact@v4

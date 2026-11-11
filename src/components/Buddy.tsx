@@ -11,6 +11,8 @@
 
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { Liquid } from "../liquid";
+import { setSounds, sfx } from "./buddySounds";
+export { sfx };
 
 const C = "#d97757";
 const INK = "#1a1a1a";
@@ -199,6 +201,7 @@ function startLife() {
 export const buddy = {
   /** A short emotion everyone sees. */
   react(name: Reaction, ms = 1600) {
+    if (name !== "away") sfx(name === "hop" ? "hop2" : name);
     reaction = { name, until: Date.now() + ms };
     action = null;
     notify();
@@ -207,11 +210,13 @@ export const buddy = {
   /** Something to do because something happened (a copy → he files the paper). */
   act(name: string, ms = 4000) {
     if (!look.life) return;
+    sfx(name);
     action = { name, until: Date.now() + ms };
     notify();
     window.setTimeout(notify, ms + 30);
   },
-  configure(l: Partial<BuddyLook>) {
+  configure(l: Partial<BuddyLook> & { sounds?: boolean }) {
+    if (l.sounds !== undefined) setSounds(l.sounds);
     look = { ...look, ...l };
     document.documentElement.style.setProperty("--bd-color", look.color);
     if (!look.life) action = null;
@@ -228,6 +233,7 @@ export const buddy = {
     savePet();
     reaction = null;
     action = { name: "eat", until: Date.now() + 3200 };
+    sfx("eat");
     notify();
     window.setTimeout(() => buddy.react("love", 1800), 3200);
   },
@@ -238,6 +244,7 @@ export const buddy = {
     savePet();
     reaction = null;
     action = { name: "ball", until: Date.now() + 3600 };
+    sfx("ball");
     notify();
     window.setTimeout(() => buddy.react("excited", 1400), 3600);
   },
@@ -247,7 +254,10 @@ export const buddy = {
     savePet();
     action = null;
     if (!pet.asleep) buddy.react("surprised", 900);
-    else notify();
+    else {
+      sfx("sleep");
+      notify();
+    }
   },
   /** Petting and the like count towards friendship. */
   befriend(n = 1) {

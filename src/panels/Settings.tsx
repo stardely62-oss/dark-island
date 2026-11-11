@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
@@ -98,6 +98,48 @@ export function SettingsTab({
   onTypeStart: () => void;
 }) {
   const pet = usePet();
+  // ---- search and sections ----
+  const listRef = useRef<HTMLDivElement>(null);
+  const [q, setQ] = useState("");
+  const [groups, setGroups] = useState<string[]>([]);
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    setGroups([...root.querySelectorAll<HTMLElement>(":scope > .set-group")].map((g) => g.textContent ?? ""));
+  }, [visible, settings.buddyName]);
+  // Rows that don't match hide; a section without matches hides its title.
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    const f = q.trim().toLowerCase();
+    let group: HTMLElement | null = null;
+    let any = false;
+    const close = () => group && (group.style.display = f && !any ? "none" : "");
+    for (const el of root.querySelectorAll<HTMLElement>(":scope > *")) {
+      if (el.classList.contains("set-tools")) continue;
+      if (el.classList.contains("set-group")) {
+        close();
+        group = el;
+        any = !f || (el.textContent ?? "").toLowerCase().includes(f);
+        el.dataset.match = any ? "1" : "";
+        continue;
+      }
+      const hit = !f || group?.dataset.match === "1" || (el.textContent ?? "").toLowerCase().includes(f);
+      el.style.display = hit ? "" : "none";
+      if (hit) any = true;
+    }
+    close();
+  }, [q, settings]);
+  const jump = (name: string) => {
+    setQ("");
+    const g = [...(listRef.current?.querySelectorAll<HTMLElement>(":scope > .set-group") ?? [])].find((x) => x.textContent === name);
+    g?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  // ---- data and version ----
+  const [dataMsg, setDataMsg] = useState<string | null>(null);
+  const [resetArmed, setResetArmed] = useState(false);
+  const [updateErr, setUpdateErr] = useState<string | null>(null);
+  const [update, setUpdate] = useState<{ current: string; latest: string; url: string; newer: boolean } | null>(null);
   const [conn, setConn] = useState<Conn | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [skip, setSkip] = useState(settings.clipSkipApps.join(", "));
@@ -174,7 +216,19 @@ export function SettingsTab({
   };
 
   return (
-    <div className="tab-settings list">
+    <div className="tab-settings list" ref={listRef}>
+      <div className="set-tools">
+        <input className="search" placeholder="Поиск по настройкам" value={q} onFocus={onTypeStart} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} />
+        {!q && (
+          <div className="set-jump">
+            {groups.map((g) => (
+              <button key={g} className="chip" onClick={() => jump(g)}>
+                {g.replace(/\s*\(.*\)$/, "")}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="set-group">Остров</div>
       <Row title="Линия над окнами" sub="Если окно заходит под остров (вкладки браузера), он становится тонкой линией">
         <Toggle on={settings.stripOverWindows} onChange={(v) => set({ stripOverWindows: v })} />
@@ -316,6 +370,9 @@ export function SettingsTab({
         }
       >
         <Toggle on={settings.buddyLife} onChange={(v) => set({ buddyLife: v })} />
+      </Row>
+      <Row title="Звуки" sub="Тихие 8-битные пищалки: прыжки, еда, поглаживание, удивление">
+        <Toggle on={settings.buddySounds} onChange={(v) => set({ buddySounds: v })} />
       </Row>
       <Row title="Размер" sub={`${Math.round(settings.buddyScale * 100)}%`}>
         <input className="range" type="range" min={1} max={2} step={0.1} value={settings.buddyScale} onChange={(e) => set({ buddyScale: Number(e.target.value) })} />
@@ -707,6 +764,78 @@ export function SettingsTab({
           options={Object.entries(ENGINES).map(([k, v]) => [k, v.name] as [string, string])}
           onChange={(v) => set({ searchEngine: v })}
         />
+      </Row>
+
+      <div className="set-group">Данные и версия</div>
+      <Row title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
+        <button
+          className="text-btn solid"
+          onClick={() =>
+            api
+              ?.call<string | null>("settings_export")
+              .then((p) => p && setDataMsg(`Сохранено: ${p}`))
+              .catch((e) => setDataMsg(String(e)))
+          }
+        >
+          Сохранить
+        </button>
+        <button
+          className="text-btn solid"
+          onClick={() =>
+            api
+              ?.call<Record<string, unknown> | null>("settings_import")
+              .then((v) => v && setDataMsg("Настройки загружены"))
+              .catch((e) => setDataMsg(String(e)))
+          }
+        >
+          Загрузить
+        </button>
+      </Row>
+      <Row title="Сбросить настройки" sub={resetArmed ? "Нажми ещё раз — всё вернётся как после установки" : "Ключи, подключения агентов и Клодик-питомец останутся"}>
+        <button
+          className={`text-btn solid ${resetArmed ? "danger" : ""}`}
+          onClick={() => {
+            if (!resetArmed) {
+              setResetArmed(true);
+              window.setTimeout(() => setResetArmed(false), 4000);
+              return;
+            }
+            setResetArmed(false);
+            api?.call("settings_reset").then(() => setDataMsg("Настройки сброшены"));
+          }}
+        >
+          {resetArmed ? "Точно сбросить" : "Сбросить"}
+        </button>
+      </Row>
+      <Row
+        title="Обновления"
+        sub={
+          updateErr
+            ? updateErr
+            : !update
+            ? "Остров сам ничего не скачивает: кнопка только сравнит версию с последним релизом на GitHub"
+            : update.newer
+              ? `Есть версия ${update.latest} (у тебя ${update.current})`
+              : `У тебя последняя версия — ${update.current}`
+        }
+      >
+        {update?.newer ? (
+          <button className="text-btn solid accent" onClick={() => api?.call("open_url", { url: update.url })}>
+            Открыть релиз
+          </button>
+        ) : (
+          <button
+            className="text-btn solid"
+            onClick={() =>
+              api
+                ?.call<typeof update>("update_check")
+                .then(setUpdate)
+                .catch((e) => setUpdateErr(String(e)))
+            }
+          >
+            Проверить
+          </button>
+        )}
       </Row>
 
       <div className="set-group">Если что-то не работает</div>

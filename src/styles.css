@@ -2295,3 +2295,42 @@ header .buddy-home {
   gap: 4px;
   margin-left: auto;
 }
+
+/* settings: search and sections */
+.set-tools {
+  position: sticky;
+  top: -1px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 6px;
+  background: var(--island, #000);
+}
+.set-tools .search {
+  height: 30px;
+}
+.set-jump {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.set-jump .chip {
+  flex: none;
+}
+.set-tools input.search {
+  flex: none;
+  height: 30px;
+  min-height: 30px;
+}
+.tab-settings > .set-group {
+  scroll-margin-top: 78px;
+}
+.buddy-side input.buddy-name {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex: none;
+}

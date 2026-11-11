@@ -339,6 +339,96 @@ fn settings_set(
     all
 }
 
+/// Keys that belong to this computer, never exported, imported or reset.
+const LOCAL_KEYS: &[&str] = &["agentToken", "agentPort", "vpnProxy"];
+
+/// Saves the settings to a JSON file the user picks; returns its path.
+#[tauri::command]
+async fn settings_export(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let mut all = app.state::<Ctl>().settings.all();
+    for k in LOCAL_KEYS {
+        all.remove(*k);
+    }
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_title("Сохранить настройки")
+        .set_file_name("dark-island-settings.json")
+        .add_filter("JSON", &["json"])
+        .blocking_save_file()
+        .and_then(|p| p.into_path().ok())
+    else {
+        return Ok(None);
+    };
+    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Replaces the settings with `next` (keys missing there go back to defaults).
+fn settings_replace(app: &AppHandle, mut next: serde_json::Map<String, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+    let ctl = app.state::<Ctl>();
+    for k in LOCAL_KEYS {
+        next.remove(*k);
+    }
+    let mut patch = serde_json::Map::new();
+    for k in ctl.settings.all().keys() {
+        if !LOCAL_KEYS.contains(&k.as_str()) && !next.contains_key(k) {
+            patch.insert(k.clone(), serde_json::Value::Null);
+        }
+    }
+    patch.extend(next);
+    settings_set(app.clone(), ctl, patch)
+}
+
+/// Loads settings from a JSON file the user picks.
+#[tauri::command]
+async fn settings_import(app: AppHandle) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_title("Загрузить настройки")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file()
+        .and_then(|p| p.into_path().ok())
+    else {
+        return Ok(None);
+    };
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&text).map_err(|_| "Это не файл настроек острова".to_string())?;
+    Ok(Some(settings_replace(&app, map)))
+}
+
+/// Everything back to how it was after installing (keys and hooks stay).
+#[tauri::command]
+fn settings_reset(app: AppHandle) -> serde_json::Map<String, serde_json::Value> {
+    settings_replace(&app, serde_json::Map::new())
+}
+
+/// The newest release on GitHub, to compare with this version. Only asked
+/// when the user presses the button; nothing is downloaded.
+#[tauri::command]
+async fn update_check(app: AppHandle) -> Result<serde_json::Value, String> {
+    let current = app.package_info().version.to_string();
+    let v = live::get_json("https://api.github.com/repos/stardely62-oss/dark-island/releases/latest")
+        .ok_or("Не удалось узнать: нет связи с GitHub или релизов ещё нет")?;
+    let tag = v.get("tag_name").and_then(|t| t.as_str()).unwrap_or("").trim_start_matches('v').to_string();
+    let url = v.get("html_url").and_then(|t| t.as_str()).unwrap_or("https://github.com/stardely62-oss/dark-island/releases").to_string();
+    let newer = version_newer(&tag, &current);
+    Ok(serde_json::json!({ "current": current, "latest": tag, "url": url, "newer": newer }))
+}
+
+/// "0.2.1" > "0.2.0"; anything unparsable is not newer.
+fn version_newer(a: &str, b: &str) -> bool {
+    let parse = |s: &str| s.split('.').map(|p| p.trim().parse::<u64>().ok()).collect::<Option<Vec<u64>>>();
+    match (parse(a), parse(b)) {
+        (Some(x), Some(y)) => x > y,
+        _ => false,
+    }
+}
+
 // ---- agents ------------------------------------------------------------------
 
 #[tauri::command]
@@ -1140,6 +1230,10 @@ pub fn run() {
             notifications_access,
             open_windows_settings,
             ai_key_set,
+            settings_export,
+            settings_import,
+            settings_reset,
+            update_check,
             ai_key_status,
             ai_chat,
             ai_cancel,
@@ -1244,4 +1338,17 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running Dark Island");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_newer;
+
+    #[test]
+    fn versions() {
+        assert!(version_newer("0.2.0", "0.1.9"));
+        assert!(version_newer("0.10.0", "0.9.0"));
+        assert!(!version_newer("0.1.0", "0.1.0"));
+        assert!(!version_newer("beta", "0.1.0"));
+    }
 }

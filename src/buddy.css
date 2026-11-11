@@ -1133,3 +1133,54 @@
 .tb-inner .buddy {
   display: block;
 }
+
+/* ---- on the collapsed pill, on his own ---- */
+.pill-buddy {
+  display: inline-flex;
+  position: relative;
+  z-index: 1;
+}
+.pill-buddy.run {
+  animation: pill-run 3.2s ease-in-out;
+}
+.pill-buddy.run .buddy {
+  animation: pill-face 3.2s steps(1);
+}
+.pill-buddy.run .bd-leg-a {
+  animation: bd-step 0.18s steps(1) infinite;
+}
+.pill-buddy.run .bd-leg-b {
+  animation: bd-step 0.18s steps(1) infinite -0.09s;
+}
+.pill-buddy.run .bd-jump {
+  animation: bd-hop 0.36s ease-in-out infinite;
+}
+.pill-buddy.peek {
+  animation: pill-peek 2.6s ease-in-out;
+}
+.pill-buddy.dive {
+  animation: pill-dive 2.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+@keyframes pill-run {
+  0%, 100% { transform: translateX(0); }
+  45%, 55% { transform: translateX(var(--run, 120px)); }
+}
+@keyframes pill-face {
+  0%, 50% { scale: 1 1; }
+  50.01%, 100% { scale: -1 1; }
+}
+@keyframes pill-peek {
+  0%, 100% { transform: translateY(0); }
+  15%, 45% { transform: translateY(26px); }
+  60%, 72% { transform: translateY(9px); }
+  80% { transform: translateY(-3px) scale(0.95, 1.08); }
+  90% { transform: translateY(0) scale(1.1, 0.9); }
+}
+@keyframes pill-dive {
+  0% { transform: translateY(0); }
+  10% { transform: translateY(2px) scale(1.15, 0.8); }
+  30%, 60% { transform: translateY(-34px) scale(0.9, 1.1); }
+  80% { transform: translateY(0) scale(1.2, 0.75); }
+  90% { transform: translateY(-3px) scale(0.95, 1.06); }
+  100% { transform: translateY(0); }
+}

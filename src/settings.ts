@@ -32,6 +32,7 @@ export const DEFAULTS = {
   recordFormat: "mp4" as "mp4" | "gif",
   recordSound: "none" as "none" | "system" | "mic",
   buddyLife: true,
+  buddySounds: false,
   buddyScale: 1.6,
   buddyColor: "#d97757",
   buddyHat: "none",
