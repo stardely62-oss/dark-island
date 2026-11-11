@@ -136,13 +136,17 @@ export function CommandBar({
     }
 
     const e = ENGINES[engine] ?? ENGINES.google;
-    out.push({
+    // A question goes to the AI first: it ends with "?" or starts like one.
+    const question = /\?\s*$/.test(text) || /^(как|что|почему|зачем|где|когда|кто|какой|какая|какие|сколько|можно ли|объясни|напиши|переведи|расскажи|how|what|why|where|when|who|can|explain|write)\s/i.test(text);
+    const ai = {
       key: "ai",
       icon: "ai",
       title: `Спросить ИИ: «${text}»`,
       sub: "Tab",
       run: () => actions.ask(text),
-    });
+    };
+    if (question) out.unshift(ai);
+    else out.push(ai);
     out.push({
       key: "web",
       icon: "web",
@@ -160,7 +164,8 @@ export function CommandBar({
     const r = results[i];
     if (!r) return;
     r.run();
-    actions.close();
+    // Asking the AI opens its tab: closing here would fold the island at once.
+    if (r.key !== "ai") actions.close();
   };
 
   return (

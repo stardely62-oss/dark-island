@@ -109,6 +109,8 @@ function sizeOf(
       return { w: 300, h: 34 };
     case "expanded":
       if (opts.fit) return { w: PANEL_W, h: Math.min(340, Math.max(120, Math.ceil(opts.fit))) };
+      // The AI tab has the most to show: a bit taller.
+      if (opts.tab === "ai") return { w: PANEL_W, h: 316 };
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
       return opts.media ? { w: PANEL_W, h: opts.launcher ? 292 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
     case "strip":

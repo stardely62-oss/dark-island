@@ -187,7 +187,7 @@ export function AiTab({
 
       {!hasKey && (
         <div className="ai-nokey">
-          Нужен ключ сервиса ИИ — он хранится только на этом компьютере, зашифрованный Windows.
+          <span className="grow">Нужен ключ ИИ — хранится только на этом компьютере</span>
           <button className="text-btn solid accent" onClick={openSettings}>
             Добавить ключ
           </button>

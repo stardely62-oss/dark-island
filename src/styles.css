@@ -2443,3 +2443,45 @@ header .buddy-home {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* AI text tools: icon and word on one line, nothing overlaps */
+.tool-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tool-chips {
+  flex: none;
+}
+.text-tools {
+  overflow-y: auto;
+}
+.text-out {
+  min-height: 46px;
+}
+.ai-nokey {
+  flex: none;
+  padding: 4px 6px 4px 10px;
+  font-size: 11.5px;
+}
+.ai-nokey .text-btn {
+  flex: none;
+  height: 24px;
+  white-space: nowrap;
+}
+.text-tools textarea.note.small {
+  height: 38px;
+}
+.out-actions .text-btn {
+  height: 24px;
+  padding: 0 10px;
+}
+.text-out {
+  min-height: 54px;
+}
+.tab-ai .text-tools textarea.note.small {
+  height: 38px;
+  min-height: 0;
+  flex: none;
+}
