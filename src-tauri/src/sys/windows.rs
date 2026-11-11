@@ -229,7 +229,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
 
         if last_vpn.elapsed() >= Duration::from_secs(4) {
             last_vpn = Instant::now();
-            let now = vpn_adapter();
+            let now = vpn_now();
             if now != vpn_before {
                 vpn_before = now.clone();
                 let _ = app.emit_to("island", "vpn", serde_json::json!({ "on": now.is_some(), "name": now }));
@@ -1340,7 +1340,48 @@ pub fn mic_toggle() -> Option<bool> {
 const VPN_WORDS: &[&str] = &[
     "wintun", "wireguard", "tap-windows", "openvpn", "vpn", "warp", "cloudflare", "nordlynx", "mullvad", "proton",
     "amnezia", "outline", "hiddify", "v2ray", "sing-box", "happ", "karing", "windscribe", "tunnel", "tun ",
+    "incy", "xray", "singbox", "clash", "mihomo", "nekoray", "nekobox", "throne", "meta tunnel",
 ];
+
+const INET: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+/// The system proxy, when it points at this computer: that is how Happ,
+/// Incy, v2rayN and the like work outside their TUN mode.
+pub fn system_proxy() -> Option<String> {
+    unsafe {
+        let mut on = 0u32;
+        let mut size = 4u32;
+        RegGetValueW(HKEY_CURRENT_USER, &HSTRING::from(INET), &HSTRING::from("ProxyEnable"), RRF_RT_REG_DWORD, None, Some(&mut on as *mut u32 as *mut _), Some(&mut size)).ok().ok()?;
+        if on == 0 {
+            return None;
+        }
+        let server = reg_string(HKEY_CURRENT_USER, INET, "ProxyServer")?;
+        let local = server.contains("127.0.0.1") || server.contains("localhost") || server.contains("[::1]");
+        local.then_some(server)
+    }
+}
+
+/// Turns the system proxy on (with `server`, if given) or off, and tells
+/// running programs the settings changed.
+pub fn set_system_proxy(on: bool, server: &str) {
+    use windows::Win32::Networking::WinInet::{InternetSetOptionW, INTERNET_OPTION_REFRESH, INTERNET_OPTION_SETTINGS_CHANGED};
+    unsafe {
+        let key = HSTRING::from(INET);
+        if on && !server.is_empty() {
+            let w: Vec<u16> = server.encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = RegSetKeyValueW(HKEY_CURRENT_USER, &key, &HSTRING::from("ProxyServer"), windows::Win32::System::Registry::REG_SZ.0, Some(w.as_ptr() as *const _), (w.len() * 2) as u32);
+        }
+        let v: u32 = on as u32;
+        let _ = RegSetKeyValueW(HKEY_CURRENT_USER, &key, &HSTRING::from("ProxyEnable"), REG_DWORD.0, Some(&v as *const u32 as *const _), 4);
+        let _ = InternetSetOptionW(None, INTERNET_OPTION_SETTINGS_CHANGED, None, 0);
+        let _ = InternetSetOptionW(None, INTERNET_OPTION_REFRESH, None, 0);
+    }
+}
+
+/// What carries traffic now: a VPN adapter (TUN included) or a local proxy.
+pub fn vpn_now() -> Option<String> {
+    vpn_adapter().or_else(|| system_proxy().map(|_| "через прокси".to_string()))
+}
 
 /// The name of an active VPN adapter, if any.
 pub fn vpn_adapter() -> Option<String> {

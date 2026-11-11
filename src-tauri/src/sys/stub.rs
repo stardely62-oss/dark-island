@@ -116,3 +116,13 @@ pub fn vpn_adapter() -> Option<String> {
 pub fn steam_path() -> Option<String> {
     None
 }
+
+pub fn system_proxy() -> Option<String> {
+    None
+}
+
+pub fn set_system_proxy(_on: bool, _server: &str) {}
+
+pub fn vpn_now() -> Option<String> {
+    None
+}

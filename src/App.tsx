@@ -628,7 +628,12 @@ export function App() {
   // Folding: Клодик climbs up and out over the top edge of the screen.
   const wasExpanded = useRef(false);
   useEffect(() => {
-    if (wasExpanded.current && !expanded) climbOut(document.querySelector(".tab-buddy .buddy"));
+    if (wasExpanded.current && !expanded) {
+      climbOut(document.querySelector(".tab-buddy .buddy"));
+      // The pill's Клодик is the same one: gone while he climbs, then he falls back onto his place.
+      buddy.react("away", 1000);
+      window.setTimeout(() => buddy.react("plop", 800), 1000);
+    }
     wasExpanded.current = expanded;
   }, [expanded]);
 
@@ -1045,6 +1050,8 @@ function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; s
   const now = useClock();
   return (
     <header>
+      {/* Клодик's own place: he sits here on Home and hops to the other tabs. */}
+      <span className="buddy-home" aria-hidden />
       <span className="clock" title={dateFmt.format(now)}>
         {timeFmt.format(now)}
       </span>
@@ -1430,7 +1437,6 @@ function HomeTab({
   accent,
   live,
   setVolume,
-  sleeping,
   lyrics,
   launcher,
   setLauncher,
@@ -1499,7 +1505,7 @@ function HomeTab({
         </>
       ) : (
         <div className="empty">
-          <Buddy size={34} sleeping={sleeping} />
+          <Note size={22} />
           <span>Ничего не играет</span>
         </div>
       )}
@@ -1629,45 +1635,78 @@ function offsetWithin(el: HTMLElement, ancestor: HTMLElement) {
 }
 
 /**
- * Клодик on the tab bar: he stands under the open tab and hops over when
- * another one is chosen; he drops in from the top when the island opens.
+ * Клодик in the open island: on Home he sits on his own place by the clock,
+ * on other tabs he stands under the open tab, and he hops between them. Now
+ * and then he goes for a walk to another tab and comes back.
  */
 function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [cls, setCls] = useState("");
-  const prevTab = useRef(tab);
+  const [visit, setVisit] = useState<string | null>(null);
+  const placed = useRef(false);
   const SIZE = 20;
+
+  /** Where he stands: "home" (by the clock) or a tab id. */
+  const measure = useCallback((spot: string) => {
+    const view = document.querySelector<HTMLElement>(".view.on .expanded")?.parentElement;
+    if (!view) return null;
+    const half = view.offsetWidth / 2;
+    if (spot === "home") {
+      const slot = view.querySelector<HTMLElement>(".buddy-home");
+      if (!slot) return null;
+      const o = offsetWithin(slot, view);
+      return { x: o.x + slot.offsetWidth / 2 - SIZE / 2 - half, y: o.y + slot.offsetHeight / 2 - (SIZE * 11) / 15 / 2 };
+    }
+    const i = TABS.findIndex((t) => t.id === spot);
+    const btn = view.querySelectorAll<HTMLElement>("nav.tabs button")[i];
+    if (!btn) return null;
+    const o = offsetWithin(btn, view);
+    return { x: o.x + btn.offsetWidth / 2 - SIZE / 2 - half, y: o.y + btn.offsetHeight - 2 };
+  }, []);
+
+  const spot = visit ?? (tab === "home" ? "home" : tab);
   useLayoutEffect(() => {
     if (!shown) {
+      placed.current = false;
+      setVisit(null);
       setCls("");
       return;
     }
-    const measure = () => {
-      const view = document.querySelector<HTMLElement>(".view.on .expanded")?.parentElement;
-      const btn = view?.querySelector<HTMLElement>(`nav.tabs button.on`);
-      if (!view || !btn) return null;
-      const o = offsetWithin(btn, view);
-      // In box coordinates: the view is centred in the box.
-      return { x: o.x + btn.offsetWidth / 2 - SIZE / 2 - view.offsetWidth / 2, y: o.y + btn.offsetHeight - 2 };
-    };
-    const p = measure();
+    const p = measure(spot);
     if (!p) return;
-    const hop = prevTab.current !== tab && pos !== null;
-    prevTab.current = tab;
+    const first = !placed.current;
+    placed.current = true;
     setPos(p);
-    setCls(hop ? "hopping" : pos === null || cls === "" ? "drop-in" : cls);
+    setCls(first ? "drop-in" : "hopping");
     const t = window.setTimeout(() => setCls(""), 720);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, shown]);
+  }, [spot, shown, measure]);
+
+  // A walk now and then: to a random tab, a look around, and back.
+  useEffect(() => {
+    if (!shown || sleeping) return;
+    let t = 0;
+    const plan = () => {
+      t = window.setTimeout(() => {
+        const here = tab === "home" ? "home" : tab;
+        const options = ["home", ...TABS.map((x) => x.id)].filter((x) => x !== here && x !== "home");
+        setVisit(options[Math.floor(Math.random() * options.length)]);
+        t = window.setTimeout(() => {
+          setVisit(null);
+          plan();
+        }, 1800 + Math.random() * 1800);
+      }, 9000 + Math.random() * 14000);
+    };
+    plan();
+    return () => {
+      clearTimeout(t);
+      setVisit(null);
+    };
+  }, [shown, sleeping, tab]);
+
   if (!pos) return null;
   return (
-    <div
-      ref={ref}
-      className={`tab-buddy ${cls} ${shown ? "" : "gone"}`}
-      style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}
-    >
+    <div className={`tab-buddy ${cls} ${shown ? "" : "gone"}`} style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}>
       <Buddy size={SIZE} sleeping={sleeping} />
     </div>
   );

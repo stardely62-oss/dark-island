@@ -487,3 +487,155 @@
   75% { transform: translateY(-3px) scale(0.95, 1.06); }
   100% { transform: translateY(0) scale(1, 1); }
 }
+
+/* ---- more whims ---- */
+.buddy.act-dance .bd-jump {
+  animation: bd-dance 0.6s ease-in-out 4;
+}
+.buddy.act-dance .bd-leg-a {
+  animation: bd-step 0.3s steps(1) 8;
+}
+.buddy.act-dance .bd-leg-b {
+  animation: bd-step 0.3s steps(1) 8 -0.15s;
+}
+.buddy.act-dance .bd-arm-l,
+.buddy.act-dance .bd-arm-r {
+  animation: bd-arms-wave 0.3s steps(1) 8;
+}
+.buddy.act-dance .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-dance .bd-happy {
+  opacity: 1;
+}
+.buddy.act-spin .bd-jump {
+  animation: bd-spin 1.1s cubic-bezier(0.4, 0, 0.3, 1);
+}
+.buddy.act-flip .bd-jump {
+  animation: bd-flip 1s cubic-bezier(0.3, 0.6, 0.35, 1);
+}
+.buddy.act-flip .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-flip .bd-closed {
+  opacity: 1;
+}
+.buddy.act-peek .bd-jump {
+  animation: bd-peek 2.2s ease-in-out;
+}
+.buddy.act-sneeze .bd-jump {
+  animation: bd-sneeze 1.3s ease-out;
+}
+.buddy.act-sneeze .bd-eyes {
+  animation: bd-squint 1.3s steps(1);
+}
+.buddy.act-sneeze .bd-sigh {
+  animation: bd-puff 0.9s ease-out 0.55s;
+}
+.buddy.act-march .bd-jump {
+  animation: bd-march 2.6s ease-in-out;
+}
+.buddy.act-march .bd-leg-a {
+  animation: bd-step 0.26s steps(1) 10;
+}
+.buddy.act-march .bd-leg-b {
+  animation: bd-step 0.26s steps(1) 10 -0.13s;
+}
+.buddy.act-work .bd-arm-l {
+  animation: bd-tap 0.2s steps(1) 13;
+}
+.buddy.act-work .bd-arm-r {
+  animation: bd-tap 0.2s steps(1) 13 -0.1s;
+}
+.buddy.act-work .bd-gaze {
+  translate: 0 0.6px;
+}
+.buddy.act-work .bd-sweat {
+  animation: bd-drip 1.3s ease-in 2;
+}
+.buddy.act-nod .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-nod .bd-half {
+  opacity: 1;
+}
+.buddy.act-nod .bd-jump {
+  animation: bd-nod 2.4s ease-in-out;
+}
+.buddy.act-wiggle .bd-jump {
+  animation: bd-wiggle 0.25s ease-in-out 6;
+}
+@keyframes bd-dance {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  25% { transform: rotate(-9deg) translateY(-1.5px); }
+  50% { transform: rotate(0deg) translateY(0) scale(1.08, 0.92); }
+  75% { transform: rotate(9deg) translateY(-1.5px); }
+}
+@keyframes bd-spin {
+  0% { transform: translateY(0) scaleX(1); }
+  20% { transform: translateY(-2.5px) scaleX(0.4); }
+  40% { transform: translateY(-3.5px) scaleX(-1); }
+  60% { transform: translateY(-3px) scaleX(-0.4); }
+  80% { transform: translateY(0) scaleX(1) scaleY(0.88); }
+  100% { transform: translateY(0) scaleX(1); }
+}
+@keyframes bd-flip {
+  0% { transform: translateY(0) rotate(0deg) scale(1, 1); }
+  15% { transform: translateY(0.5px) rotate(0deg) scale(1.15, 0.8); }
+  50% { transform: translateY(-6px) rotate(-180deg); }
+  82% { transform: translateY(0) rotate(-360deg) scale(1.15, 0.82); }
+  100% { transform: translateY(0) rotate(-360deg) scale(1, 1); }
+}
+@keyframes bd-peek {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  20%, 45% { transform: translateY(4px) scale(1.05, 0.55); }
+  55% { transform: translateY(3px) scale(1.05, 0.65); }
+  65%, 80% { transform: translateY(4px) scale(1.05, 0.55); }
+}
+@keyframes bd-sneeze {
+  0% { transform: scale(1, 1) rotate(0deg); }
+  30% { transform: scale(0.96, 1.08) rotate(-6deg); }
+  42% { transform: scale(0.96, 1.1) rotate(-8deg); }
+  50% { transform: scale(1.12, 0.86) rotate(7deg) translateX(1px); }
+  70% { transform: scale(1, 1) rotate(-2deg); }
+  100% { transform: scale(1, 1) rotate(0deg); }
+}
+@keyframes bd-squint {
+  0%, 50% { opacity: 1; }
+  30% { opacity: 0; }
+}
+@keyframes bd-march {
+  0%, 100% { transform: translateX(0) scaleX(1); }
+  30% { transform: translateX(-3px) scaleX(1); }
+  32%, 62% { transform: translateX(-3px) scaleX(-1); }
+  60% { transform: translateX(3px) scaleX(-1); }
+  64% { transform: translateX(3px) scaleX(1); }
+}
+@keyframes bd-nod {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(0.8px) rotate(4deg); }
+  35% { transform: translateY(0) rotate(0deg); }
+  60% { transform: translateY(1px) rotate(5deg); }
+  70% { transform: translateY(0) rotate(0deg); }
+}
+
+/* ---- leaving and coming back to the pill ---- */
+.buddy.re-away {
+  opacity: 0;
+}
+.buddy.re-plop {
+  animation: bd-plop 0.75s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+@keyframes bd-plop {
+  0% { transform: translateY(-34px); }
+  50% { transform: translateY(0) scale(1.25, 0.7); }
+  70% { transform: translateY(-4px) scale(0.92, 1.1); }
+  85% { transform: translateY(0) scale(1.06, 0.94); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+.tab-buddy {
+  transition: left 0.42s cubic-bezier(0.45, 0, 0.3, 1), top 0.42s cubic-bezier(0.45, 0, 0.3, 1);
+}
+.tab-buddy.gone {
+  transition: none;
+}

@@ -66,6 +66,7 @@ export function SettingsTab({
   const [modelErr, setModelErr] = useState<string | null>(null);
   const [devices, setDevices] = useState<{ outputs: { id: string; name: string; default: boolean }[]; inputs: { id: string; name: string; default: boolean }[] }>({ outputs: [], inputs: [] });
   const [vpnNames, setVpnNames] = useState<string[]>([]);
+  const [apps, setApps] = useState<{ Name: string; AppID: string }[]>([]);
   const [monitors, setMonitors] = useState<{ index: number; name: string; width: number; height: number; primary: boolean }[]>([]);
   const refreshKeys = () =>
     api
@@ -77,6 +78,7 @@ export function SettingsTab({
     api?.call<typeof monitors>("monitors_list").then((m) => setMonitors(m ?? []));
     api?.call<typeof devices>("audio_devices").then((d) => d && setDevices(d));
     api?.call<string[]>("vpn_names").then((n) => setVpnNames(n ?? []));
+    api?.call<{ Name: string; AppID: string }[]>("apps_list").then((a) => setApps(a ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, visible]);
   const provider = providerOf(settings);
@@ -419,13 +421,39 @@ export function SettingsTab({
         <Segmented
           value={settings.vpnClient}
           options={[
-            ["windows", "Windows"],
+            ["app", "Программа"],
             ["warp", "WARP"],
-            ["custom", "Свои команды"],
+            ["windows", "Windows"],
+            ["custom", "Команды"],
           ]}
           onChange={(v) => set({ vpnClient: v })}
         />
       </Row>
+      {settings.vpnClient === "app" && (
+        <Row
+          title="VPN-программа"
+          sub="Happ, Incy, v2rayN, Hiddify… С системным прокси остров переключает сам, в режиме TUN — открывает программу"
+        >
+          <input
+            className="search set-input"
+            list="vpn-apps"
+            key={settings.vpnAppName}
+            defaultValue={settings.vpnAppName}
+            placeholder="начни вводить название"
+            onFocus={onTypeStart}
+            onBlur={(e) => {
+              const name = e.target.value.trim();
+              const a = apps.find((x) => x.Name.toLowerCase() === name.toLowerCase());
+              set(a ? { vpnApp: a.AppID, vpnAppName: a.Name } : { vpnApp: "", vpnAppName: "" });
+            }}
+          />
+          <datalist id="vpn-apps">
+            {apps.map((a) => (
+              <option key={a.AppID} value={a.Name} />
+            ))}
+          </datalist>
+        </Row>
+      )}
       {settings.vpnClient === "windows" && (
         <Row title="Подключение" sub={vpnNames.length ? "Из Параметры → Сеть → VPN" : "В Windows нет VPN-подключений"}>
           {vpnNames.length ? (

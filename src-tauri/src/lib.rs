@@ -537,7 +537,7 @@ async fn bt_connect(app: AppHandle, container: String, on: bool) -> Result<(), S
 
 #[tauri::command]
 async fn vpn_status() -> Option<String> {
-    sys::vpn_adapter()
+    sys::vpn_now()
 }
 
 /// VPN connections Windows itself knows (Settings → VPN).
@@ -578,10 +578,51 @@ async fn vpn_set(app: AppHandle, on: bool) -> Result<(), String> {
                 sys::run_hidden(&cmd).map(|_| ())
             }
         }
-        _ => Err("VPN-клиент не выбран: Настройки → Сеть".into()),
+        // A VPN program (Happ, Incy, v2rayN…): it has no command line, so the
+        // island starts it, and switches the system proxy it set up.
+        _ => vpn_app(&app, &s, on),
     };
     diag::log(&app, &format!("vpn {client} {}: {r:?}", if on { "on" } else { "off" }));
     r
+}
+
+fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), String> {
+    let id = s.string("vpnApp");
+    if id.is_empty() {
+        return Err("Выбери VPN-программу: Настройки → Сеть".into());
+    }
+    // The exe name, when the Start menu id is a path to it.
+    let exe = id
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|n| n.to_lowercase().ends_with(".exe"))
+        .map(|n| n[..n.len() - 4].to_lowercase());
+    let running = exe.as_ref().is_some_and(|e| sys::running_exes().contains(e));
+    let remember = |server: &str| {
+        let mut m = serde_json::Map::new();
+        m.insert("vpnProxy".into(), serde_json::Value::String(server.to_string()));
+        s.merge(m);
+    };
+    if on {
+        let saved = s.string("vpnProxy");
+        if running && !saved.is_empty() && sys::system_proxy().is_none() {
+            sys::set_system_proxy(true, &saved);
+            diag::log(app, &format!("vpn app: proxy {saved} on"));
+            return Ok(());
+        }
+        // Not running yet (most connect on start), or in TUN mode: open it.
+        sys::launch_app(&id);
+        return Ok(());
+    }
+    if let Some(server) = sys::system_proxy() {
+        remember(&server);
+        sys::set_system_proxy(false, "");
+        diag::log(app, &format!("vpn app: proxy {server} off"));
+        return Ok(());
+    }
+    // A TUN tunnel only the program itself can stop: bring it up.
+    sys::launch_app(&id);
+    Ok(())
 }
 
 // ---- documents in the chat ------------------------------------------------------------
@@ -925,7 +966,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                 } else if *sc == vpn {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let on = sys::vpn_adapter().is_none();
+                        let on = sys::vpn_now().is_none();
                         if let Err(e) = vpn_set(app.clone(), on).await {
                             let _ = app.emit_to("island", "vpn_error", e);
                         }

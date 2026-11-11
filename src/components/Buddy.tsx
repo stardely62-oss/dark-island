@@ -33,7 +33,11 @@ export type Reaction =
   | "furious"
   | "love"
   | "ears"
-  | "hop";
+  | "hop"
+  /** Out of the pill while he climbs over the screen edge… */
+  | "away"
+  /** …and back: he falls onto his place from above. */
+  | "plop";
 
 // ---------------------------------------------------------------- the life ----
 
@@ -56,6 +60,15 @@ const WHIMS: [string, number, number][] = [
   ["shuffle", 2000, 3],
   ["sit", 2400, 2],
   ["scratch", 1400, 2],
+  ["dance", 2400, 2],
+  ["spin", 1100, 2],
+  ["flip", 1000, 1],
+  ["peek", 2200, 2],
+  ["sneeze", 1300, 1],
+  ["march", 2600, 2],
+  ["work", 2600, 2],
+  ["nod", 2400, 1],
+  ["wiggle", 1500, 2],
 ];
 
 let lifeStarted = false;
@@ -63,7 +76,7 @@ function startLife() {
   if (lifeStarted) return;
   lifeStarted = true;
   const next = () => {
-    const wait = 6000 + Math.random() * 11000;
+    const wait = 4000 + Math.random() * 9000;
     window.setTimeout(() => {
       const now = Date.now();
       if (!(reaction && reaction.until > now)) {

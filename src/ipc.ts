@@ -325,7 +325,7 @@ function mockBridge(): Bridge {
     ],
     lyrics_get: () => "[00:00.00] Ночной проспект, огни вдали\n[01:00.00] Мы едем вдоль пустой реки\n[01:08.00] И город шепчет: не спеши\n[01:16.00] Пока играет midnight drive",
     mic_toggle: () => true,
-    audio_devices: () => ({ outputs: [{ id: "o1", name: "Динамики (Realtek)", default: true }, { id: "o2", name: "Наушники AirPods", default: false }], inputs: [{ id: "i1", name: "Микрофон (Realtek)", default: true }] }),
+    audio_devices: () => ({ outputs: [{ id: "o1", name: "Динамики (Realtek(R) High Definition Audio)", default: true }, { id: "o2", name: "Наушники AirPods", default: false }], inputs: [{ id: "i1", name: "Микрофонный массив (Intel® Smart Sound Technology)", default: true }] }),
     player_volume_get: () => 0.8,
     player_volume_set: () => true,
     bt_devices: () => [
