@@ -45,8 +45,25 @@ body.preview {
   pointer-events: none;
   filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.28));
 }
-.body path {
+.body .shape,
+.body clipPath path {
   fill: var(--island);
+}
+
+/* Halo under the island; its opacity and size are set every frame. */
+.glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 60px;
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side at 30% 50%, var(--a), transparent),
+    radial-gradient(closest-side at 70% 50%, var(--b), transparent);
+  filter: blur(16px);
+  will-change: opacity, transform;
 }
 
 .box {

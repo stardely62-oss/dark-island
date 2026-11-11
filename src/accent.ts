@@ -44,3 +44,23 @@ export function useAccent(src: string | null): string | null {
   }, [src]);
   return color;
 }
+
+/** The same colour turned around the colour wheel, for a second light. */
+export function shiftHue(rgb: string, deg: number): string {
+  const m = rgb.match(/[\d.]+/g);
+  if (!m || m.length < 3) return rgb;
+  const [r, g, b] = m.slice(0, 3).map((v) => Number(v) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let h = 0;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = (h * 60 + deg + 360) % 360;
+  return `hsl(${h.toFixed(0)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%)`;
+}

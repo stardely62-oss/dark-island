@@ -3,7 +3,7 @@ import { bridge, type Battery, type Bridge, type Cursor, type Media, type Presen
 import { Liquid, type Shape } from "./liquid";
 import { BatteryIcon, Next, Note, Pause, Play, Prev, Speaker } from "./components/Icons";
 import { Bars } from "./components/Bars";
-import { useAccent } from "./accent";
+import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip";
 
@@ -41,6 +41,7 @@ export function App() {
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>("normal");
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
+  const accent2 = useMemo(() => shiftHue(accent, 45), [accent]);
 
   const mode: Mode = expanded
     ? "expanded"
@@ -123,6 +124,10 @@ export function App() {
   // ---- the animation loop ------------------------------------------------
   const pathRef = useRef<SVGPathElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const clipRef = useRef<SVGPathElement>(null);
+  const dropsRef = useRef<SVGPathElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  const blobRefs = [useRef<SVGEllipseElement>(null), useRef<SVGEllipseElement>(null), useRef<SVGEllipseElement>(null)];
   const liquid = useRef<Liquid | null>(null);
   if (!liquid.current) liquid.current = new Liquid(target);
   const drive = useRef({ target, music: 0, reach: true });
@@ -151,7 +156,12 @@ export function App() {
         cursor: c && drive.current.reach ? { x: c.x - cx, y: c.y } : null,
       });
 
-      pathRef.current?.setAttribute("d", L.path(cx));
+      const d = L.path(cx);
+      pathRef.current?.setAttribute("d", d);
+      clipRef.current?.setAttribute("d", d);
+      dropsRef.current?.setAttribute("d", L.dropsPath(cx));
+      dropsRef.current?.setAttribute("opacity", L.dropsOpacity.toFixed(3));
+      paintLight(L, cx, drive.current.target.h > 60, glowRef.current, blobRefs.map((r) => r.current));
       const box = boxRef.current;
       if (box) {
         box.style.width = `${L.w}px`;
@@ -216,8 +226,30 @@ export function App() {
 
   return (
     <div className="stage">
+      <div ref={glowRef} className="glow" style={{ "--a": accent, "--b": accent2 } as React.CSSProperties} />
       <svg className="body" width="100%" height="100%">
-        <path ref={pathRef} />
+        <defs>
+          <clipPath id="island-clip">
+            <path ref={clipRef} />
+          </clipPath>
+          <radialGradient id="light-a">
+            <stop offset="0" stopColor={accent} stopOpacity="1" />
+            <stop offset="0.55" stopColor={accent} stopOpacity="0.35" />
+            <stop offset="1" stopColor={accent} stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="light-b">
+            <stop offset="0" stopColor={accent2} stopOpacity="1" />
+            <stop offset="0.55" stopColor={accent2} stopOpacity="0.35" />
+            <stop offset="1" stopColor={accent2} stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <path ref={pathRef} className="shape" />
+        <g clipPath="url(#island-clip)">
+          <ellipse ref={blobRefs[0]} fill="url(#light-a)" opacity="0" />
+          <ellipse ref={blobRefs[1]} fill="url(#light-b)" opacity="0" />
+          <ellipse ref={blobRefs[2]} fill="url(#light-a)" opacity="0" />
+        </g>
+        <path ref={dropsRef} className="shape" />
       </svg>
       <div
         ref={boxRef}
@@ -248,6 +280,49 @@ export function App() {
       </div>
     </div>
   );
+}
+
+/**
+ * Light inside and around the island, in the colours of the album art:
+ * three soft blobs drift along the lower edge like a lava lamp, each glowing
+ * with its own part of the sound (bass, mids, highs), and a halo below the
+ * island breathes with the music and flares on beats.
+ */
+function paintLight(
+  L: Liquid,
+  cx: number,
+  tall: boolean,
+  glow: HTMLDivElement | null,
+  blobs: (SVGEllipseElement | null)[],
+) {
+  const m = L.music;
+  const lv = L.levels;
+  const parts = [0.6 * lv[0] + 0.4 * lv[1], 0.5 * (lv[2] + lv[3]), 0.5 * (lv[4] + lv[5])];
+  const half = L.w / 2;
+  const reach = Math.max(0, half - 26);
+  const speeds = [0.11, 0.17, 0.23];
+  const phases = [0, 2.1, 4.2];
+  const k = tall ? 1 : 0.7; // a small pill is mostly light already: keep it subtler
+  blobs.forEach((el, i) => {
+    if (!el) return;
+    const level = parts[i];
+    const x = cx + reach * 0.8 * Math.sin(L.t * speeds[i] * Math.PI * 2 + phases[i]);
+    const rx = Math.min(L.w * 0.36, 130) * (0.85 + 0.3 * level);
+    const ry = (tall ? 26 : 18) + 16 * level + 6 * L.beat;
+    el.setAttribute("cx", x.toFixed(1));
+    el.setAttribute("cy", (L.h + 6).toFixed(1));
+    el.setAttribute("rx", rx.toFixed(1));
+    el.setAttribute("ry", ry.toFixed(1));
+    el.setAttribute("opacity", (m * k * (0.12 + 0.55 * level + 0.2 * L.beat)).toFixed(3));
+  });
+  if (glow) {
+    const e = L.energy;
+    glow.style.width = `${L.w * 0.86}px`;
+    glow.style.top = `${L.h - 26}px`;
+    glow.style.left = `${cx}px`;
+    glow.style.opacity = Math.min(1, m * (0.18 + 0.6 * e + 0.35 * L.beat)).toFixed(3);
+    glow.style.transform = `translateX(-50%) scale(${(1 + 0.08 * e + 0.12 * L.beat).toFixed(3)})`;
+  }
 }
 
 /** A view is laid out at its final size and revealed by the growing body. */
