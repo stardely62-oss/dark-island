@@ -2,6 +2,8 @@
 //! other platforms get a stub so the UI can be developed anywhere.
 
 #[cfg(windows)]
+mod classic;
+#[cfg(windows)]
 pub mod devices;
 #[cfg(windows)]
 pub mod drop;
@@ -15,7 +17,7 @@ mod windows;
 pub use self::meter::spawn as spawn_meter;
 #[cfg(windows)]
 pub use self::windows::{
-    AUDIO_PREFS, bring_to_front, capture_monitor, shell_icon, protect, unprotect, mic_toggle, notifications_access, spawn_notifications, controls_get, cursor_pos, exclude_from_capture, launch_app, ocr, utc_offset_secs, mouse_down, power, prepare_window, radio_set, release_focus, run_shell,
+    AUDIO_PREFS, steam_path, run_elevated, run_hidden, vpn_adapter, bring_to_front, capture_monitor, shell_icon, protect, unprotect, mic_toggle, notifications_access, spawn_notifications, controls_get, cursor_pos, exclude_from_capture, launch_app, ocr, utc_offset_secs, mouse_down, power, prepare_window, radio_set, release_focus, run_shell,
     send_paste, set_dark, spawn, spawn_clipboard, start_apps, take_focus, App, Controls,
 };
 
@@ -23,6 +25,6 @@ pub use self::windows::{
 mod stub;
 #[cfg(not(windows))]
 pub use self::stub::{
-    cursor_pos, mouse_down, prepare_window, release_focus, send_paste, spawn, spawn_clipboard, spawn_meter,
+    steam_path, cursor_pos, mouse_down, prepare_window, release_focus, send_paste, spawn, spawn_clipboard, spawn_meter,
     take_focus,
 };

@@ -14,7 +14,7 @@ export const DEFAULTS = {
   weatherOnPill: true,
   rainWarning: true,
   lyrics: false,
-  musicPill: "compact" as "compact" | "wide" | "player" | "lyrics",
+  musicPill: "compact" as "compact" | "wide" | "player" | "lyrics" | "line",
   showNotifications: false,
   notifyMuted: [] as string[],
   vpnCountry: true,
@@ -22,8 +22,25 @@ export const DEFAULTS = {
   hideForApps: [] as string[],
   through: false,
   launcher: [] as Shortcut[],
+  vpnClient: "windows" as "windows" | "warp" | "custom",
+  vpnName: "",
+  vpnOn: "",
+  vpnOff: "",
+  vpnAdmin: false,
+  recordFormat: "mp4" as "mp4" | "gif",
+  recordSound: "none" as "none" | "system" | "mic",
+  obsEnabled: false,
+  obsPort: "4455",
 };
-export type Shortcut = { name: string; kind: "app" | "url" | "path"; target: string };
+export type Shortcut = {
+  name: string;
+  kind: "app" | "url" | "path" | "group";
+  target: string;
+  /** Global hotkey that opens it, e.g. "Ctrl+Alt+Digit1". */
+  hotkey?: string;
+  /** A group's shortcuts. */
+  items?: Shortcut[];
+};
 export type Settings = typeof DEFAULTS & Record<string, unknown>;
 
 export const ENGINES: Record<string, { name: string; url: string }> = {

@@ -141,7 +141,7 @@ fn handle(stream: TcpStream, app: &AppHandle, agents: &Agents, settings: &Settin
     let (path, query) = target.split_once('?').unwrap_or((&target, ""));
     let token_ok = query.split('&').any(|kv| kv == format!("t={}", agents.token));
     let agent = path.strip_prefix(MARK).unwrap_or("");
-    if !token_ok || !matches!(agent, "claude" | "codex") {
+    if !token_ok || !matches!(agent, "claude" | "codex" | "opencode") {
         return reply(stream, 403, "{}");
     }
     let input: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
@@ -149,6 +149,9 @@ fn handle(stream: TcpStream, app: &AppHandle, agents: &Agents, settings: &Settin
         "{}".to_string()
     } else if agent == "claude" {
         claude(app, agents, settings, &input)
+    } else if agent == "opencode" {
+        opencode(app, &input);
+        "{}".to_string()
     } else {
         codex(app, &input);
         "{}".to_string()
@@ -298,6 +301,30 @@ fn codex(app: &AppHandle, input: &Value) {
     }
 }
 
+/// The island's opencode plugin posts {type, session, cwd, detail}.
+fn opencode(app: &AppHandle, input: &Value) {
+    let field = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let state = match field("type").as_str() {
+        "working" => "working",
+        "waiting" => "waiting",
+        "done" => "done",
+        "end" => "end",
+        _ => "info",
+    };
+    emit(
+        app,
+        AgentEvent {
+            agent: "opencode",
+            session: Some(field("session")).filter(|s| !s.is_empty()).unwrap_or_else(|| "opencode".into()),
+            state,
+            project: project(input),
+            detail: short(&field("detail"), 160),
+            ask_id: 0,
+            seconds: 0,
+        },
+    );
+}
+
 // --------------------------------------------------- connect / disconnect ----
 
 fn home() -> Option<PathBuf> {
@@ -325,10 +352,61 @@ const CLAUDE_EVENTS: &[(&str, u32)] = &[
     ("SessionEnd", 5),
 ];
 
+/// opencode loads every .js file in its global plugin folder.
+fn opencode_plugin() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| home().map(|h| h.join(".config")))?;
+    let dir = base.join("opencode");
+    // Newer versions call the folder "plugins"; use whichever is there.
+    let sub = if dir.join("plugins").is_dir() { "plugins" } else { "plugin" };
+    Some(dir.join(sub).join("dark-island.js"))
+}
+
+const OPENCODE_PLUGIN: &str = r#"// Dark Island: shows what opencode is doing on the island.
+// Added by Dark Island; delete this file (or press "Отключить" there) to stop.
+const URL = "__URL__";
+const send = (body) =>
+  fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+
+export const DarkIsland = async ({ directory }) => ({
+  event: async ({ event }) => {
+    const p = event.properties ?? {};
+    const session = p.sessionID ?? p.info?.id ?? "";
+    switch (event.type) {
+      case "session.idle":
+        return send({ type: "done", session, cwd: directory, detail: "" });
+      case "session.error":
+        return send({ type: "info", session, cwd: directory, detail: "Ошибка в сессии" });
+      case "session.deleted":
+        return send({ type: "end", session, cwd: directory });
+      case "permission.updated":
+      case "permission.asked":
+        return send({ type: "waiting", session, cwd: directory, detail: p.title ?? "Нужно разрешение" });
+    }
+  },
+  "tool.execute.before": async (input) => {
+    send({ type: "working", session: input.sessionID ?? "", cwd: directory, detail: input.tool ?? "" });
+  },
+});
+"#;
+
+/// Writes or deletes the island's plugin for opencode.
+pub fn connect_opencode(agents: &Agents, on: bool) -> Result<(), String> {
+    let path = opencode_plugin().ok_or("нет папки пользователя")?;
+    if !on {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, OPENCODE_PLUGIN.replace("__URL__", &agents.url("opencode"))).map_err(|e| e.to_string())
+}
+
 #[derive(Serialize)]
 pub struct Connections {
     pub claude: bool,
     pub codex: bool,
+    pub opencode: bool,
     /// Codex already has a `notify` program of its own.
     pub codex_busy: bool,
 }
@@ -340,7 +418,8 @@ pub fn connections() -> Connections {
     let toml = codex_config().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
     let codex = toml.contains(MARK);
     let codex_busy = !codex && toml.lines().any(|l| l.trim_start().starts_with("notify"));
-    Connections { claude, codex, codex_busy }
+    let opencode = opencode_plugin().is_some_and(|p| p.exists());
+    Connections { claude, codex, codex_busy, opencode }
 }
 
 fn backup(path: &PathBuf) {

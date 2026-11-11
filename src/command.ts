@@ -164,6 +164,7 @@ export type SystemCmd = { id: string; title: string; words: string[] };
 export const SYSTEM: SystemCmd[] = [
   { id: "wifi", title: "Wi-Fi: включить или выключить", words: ["wifi", "wi-fi", "вайфай", "вай-фай"] },
   { id: "bluetooth", title: "Bluetooth: включить или выключить", words: ["bluetooth", "блютуз", "блютус"] },
+  { id: "vpn", title: "VPN: включить или выключить", words: ["vpn", "впн"] },
   { id: "dark", title: "Тема Windows: тёмная или светлая", words: ["тема", "theme", "dark", "тёмная", "темная"] },
   { id: "lock", title: "Заблокировать компьютер", words: ["lock", "заблокировать", "блокировка"] },
   { id: "sleep", title: "Сон", words: ["sleep", "сон", "спать"] },

@@ -299,6 +299,8 @@ struct KeysEvent {
 #[derive(Default)]
 struct MediaWatcher {
     manager: Option<SessionManager>,
+    /// Set while the shown track comes from Winamp or AIMP.
+    classic: Option<super::classic::Player>,
     key: String,
     cover: Option<String>,
     cover_tries: u8,
@@ -313,6 +315,9 @@ impl MediaWatcher {
     }
 
     fn act(&mut self, action: MediaAction) {
+        if let Some(p) = self.classic {
+            return super::classic::act(p, action);
+        }
         let Some(s) = self.session() else { return };
         let op = match action {
             MediaAction::Toggle => s.TryTogglePlayPauseAsync(),
@@ -324,7 +329,24 @@ impl MediaWatcher {
         }
     }
 
+    /// The system media panel's track, unless it is idle and Winamp or AIMP plays.
     fn read(&mut self) -> Option<Media> {
+        let sys = self.read_system();
+        if sys.as_ref().is_some_and(|m| m.playing) {
+            self.classic = None;
+            return sys;
+        }
+        let player = super::classic::find();
+        let classic = player.and_then(|p| super::classic::read(p, now_ms()));
+        if classic.as_ref().is_some_and(|m| m.playing) || (sys.is_none() && classic.is_some()) {
+            self.classic = player;
+            return classic;
+        }
+        self.classic = None;
+        sys
+    }
+
+    fn read_system(&mut self) -> Option<Media> {
         let s = self.session()?;
         let props = s.TryGetMediaPropertiesAsync().ok()?.join().ok()?;
         let title = props.Title().ok()?.to_string_lossy();
@@ -1183,6 +1205,29 @@ unsafe fn reg_qword(root: HKEY, path: &str, name: &str) -> Option<u64> {
     Some(v)
 }
 
+unsafe fn reg_string(root: HKEY, path: &str, name: &str) -> Option<String> {
+    let mut buf = [0u16; 1024];
+    let mut size = (buf.len() * 2) as u32;
+    RegGetValueW(
+        root,
+        &HSTRING::from(path),
+        &HSTRING::from(name),
+        windows::Win32::System::Registry::RRF_RT_REG_SZ,
+        None,
+        Some(buf.as_mut_ptr() as *mut _),
+        Some(&mut size),
+    )
+    .ok()
+    .ok()?;
+    let len = (size as usize / 2).saturating_sub(1);
+    Some(String::from_utf16_lossy(&buf[..len]))
+}
+
+/// Where Steam is installed, if it is.
+pub fn steam_path() -> Option<String> {
+    unsafe { reg_string(HKEY_CURRENT_USER, "Software\\Valve\\Steam", "SteamPath") }
+}
+
 /// Apps using the microphone or the camera right now, from Windows' own
 /// privacy records (the same source as the mic icon in the taskbar).
 pub fn in_use(device: &str) -> Vec<String> {
@@ -1524,4 +1569,30 @@ pub fn running_exes() -> std::collections::HashSet<String> {
         let _ = CloseHandle(snap);
     }
     out
+}
+
+/// Runs a command line hidden, asking for administrator rights (UAC).
+pub fn run_elevated(cmd: &str) -> bool {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+    let args = HSTRING::from(format!("/c {cmd}"));
+    let r = unsafe { ShellExecuteW(None, w!("runas"), w!("cmd.exe"), &args, None, SW_HIDE) };
+    r.0 as isize > 32
+}
+
+/// Runs a command line hidden and waits; Ok with its output, Err with it on failure.
+pub fn run_hidden(cmd: &str) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("cmd.exe")
+        .raw_arg(format!("/c {cmd}"))
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
+    if out.status.success() {
+        Ok(text)
+    } else {
+        Err(text.trim().chars().take(300).collect())
+    }
 }

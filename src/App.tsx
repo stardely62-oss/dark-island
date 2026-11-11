@@ -31,7 +31,7 @@ import { SettingsTab } from "./panels/Settings";
 import { CommandBar, commandHeight } from "./panels/CommandBar";
 import { applyTheme, useSettings, type Shortcut } from "./settings";
 import { WeatherTab } from "./panels/Weather";
-import { Launcher } from "./panels/Launcher";
+import { Launcher, useLauncherHotkeys } from "./panels/Launcher";
 import { AiTab } from "./panels/Ai";
 import { nextRepeat, type Reminder } from "./reminders";
 import { fmtTemp, rainSoon, type Weather } from "./weather";
@@ -43,9 +43,9 @@ import { Bars } from "./components/Bars";
 import { Buddy, animateBuddies, buddy, climbOut, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs";
 type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "ai" | "controls" | "settings";
-type MusicPill = "compact" | "wide" | "player" | "lyrics";
+type MusicPill = "compact" | "wide" | "player" | "lyrics" | "line";
 type Card = {
   key: number;
   kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify" | "reminder";
@@ -53,7 +53,7 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { path?: string; url?: string; app?: string; reveal?: string };
+  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -95,6 +95,8 @@ function sizeOf(
       return { w: 230, h: 34 };
     case "recording":
       return { w: 180, h: 32 };
+    case "obs":
+      return { w: 210, h: 32 };
     case "command":
       return { w: 560, h: commandHeight(opts.rows ?? 0) };
     case "ask":
@@ -122,6 +124,8 @@ function sizeOf(
           ? { w: 360, h: 44 }
           : opts.music === "lyrics"
             ? { w: 410, h: 38 }
+            : opts.music === "line"
+              ? { w: 380, h: 32 }
             : { w: 236, h: 34 };
     case "hud":
       return { w: 236, h: 34 };
@@ -171,15 +175,19 @@ export function App() {
   const [working, setWorking] = useState<Record<string, AgentEvent & { at: number }>>({});
   const [ask, setAsk] = useState<AgentEvent | null>(null);
   const [settings, setSetting] = useSettings(api);
+  const launcherFailed = useLauncherHotkeys(api, settings.launcher as Shortcut[]);
   const [weather, setWeather] = useState<Weather | null>(null);
   const [privacy, setPrivacy] = useState<{ mic: string[]; cam: string[]; micMuted: boolean }>({ mic: [], cam: [], micMuted: false });
-  const [downloads, setDownloads] = useState<{ name: string; size: number; speed: number }[]>([]);
+  const [downloads, setDownloads] = useState<{ name: string; size: number; speed: number; total: number }[]>([]);
+  const obsLive = useRef(false);
+  const [obs, setObs] = useState<{ recording: boolean; streaming: boolean; paused: boolean; since: number } | null>(null);
   const [foreground, setForeground] = useState("");
   const [lyrics, setLyrics] = useState<Line[] | null>(null);
   const musicPill = settings.musicPill as MusicPill;
   const [dictation, setDictation] = useState<{ state: string; level: number } | null>(null);
   const [recording, setRecording] = useState<number | null>(null);
   const [aiAsk, setAiAsk] = useState<string | null>(null);
+  const [aiTool, setAiTool] = useState<{ text: string; action: "translate" } | null>(null);
   const reminders = (settings.reminders as Reminder[] | undefined) ?? [];
   useEffect(() => applyTheme((settings.islandTheme as string) ?? "dark"), [settings.islandTheme]);
   const cardScale = settings.cardLength === "short" ? 0.7 : settings.cardLength === "long" ? 1.8 : 1;
@@ -231,6 +239,8 @@ export function App() {
                 ? "strip"
                 : agentBusy
                   ? "agent"
+                  : obs
+                  ? "obs"
                   : downloads.length
                     ? "download"
                     : timer.active
@@ -247,7 +257,7 @@ export function App() {
         tab,
         rows: commandRows,
         card,
-        music: musicPill === "lyrics" && !lyrics?.length ? "wide" : musicPill,
+        music: (musicPill === "lyrics" || musicPill === "line") && !lyrics?.length ? "wide" : musicPill,
         temp: !!weather && settings.weatherOnPill,
         launcher: launcherOn,
         fit: FIT.includes(tab) ? fits[tab] : undefined,
@@ -344,6 +354,15 @@ export function App() {
         }),
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
+        b.on("vpn_error", (e) => showCard({ kind: "info", title: "VPN", sub: e, ms: 3500 })),
+        b.on("obs", (o) => {
+          const live = o.recording || o.streaming;
+          if (live !== obsLive.current) buddy.react(live ? "surprised" : "happy", 1100);
+          obsLive.current = live;
+          setObs((prev) =>
+            live ? { recording: o.recording, streaming: o.streaming, paused: o.paused, since: prev?.since ?? Date.now() } : null,
+          );
+        }),
         b.on("download_done", (d) =>
           (buddy.react("happy", 1300), showCard)({ kind: "capture", title: "Загружено", sub: d.name, open: { reveal: d.path }, ms: 5000 }),
         ),
@@ -395,7 +414,8 @@ export function App() {
           const first = r.text.split("\n")[0];
           if (r.kind === "shot")
             showCard({ kind: "capture", title: "Снимок готов", sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
-          else if (r.kind === "text") showCard({ kind: "capture", title: "Текст скопирован", sub: first, ms: 4000 });
+          else if (r.kind === "text")
+            showCard({ kind: "capture", title: "Текст скопирован", sub: first, open: { translate: r.text }, ms: 6000 });
           else if (r.kind === "qr")
             showCard({
               kind: "capture",
@@ -458,7 +478,7 @@ export function App() {
   };
 
   // Song lyrics, only for the song that plays and only when turned on.
-  const songKey = media && settings.lyrics ? `${media.artist}\u0001${media.title}` : "";
+  const songKey = media && (settings.lyrics || musicPill === "lyrics" || musicPill === "line") ? `${media.artist}\u0001${media.title}` : "";
   useEffect(() => {
     setLyrics(null);
     if (!songKey || !api || !media) return;
@@ -531,7 +551,7 @@ export function App() {
   // ---- agents ----------------------------------------------------------------
   const onAgentRef = useRef<(e: AgentEvent) => void>(() => {});
   onAgentRef.current = (e: AgentEvent) => {
-    const name = e.agent === "codex" ? "Codex" : "Claude";
+    const name = AGENT_NAMES[e.agent ?? "claude"] ?? "Claude";
     const where = e.project ? ` · ${e.project}` : "";
     const stopWorking = () =>
       setWorking((w) => {
@@ -648,6 +668,14 @@ export function App() {
         }
         if (id === "lock" || id === "sleep") {
           api?.call("power", { action: id });
+          return;
+        }
+        if (id === "vpn") {
+          api?.call<string | null>("vpn_status").then((now) =>
+            api
+              ?.call("vpn_set", { on: !now })
+              .catch((e) => showCard({ kind: "info", title: "VPN", sub: String(e), ms: 3500 })),
+          );
           return;
         }
         api?.call<{ wifi: boolean; bluetooth: boolean; dark: boolean }>("controls_get").then((c) => {
@@ -861,6 +889,12 @@ export function App() {
             if (card.open.url) api?.call("open_url", { url: card.open.url });
             if (card.open.app) api?.call("app_launch", { id: card.open.app });
             if (card.open.reveal) api?.call("reveal_path", { path: card.open.reveal });
+            if (card.open.translate) {
+              setAiTool({ text: card.open.translate, action: "translate" });
+              setTab("ai");
+              setSuppressed(false);
+              setPinned(true);
+            }
             setCard(null);
           } else if (card?.sticky) setCard(null);
           else if (!expanded) {
@@ -872,7 +906,7 @@ export function App() {
         <View on={mode === "idle"} shape={sizeOf("idle", { battery: !!battery, temp: !!weather && settings.weatherOnPill })}>
           <Idle battery={battery} sleeping={sleeping} weather={settings.weatherOnPill ? weather : null} />
         </View>
-        {(["compact", "wide", "player", "lyrics"] as MusicPill[]).map((style) => (
+        {(["compact", "wide", "player", "lyrics", "line"] as MusicPill[]).map((style) => (
           <View key={style} on={mode === "media" && target.w === sizeOf("media", { music: style }).w} shape={sizeOf("media", { music: style })}>
             {media && <CompactMedia media={media} accent={accent} live={live} style={style} api={api} lyrics={lyrics} />}
           </View>
@@ -882,6 +916,9 @@ export function App() {
         </View>
         <View on={mode === "recording"} shape={sizeOf("recording")}>
           {recording && <RecordingPill since={recording} />}
+        </View>
+        <View on={mode === "obs"} shape={sizeOf("obs")}>
+          {obs && <ObsPill obs={obs} />}
         </View>
         <View on={mode === "download"} shape={sizeOf("download")}>
           <DownloadPill list={downloads} />
@@ -909,6 +946,7 @@ export function App() {
             lyrics={lyrics}
             launcher={settings.launcher as Shortcut[]}
             setLauncher={(l) => setSetting({ launcher: l })}
+            launcherFailed={launcherFailed}
             onTypeStart={takeFocus}
           />,
         )}
@@ -924,6 +962,8 @@ export function App() {
             onTypeStart={takeFocus}
             ask={aiAsk}
             onAsked={() => setAiAsk(null)}
+            tool={aiTool}
+            onTool={() => setAiTool(null)}
             openSettings={() => setTab("settings")}
           />,
         )}
@@ -948,6 +988,9 @@ export function App() {
               else api?.call("capture_start", { mode: m });
             }}
             micMuted={privacy.micMuted}
+            through={!!settings.through}
+            onThrough={(v) => setSetting({ through: v })}
+            vpnClient={settings.vpnClient}
             onMic={() =>
               api?.call<boolean | null>("mic_toggle").then((m) => {
                 if (m === null || m === undefined) return;
@@ -1086,7 +1129,7 @@ function CardView({ card, onDone, onSnooze }: { card: Card; onDone: () => void; 
           <div className="card-title">{card.title}</div>
           {card.sub && <div className="agent-sub">{card.sub}</div>}
         </div>
-        {card.open && <span className="card-open">{card.open.reveal ? "Показать" : "Открыть"}</span>}
+        {card.open && <span className="card-open">{card.open.translate ? "Перевести" : card.open.reveal ? "Показать" : "Открыть"}</span>}
       </div>
     );
   }
@@ -1259,7 +1302,7 @@ function CompactMedia({
   api: Bridge | null;
   lyrics: Line[] | null;
 }) {
-  const pos = usePosition(media, style === "lyrics" ? 200 : 1000);
+  const pos = usePosition(media, style === "lyrics" || style === "line" ? 200 : 1000);
   const progress = media.durationMs ? pos / media.durationMs : 0;
   if (style === "compact") {
     return (
@@ -1292,8 +1335,18 @@ function CompactMedia({
       </div>
     );
   }
-  const i = style === "lyrics" && lyrics?.length ? lineAt(lyrics, pos) : -1;
+  const i = (style === "lyrics" || style === "line") && lyrics?.length ? lineAt(lyrics, pos) : -1;
   const line = i >= 0 ? lyrics![i].text || "♪" : null;
+  if (style === "line" && line !== null) {
+    // Only the words: the line that sounds now, in the cover's colour.
+    return (
+      <div className="compact line-media" style={{ "--accent": accent } as React.CSSProperties}>
+        <div className="line-lyric" key={i}>
+          {line}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="compact wide-media">
       <Cover src={media.cover} size={24} radius={6} />
@@ -1317,18 +1370,35 @@ function CompactMedia({
   );
 }
 
-function DownloadPill({ list }: { list: { name: string; size: number; speed: number }[] }) {
+function ObsPill({ obs }: { obs: { recording: boolean; streaming: boolean; paused: boolean; since: number } }) {
+  const now = useClock(500);
+  const s = Math.max(0, Math.floor((now.getTime() - obs.since) / 1000));
+  const h = Math.floor(s / 3600);
+  const t = `${h ? `${h}:` : ""}${String(Math.floor(s / 60) % 60).padStart(h ? 2 : 1, "0")}:${String(s % 60).padStart(2, "0")}`;
+  return (
+    <div className={`compact obs-pill ${obs.paused ? "paused" : ""}`} title="OBS Studio">
+      <span className="obs-logo">OBS</span>
+      {obs.streaming && <span className="obs-badge live">LIVE</span>}
+      {obs.recording && <span className={`obs-badge rec ${obs.paused ? "paused" : ""}`}>{obs.paused ? "ПАУЗА" : "REC"}</span>}
+      <span className="time">{t}</span>
+    </div>
+  );
+}
+
+function DownloadPill({ list }: { list: { name: string; size: number; speed: number; total: number }[] }) {
   const first = list[0];
   if (!first) return null;
   const mb = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} ГБ` : `${(b / (1 << 20)).toFixed(1)} МБ`);
+  const pct = first.total > 0 ? Math.min(100, Math.floor((first.size / first.total) * 100)) : null;
   return (
-    <div className="compact download-pill">
+    <div className="compact download-pill" style={pct !== null ? ({ "--dl": `${pct}%` } as React.CSSProperties) : undefined}>
+      {pct !== null && <i className="dl-progress" />}
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd0ff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M12 4v11M7 10.5 12 15.5l5-5M5 20h14" />
       </svg>
       <span className="dl-name">{list.length > 1 ? `Загрузок: ${list.length}` : first.name}</span>
       <span className="dl-size">
-        {mb(first.size)}
+        {pct !== null ? `${pct}%` : mb(first.size)}
         {first.speed > 0 ? ` · ${mb(first.speed)}/с` : ""}
       </span>
     </div>
@@ -1364,6 +1434,7 @@ function HomeTab({
   lyrics,
   launcher,
   setLauncher,
+  launcherFailed,
   onTypeStart,
 }: {
   api: Bridge | null;
@@ -1376,6 +1447,7 @@ function HomeTab({
   lyrics: Line[] | null;
   launcher: Shortcut[];
   setLauncher: (l: Shortcut[]) => void;
+  launcherFailed: string[];
   onTypeStart: () => void;
 }) {
   const now = useClock(500);
@@ -1435,10 +1507,12 @@ function HomeTab({
       {volume && (
         <VolumeRow api={api} volume={volume} setVolume={setVolume} media={media} />
       )}
-      <Launcher api={api} items={launcher} setItems={setLauncher} onTypeStart={onTypeStart} />
+      <Launcher api={api} items={launcher} setItems={setLauncher} failed={launcherFailed} onTypeStart={onTypeStart} />
     </>
   );
 }
+
+const AGENT_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex", opencode: "opencode" };
 
 function appName(id: string) {
   const s = id.toLowerCase();
@@ -1460,7 +1534,7 @@ function appName(id: string) {
 function AgentPill({ working }: { working: Record<string, AgentEvent & { at: number }> }) {
   const list = Object.values(working);
   const first = list[0];
-  const name = first?.agent === "codex" ? "Codex" : "Claude";
+  const name = AGENT_NAMES[first?.agent ?? "claude"] ?? "Claude";
   return (
     <div className="compact agent-pill">
       <Buddy size={24} mood="work" />
@@ -1485,7 +1559,7 @@ function AskCard({ ask, onAnswer }: { ask: AgentEvent; onAnswer: (allow: boolean
     const id = window.setInterval(() => setLeft(Math.max(0, ask.seconds - Math.floor((Date.now() - t0) / 1000))), 250);
     return () => clearInterval(id);
   }, [ask]);
-  const name = ask.agent === "codex" ? "Codex" : "Claude";
+  const name = AGENT_NAMES[ask.agent ?? "claude"] ?? "Claude";
   return (
     <div className="ask">
       <div className="ask-head">

@@ -28,7 +28,12 @@ export function providerOf(s: Settings): Provider {
   };
 }
 
-export type AiMsg = { role: "user" | "assistant"; text: string; images?: string[] };
+export type AiDoc = { name: string; text: string };
+export type AiMsg = { role: "user" | "assistant"; text: string; images?: string[]; docs?: AiDoc[] };
+
+/** What the model reads: attached documents go before the question. */
+export const msgText = (m: AiMsg) =>
+  m.docs?.length ? `${m.docs.map((d) => `<документ name="${d.name}">\n${d.text}\n</документ>`).join("\n\n")}\n\n${m.text}` : m.text;
 
 /** Runs a streamed request; `onText` gets the whole text so far. */
 export function useAi(api: Bridge | null) {
@@ -60,7 +65,7 @@ export function useAi(api: Bridge | null) {
         id,
         provider,
         system,
-        messages: messages.map((m) => ({ role: m.role, text: m.text, images: m.images ?? [] })),
+        messages: messages.map((m) => ({ role: m.role, text: msgText(m), images: m.images ?? [] })),
       }).catch((e) => {
         handlers.current.delete(id);
         onDone(String(e));

@@ -3,7 +3,7 @@ import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
 
-type Conn = { claude: boolean; codex: boolean; codex_busy: boolean };
+type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean };
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -65,16 +65,18 @@ export function SettingsTab({
   const [models, setModels] = useState<string[]>([]);
   const [modelErr, setModelErr] = useState<string | null>(null);
   const [devices, setDevices] = useState<{ outputs: { id: string; name: string; default: boolean }[]; inputs: { id: string; name: string; default: boolean }[] }>({ outputs: [], inputs: [] });
+  const [vpnNames, setVpnNames] = useState<string[]>([]);
   const [monitors, setMonitors] = useState<{ index: number; name: string; width: number; height: number; primary: boolean }[]>([]);
   const refreshKeys = () =>
     api
-      ?.call<Record<string, boolean>>("ai_key_status", { ids: [...PROVIDERS.map((p) => p.id), "imgbb", "imgur"] })
+      ?.call<Record<string, boolean>>("ai_key_status", { ids: [...PROVIDERS.map((p) => p.id), "imgbb", "imgur", "obs"] })
       .then((m) => setKeyStatus(m ?? {}));
   useEffect(() => {
     if (!visible) return;
     refreshKeys();
     api?.call<typeof monitors>("monitors_list").then((m) => setMonitors(m ?? []));
     api?.call<typeof devices>("audio_devices").then((d) => d && setDevices(d));
+    api?.call<string[]>("vpn_names").then((n) => setVpnNames(n ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, visible]);
   const provider = providerOf(settings);
@@ -113,7 +115,7 @@ export function SettingsTab({
   }, [api, visible]);
   useEffect(() => setSkip(settings.clipSkipApps.join(", ")), [settings.clipSkipApps]);
 
-  const connect = (which: "claude" | "codex", on: boolean) => {
+  const connect = (which: "claude" | "codex" | "opencode", on: boolean) => {
     setErr(null);
     api
       ?.call<Conn>("agents_connect", { which, on })
@@ -271,7 +273,30 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group">Запись экрана (Ctrl+Alt+R)</div>
-      <Row title="Кадров в секунду" sub="MP4 (H.264) в «Видео → Dark Island»">
+      <Row title="Формат" sub="Файлы в «Видео → Dark Island»; GIF — 12 кадров в секунду, без звука">
+        <Segmented
+          value={settings.recordFormat}
+          options={[
+            ["mp4", "MP4"],
+            ["gif", "GIF"],
+          ]}
+          onChange={(v) => set({ recordFormat: v })}
+        />
+      </Row>
+      {settings.recordFormat !== "gif" && (
+        <Row title="Звук в записи">
+          <Segmented
+            value={settings.recordSound}
+            options={[
+              ["none", "Без звука"],
+              ["system", "Компьютер"],
+              ["mic", "Микрофон"],
+            ]}
+            onChange={(v) => set({ recordSound: v })}
+          />
+        </Row>
+      )}
+      {settings.recordFormat !== "gif" && <Row title="Кадров в секунду" sub="H.264">
         <Segmented
           value={String((settings.recordFps as number) ?? 30)}
           options={[
@@ -280,7 +305,7 @@ export function SettingsTab({
           ]}
           onChange={(v) => set({ recordFps: Number(v) })}
         />
-      </Row>
+      </Row>}
       <Row title="Качество">
         <Segmented
           value={(settings.recordQuality as string) ?? "normal"}
@@ -331,7 +356,7 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group">Музыка</div>
-      <Row title="Пилюля во время музыки">
+      <Row title="Пилюля во время музыки" sub="«Текст» и «Только слова» — когда включён текст песни и он нашёлся">
         <Segmented
           value={settings.musicPill as string}
           options={[
@@ -339,6 +364,7 @@ export function SettingsTab({
             ["wide", "Широкая"],
             ["player", "Плеер"],
             ["lyrics", "Текст"],
+            ["line", "Только слова"],
           ]}
           onChange={(v) => set({ musicPill: v as "compact" })}
         />
@@ -389,6 +415,61 @@ export function SettingsTab({
       <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, только когда VPN включается">
         <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
+      <Row title="Чем включать VPN" sub="Плитка в «Управлении», команда «vpn» и Ctrl+Alt+P">
+        <Segmented
+          value={settings.vpnClient}
+          options={[
+            ["windows", "Windows"],
+            ["warp", "WARP"],
+            ["custom", "Свои команды"],
+          ]}
+          onChange={(v) => set({ vpnClient: v })}
+        />
+      </Row>
+      {settings.vpnClient === "windows" && (
+        <Row title="Подключение" sub={vpnNames.length ? "Из Параметры → Сеть → VPN" : "В Windows нет VPN-подключений"}>
+          {vpnNames.length ? (
+            <select className="search set-input select" value={settings.vpnName} onChange={(e) => set({ vpnName: e.target.value })}>
+              <option value="">не выбрано</option>
+              {vpnNames.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button className="text-btn solid" onClick={() => api?.call("open_windows_settings", { page: "vpn" })}>
+              Добавить
+            </button>
+          )}
+        </Row>
+      )}
+      {settings.vpnClient === "custom" && (
+        <>
+          <Row title="Команда включения" sub="Например: wg-quick up или C:\Program Files\Client\cli.exe connect">
+            <input className="search set-input" defaultValue={settings.vpnOn} onFocus={onTypeStart} onBlur={(e) => set({ vpnOn: e.target.value })} />
+          </Row>
+          <Row title="Команда выключения">
+            <input className="search set-input" defaultValue={settings.vpnOff} onFocus={onTypeStart} onBlur={(e) => set({ vpnOff: e.target.value })} />
+          </Row>
+          <Row title="От администратора" sub="Windows спросит разрешение при каждом переключении">
+            <Toggle on={!!settings.vpnAdmin} onChange={(v) => set({ vpnAdmin: v })} />
+          </Row>
+        </>
+      )}
+
+      <div className="set-group">OBS Studio</div>
+      <Row title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">
+        <Toggle on={!!settings.obsEnabled} onChange={(v) => set({ obsEnabled: v })} />
+      </Row>
+      {settings.obsEnabled && (
+        <>
+          <Row title="Порт">
+            <input className="search set-input narrow" defaultValue={settings.obsPort} onFocus={onTypeStart} onBlur={(e) => set({ obsPort: e.target.value.trim() || "4455" })} />
+          </Row>
+          {keyRow({ id: "obs", title: "Пароль сервера", sub: "Если в OBS включена аутентификация" })}
+        </>
+      )}
 
       <div className="set-group">ИИ-агенты в терминале</div>
       <Row title="Claude Code" sub={conn?.claude ? "Подключён: остров видит, что он делает" : "Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом"}>
@@ -399,6 +480,11 @@ export function SettingsTab({
       <Row title="Codex" sub={conn?.codex ? "Подключён: остров узнаёт, когда он закончил" : conn?.codex_busy ? "У Codex уже есть свой notify в config.toml" : "Остров добавит notify в ~/.codex/config.toml"}>
         <button className="text-btn solid" disabled={!conn?.codex && conn?.codex_busy} onClick={() => connect("codex", !conn?.codex)}>
           {conn?.codex ? "Отключить" : "Подключить"}
+        </button>
+      </Row>
+      <Row title="opencode" sub={conn?.opencode ? "Подключён: работа, вопросы и конец ответа видны на острове" : "Остров положит свой плагин в ~/.config/opencode — перезапусти opencode после подключения"}>
+        <button className="text-btn solid" onClick={() => connect("opencode", !conn?.opencode)}>
+          {conn?.opencode ? "Отключить" : "Подключить"}
         </button>
       </Row>
       {err && <div className="set-error">{err}</div>}
@@ -470,6 +556,7 @@ export function SettingsTab({
         <span>Ctrl+Alt+D</span> голос в текст
         <span>Ctrl+Alt+R</span> запись экрана
         <span>Ctrl+Alt+Shift+V</span> вставить без форматирования
+        <span>Ctrl+Alt+P</span> VPN: включить и выключить
       </div>
     </div>
   );

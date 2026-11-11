@@ -39,7 +39,9 @@ type Events = {
   privacy: { mic: string[]; cam: string[]; micMuted: boolean };
   mic_muted: boolean;
   vpn: { on: boolean; name: string | null; country?: string; ip?: string };
-  downloads: { name: string; size: number; speed: number }[];
+  downloads: { name: string; size: number; speed: number; total: number }[];
+  vpn_error: string;
+  obs: { connected: boolean; recording: boolean; streaming: boolean; paused: boolean };
   download_done: { name: string; path: string; size: number };
   notification: { app: string; aumid: string; title: string; body: string };
   foreground: string;
@@ -66,7 +68,7 @@ export type Clip = {
   at: number;
 };
 export type AgentEvent = {
-  agent: "claude" | "codex";
+  agent: "claude" | "codex" | "opencode";
   session: string;
   state: "working" | "ask" | "waiting" | "done" | "end" | "info";
   project: string;
@@ -237,9 +239,26 @@ function mockBridge(): Bridge {
     clips = [];
     shelf = [];
   }
- const mockSettings: Record<string, unknown> = {};
+  const mockSettings: Record<string, unknown> = {};
+  if (params.has("launcher"))
+    mockSettings.launcher = [
+      { name: "Telegram", kind: "app", target: "tg", hotkey: "Ctrl+Alt+Digit1" },
+      {
+        name: "Работа",
+        kind: "group",
+        target: "group:1",
+        items: [
+          { name: "VS Code", kind: "app", target: "code" },
+          { name: "github.com", kind: "url", target: "github.com" },
+          { name: "Проекты", kind: "path", target: "C:\\Projects" },
+        ],
+      },
+      { name: "Steam", kind: "app", target: "steam" },
+    ];
+  if (params.get("pill")) Object.assign(mockSettings, { musicPill: params.get("pill"), lyrics: true });
   const mockControls = { wifi: true, ssid: "Home-5G", bluetooth: true, dark: true };
   let note = "Идеи:\n— остров под музыку ✓\n— Клодик ✓\n— буфер обмена";
+  let mockVpn: string | null = null;
   const calls: Record<string, (a: Record<string, unknown>) => unknown> = {
     clip_list: () => clips,
     clip_use: () => true,
@@ -267,8 +286,8 @@ function mockBridge(): Bridge {
       Object.assign(mockSettings, a.patch);
       return mockSettings;
     },
-    agents_connections: () => ({ claude: false, codex: false, codex_busy: false }),
-    agents_connect: (a) => ({ claude: a.which === "claude" && a.on, codex: a.which === "codex" && a.on, codex_busy: false }),
+    agents_connections: () => ({ claude: false, codex: false, codex_busy: false, opencode: false }),
+    agents_connect: (a) => ({ claude: a.which === "claude" && a.on, codex: a.which === "codex" && a.on, codex_busy: false, opencode: a.which === "opencode" && a.on }),
     agents_answer: (a) => {
       emit("agent", { agent: "claude", session: "s1", state: "working", project: "dark-island", detail: "", askId: 0, seconds: 0 });
       return a;
@@ -315,6 +334,13 @@ function mockBridge(): Bridge {
       { id: "3", name: "JBL Flip 6", connected: false, battery: null, audio: true, container: "c" },
     ],
     bt_connect: () => null,
+    vpn_status: () => mockVpn,
+    vpn_names: () => ["Офис"],
+    vpn_set: (a) => {
+      mockVpn = a.on ? "Офис" : null;
+    },
+    launcher_hotkeys: () => [],
+    doc_pick: () => [{ name: "Отчёт.pdf", text: "Выручка за ноябрь выросла на 12%…", error: null }],
     ai_key_status: (a) => Object.fromEntries((a.ids as string[]).map((i) => [i, i === "anthropic"])),
     ai_key_set: () => null,
     ai_chat: (a) => {
@@ -331,6 +357,9 @@ function mockBridge(): Bridge {
       note = a.text as string;
     },
   };
+
+  if (params.has("obs")) setTimeout(() => emit("obs", { connected: true, recording: true, streaming: false, paused: false }), 300);
+  if (params.has("steam")) setTimeout(() => emit("downloads", [{ name: "Counter-Strike 2", size: 21e9, speed: 42e6, total: 34e9 }]), 300);
 
   return {
     call: async (cmd, args) => structuredClone(calls[cmd]?.(args ?? {})) as never,

@@ -102,3 +102,17 @@ pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
 pub fn shell_icon(_name: &str, _size: i32) -> Option<String> {
     None
 }
+
+pub fn run_elevated(_cmd: &str) -> bool {
+    false
+}
+pub fn run_hidden(_cmd: &str) -> Result<String, String> {
+    Err("только в Windows".into())
+}
+pub fn vpn_adapter() -> Option<String> {
+    None
+}
+
+pub fn steam_path() -> Option<String> {
+    None
+}

@@ -15,6 +15,8 @@ const LOCK = line(<><rect x="5" y="11" width="14" height="9.5" rx="2" /><path d=
 const SLEEP = line(<path d="M14 4h6l-6 7h6M4 12h5l-5 6h5" />);
 const RESTART = line(<><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v4.5h-4.5" /></>);
 const MIC = line(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
+const SHIELD = line(<><path d="M12 3 5 6v5.5c0 4.3 3 7.8 7 9.5 4-1.7 7-5.2 7-9.5V6Z" /><path d="m9 12 2.2 2.2L15.5 10" /></>);
+const THROUGH = line(<><path d="M5 4.5 11 19l2.2-6.2L19.5 10.6Z" /><path d="m13.5 13.5 5 5" /></>);
 const POWER = line(<><path d="M12 3v8.5" /><path d="M6.5 6.8a7.5 7.5 0 1 0 11 0" /></>);
 
 /** Wi-Fi, Bluetooth and the dark theme in one press; lock, sleep, restart, shut down. */
@@ -35,6 +37,9 @@ export function ControlsTab({
   onCopyColor,
   micMuted,
   onMic,
+  through,
+  onThrough,
+  vpnClient,
 }: {
   api: Bridge | null;
   visible: boolean;
@@ -43,6 +48,9 @@ export function ControlsTab({
   onCopyColor: (c: string) => void;
   micMuted: boolean;
   onMic: () => void;
+  through: boolean;
+  onThrough: (v: boolean) => void;
+  vpnClient: string;
 }) {
   const [c, setC] = useState<Controls | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -50,9 +58,28 @@ export function ControlsTab({
   const [btOpen, setBtOpen] = useState(false);
   const armTimer = useRef(0);
 
+  const [vpn, setVpn] = useState<string | null | undefined>(undefined);
+  const [vpnErr, setVpnErr] = useState<string | null>(null);
   useEffect(() => {
     if (visible) api?.call<Controls>("controls_get").then(setC);
   }, [api, visible]);
+  useEffect(() => {
+    if (!visible) return;
+    const load = () => api?.call<string | null>("vpn_status").then((v) => setVpn(v ?? null));
+    load();
+    const id = window.setInterval(load, 3000);
+    return () => clearInterval(id);
+  }, [api, visible]);
+  const toggleVpn = () => {
+    const on = !vpn;
+    setBusy("vpn");
+    setVpnErr(null);
+    api
+      ?.call("vpn_set", { on })
+      .then(() => window.setTimeout(() => api?.call<string | null>("vpn_status").then((v) => setVpn(v ?? null)), 1500))
+      .catch((e) => setVpnErr(String(e)))
+      .finally(() => window.setTimeout(() => setBusy(null), 1500));
+  };
 
   const toggle = (what: "wifi" | "bluetooth" | "dark" | "mic", on: boolean) => {
     setBusy(what);
@@ -75,11 +102,14 @@ export function ControlsTab({
     api?.call("power", { action });
   };
 
-  const tile = (what: "wifi" | "bluetooth" | "dark" | "mic", icon: React.ReactNode, title: string, on: boolean | null | undefined, sub: string) => (
+  const tile = (what: "wifi" | "bluetooth" | "dark" | "mic" | "vpn" | "through", icon: React.ReactNode, title: string, on: boolean | null | undefined, sub: string) => (
     <button
       className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
       disabled={on === null || on === undefined}
-      onClick={() => (what === "mic" ? onMic() : toggle(what, !on))}
+      title={what === "vpn" && vpnErr ? vpnErr : `${title}: ${sub}`}
+      onClick={() =>
+        what === "mic" ? onMic() : what === "vpn" ? toggleVpn() : what === "through" ? onThrough(!through) : toggle(what, !on)
+      }
     >
       <span className="ctl-icon">{icon}</span>
       <span className="ctl-text">
@@ -103,8 +133,16 @@ export function ControlsTab({
             </button>
           )}
         </div>
+        {tile(
+          "vpn",
+          SHIELD,
+          "VPN",
+          vpn === undefined ? false : !!vpn,
+          vpnErr ? "не вышло" : vpn ? vpn : vpnClient === "warp" ? "WARP выключен" : "выключен",
+        )}
         {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
         {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
+        {tile("through", THROUGH, "Сквозной", through, through ? "клики насквозь" : "выключен")}
       </div>
       {btOpen ? (
         <BtDevices api={api} />

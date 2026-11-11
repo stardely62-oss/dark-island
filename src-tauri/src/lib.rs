@@ -2,8 +2,10 @@ mod agents;
 mod ai;
 mod capture;
 mod clip;
+mod docs;
 mod diag;
 mod live;
+mod obs;
 mod settings;
 mod cursor;
 mod sys;
@@ -354,6 +356,7 @@ fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool) -> Result<agents
     match which.as_str() {
         "claude" => agents::connect_claude(&ctl.agents, on)?,
         "codex" => agents::connect_codex(&ctl.agents, on)?,
+        "opencode" => agents::connect_opencode(&ctl.agents, on)?,
         _ => return Err("неизвестный агент".into()),
     }
     Ok(agents::connections())
@@ -530,6 +533,137 @@ async fn bt_connect(app: AppHandle, container: String, on: bool) -> Result<(), S
     }
 }
 
+// ---- VPN clients -------------------------------------------------------------------
+
+#[tauri::command]
+async fn vpn_status() -> Option<String> {
+    sys::vpn_adapter()
+}
+
+/// VPN connections Windows itself knows (Settings → VPN).
+#[tauri::command]
+async fn vpn_names() -> Vec<String> {
+    sys::run_hidden("powershell -NoProfile -Command \"Get-VpnConnection | ForEach-Object { $_.Name }\"")
+        .map(|o| o.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Turns the chosen VPN on or off: Windows' own connection (rasdial),
+/// Cloudflare WARP (warp-cli), or the user's own commands.
+#[tauri::command]
+async fn vpn_set(app: AppHandle, on: bool) -> Result<(), String> {
+    let s = app.state::<Ctl>().settings.clone();
+    let client = s.string("vpnClient");
+    let r = match client.as_str() {
+        "windows" => {
+            let name = s.string("vpnName");
+            if name.is_empty() {
+                return Err("Выбери подключение в настройках".into());
+            }
+            let q = name.replace('"', "");
+            sys::run_hidden(&if on { format!("rasdial \"{q}\"") } else { format!("rasdial \"{q}\" /disconnect") }).map(|_| ())
+        }
+        "warp" => {
+            let exe = "\"%ProgramFiles%\\Cloudflare\\Cloudflare WARP\\warp-cli.exe\"";
+            sys::run_hidden(&format!("{exe} {}", if on { "connect" } else { "disconnect" })).map(|_| ())
+        }
+        "custom" => {
+            let cmd = s.string(if on { "vpnOn" } else { "vpnOff" });
+            if cmd.trim().is_empty() {
+                return Err("Впиши команды включения и выключения в настройках".into());
+            }
+            if s.bool("vpnAdmin", false) {
+                if sys::run_elevated(&cmd) { Ok(()) } else { Err("Windows не дала прав администратора".into()) }
+            } else {
+                sys::run_hidden(&cmd).map(|_| ())
+            }
+        }
+        _ => Err("VPN-клиент не выбран: Настройки → Сеть".into()),
+    };
+    diag::log(&app, &format!("vpn {client} {}: {r:?}", if on { "on" } else { "off" }));
+    r
+}
+
+// ---- documents in the chat ------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct Doc {
+    name: String,
+    text: Option<String>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+async fn doc_pick(app: AppHandle) -> Vec<Doc> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Приложить документ")
+        .add_filter("Документы", &["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv", "json", "log", "xml", "html", "rs", "py", "js", "ts"])
+        .blocking_pick_files()
+        .unwrap_or_default();
+    picked
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .map(|p| {
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            match docs::read(&p.to_string_lossy()) {
+                Ok(t) => Doc { name, text: Some(t), error: None },
+                Err(e) => Doc { name, text: None, error: Some(e) },
+            }
+        })
+        .collect()
+}
+
+// ---- launcher hotkeys --------------------------------------------------------------------
+
+/// Shortcut id → what it opens ("app"/"url"/"path", target).
+static LAUNCH_KEYS: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, (String, String, Shortcut)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+#[derive(serde::Deserialize)]
+struct LaunchKey {
+    hotkey: String,
+    kind: String,
+    target: String,
+}
+
+fn launch(app: &AppHandle, kind: &str, target: &str) {
+    match kind {
+        "app" => sys::launch_app(target),
+        "url" => {
+            let url = if target.starts_with("http") { target.to_string() } else { format!("https://{target}") };
+            let _ = app.opener().open_url(url, None::<&str>);
+        }
+        _ => {
+            let _ = app.opener().open_path(target.to_string(), None::<&str>);
+        }
+    }
+}
+
+/// Registers a hotkey per launcher shortcut; returns the ones Windows refused.
+#[tauri::command]
+fn launcher_hotkeys(app: AppHandle, keys: Vec<LaunchKey>) -> Vec<String> {
+    let mut map = LAUNCH_KEYS.lock().unwrap();
+    for (_, (_, _, sc)) in map.drain() {
+        let _ = app.global_shortcut().unregister(sc);
+    }
+    let mut failed = Vec::new();
+    for k in keys {
+        let Ok(sc) = k.hotkey.parse::<Shortcut>() else {
+            failed.push(k.hotkey);
+            continue;
+        };
+        if app.global_shortcut().register(sc).is_ok() {
+            map.insert(sc.id(), (k.kind, k.target, sc));
+        } else {
+            failed.push(k.hotkey);
+        }
+    }
+    failed
+}
+
 /// Opens a page of Windows Settings (only the few the island needs).
 #[tauri::command]
 fn open_windows_settings(app: AppHandle, page: String) {
@@ -688,14 +822,24 @@ fn record_start(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
         let Some(dir) = dir else { return };
         let _ = std::fs::create_dir_all(&dir);
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        let path = dir.join(format!("Запись {secs}.mp4")).to_string_lossy().into_owned();
+        let gif = s.get("recordFormat").and_then(|v| v.as_str()) == Some("gif");
+        let sound = match s.get("recordSound").and_then(|v| v.as_str()) {
+            Some("system") => sys::record::Sound::System,
+            Some("mic") => sys::record::Sound::Mic,
+            _ => sys::record::Sound::None,
+        };
+        let path = dir.join(format!("Запись {secs}.{}", if gif { "gif" } else { "mp4" })).to_string_lossy().into_owned();
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         *ctl.recording.lock().unwrap() = Some(stop.clone());
         let _ = app.emit_to("island", "recording", serde_json::json!({ "on": true }));
         let app2 = app.clone();
         std::thread::spawn(move || {
             let area = sys::record::Area { x: ox + x, y: oy + y, w, h };
-            let r = sys::record::record_screen(&path, area, fps, high, stop);
+            let r = if gif {
+                sys::record::record_gif(&path, area, stop)
+            } else {
+                sys::record::record_screen(&path, area, fps, high, sound, stop)
+            };
             *app2.state::<Ctl>().recording.lock().unwrap() = None;
             let _ = app2.emit_to(
                 "island",
@@ -744,6 +888,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
     let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
     let mic = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyM);
     let through = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT);
+    let vpn = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
     let dictation = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
     let record = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyR);
     let chat = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA);
@@ -774,6 +919,18 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                     "clipboard"
                 } else if *sc == command {
                     "command"
+                } else if let Some((kind, target, _)) = LAUNCH_KEYS.lock().unwrap().get(&sc.id()).cloned() {
+                    launch(app, &kind, &target);
+                    return;
+                } else if *sc == vpn {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let on = sys::vpn_adapter().is_none();
+                        if let Err(e) = vpn_set(app.clone(), on).await {
+                            let _ = app.emit_to("island", "vpn_error", e);
+                        }
+                    });
+                    return;
                 } else if *sc == through {
                     "through"
                 } else if *sc == chat {
@@ -816,7 +973,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             .build(),
     )?;
     // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard, command, mic, through, dictation, record, chat, plain].into_iter().chain(screen_keys) {
+    for sc in [toggle, clipboard, command, mic, through, dictation, record, chat, plain, vpn].into_iter().chain(screen_keys) {
         let _ = app.global_shortcut().register(sc);
     }
     Ok(())
@@ -958,7 +1115,12 @@ pub fn run() {
             player_volume_get,
             player_volume_set,
             bt_devices,
-            bt_connect
+            bt_connect,
+            vpn_status,
+            vpn_names,
+            vpn_set,
+            doc_pick,
+            launcher_hotkeys
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -985,6 +1147,8 @@ pub fn run() {
             let agents = agents::start(app.handle().clone(), settings.clone());
             live::spawn_weather(app.handle().clone(), settings.clone());
             live::spawn_downloads(app.handle().clone());
+            let keys = Arc::new(ai::Keys::load(&data_dir));
+            obs::spawn(app.handle().clone(), settings.clone(), keys.clone());
             sys::spawn_notifications(app.handle().clone(), settings.clone());
             // The Start menu is read once in the background for the command bar.
             let apps = Arc::new(Mutex::new(Vec::new()));
@@ -1004,7 +1168,7 @@ pub fn run() {
                 settings,
                 agents,
                 apps,
-                keys: Arc::new(ai::Keys::load(&data_dir)),
+                keys,
                 runs: Arc::new(ai::Runs::new()),
                 dictation: Mutex::new(None),
                 recording: Mutex::new(None),

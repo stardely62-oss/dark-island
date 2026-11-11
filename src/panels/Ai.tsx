@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
-import { providerOf, useAi, type AiMsg } from "../ai";
+import { providerOf, useAi, type AiDoc, type AiMsg } from "../ai";
 import type { Settings } from "../settings";
 import { TabAi } from "../components/Icons";
 import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit } from "../textTools";
@@ -8,6 +8,8 @@ import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, transl
 const CHAT_KEY = "island.chat";
 const SYSTEM =
   "Ты — помощник в маленькой панели на рабочем столе Windows. Отвечай по-русски, если к тебе обращаются по-русски. Пиши коротко и по делу: панель узкая. Без Markdown-таблиц.";
+
+const TRANSLATE = "Переведи: с русского на английский, с любого другого языка — на русский.";
 
 function loadChat(): AiMsg[] {
   try {
@@ -17,6 +19,12 @@ function loadChat(): AiMsg[] {
   }
 }
 
+const DOC = (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" aria-hidden>
+    <path d="M6 3h8l4 4v14H6Z M14 3v4h4" />
+  </svg>
+);
+
 /** Chat with the AI, and tools for a piece of text (local ones and AI actions). */
 export function AiTab({
   api,
@@ -25,6 +33,8 @@ export function AiTab({
   onTypeStart,
   ask,
   onAsked,
+  tool,
+  onTool,
   openSettings,
 }: {
   api: Bridge | null;
@@ -34,6 +44,9 @@ export function AiTab({
   /** A question from the command bar to send right away. */
   ask: string | null;
   onAsked: () => void;
+  /** Text from elsewhere (the screen) to run a text tool on. */
+  tool: { text: string; action: "translate" } | null;
+  onTool: () => void;
   openSettings: () => void;
 }) {
   const [view, setView] = useState<"chat" | "text">("chat");
@@ -48,25 +61,41 @@ export function AiTab({
   const [msgs, setMsgs] = useState<AiMsg[]>(loadChat);
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  const [docs, setDocs] = useState<AiDoc[]>([]);
+  const [docErr, setDocErr] = useState<string | null>(null);
+  const attach = () =>
+    api?.call<{ name: string; text: string | null; error: string | null }[]>("doc_pick").then((list) => {
+      const ok = (list ?? []).filter((d) => d.text).map((d) => ({ name: d.name, text: d.text! }));
+      const bad = (list ?? []).filter((d) => d.error);
+      setDocs((cur) => [...cur, ...ok].slice(-4));
+      setDocErr(bad.length ? `${bad[0].name}: ${bad[0].error}` : null);
+    });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     try {
-      localStorage.setItem(CHAT_KEY, JSON.stringify(msgs.slice(-40).map((m) => ({ ...m, images: [] }))));
+      // Pictures and documents stay out of storage: only their names are kept.
+      localStorage.setItem(
+        CHAT_KEY,
+        JSON.stringify(msgs.slice(-40).map((m) => ({ ...m, images: [], docs: m.docs?.map((d) => ({ name: d.name, text: "" })) }))),
+      );
     } catch {
       /* storage full or unavailable */
     }
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [msgs]);
 
-  const send = (text: string, imgs: string[] = images) => {
-    if (!text.trim() || busy) return;
-    const next: AiMsg[] = [...msgs, { role: "user", text, images: imgs }];
+  const send = (text: string, imgs: string[] = images, files: AiDoc[] = docs) => {
+    if ((!text.trim() && !files.length) || busy) return;
+    const ask = text.trim() || "Что в этом документе? Коротко перескажи главное.";
+    const next: AiMsg[] = [...msgs, { role: "user", text: ask, images: imgs, docs: files }];
     setMsgs([...next, { role: "assistant", text: "" }]);
     setInput("");
     setImages([]);
+    setDocs([]);
+    setDocErr(null);
     setBusy(true);
     setError(null);
     stopRef.current = run(
@@ -88,7 +117,7 @@ export function AiTab({
   useEffect(() => {
     if (ask && visible) {
       setView("chat");
-      send(ask, []);
+      send(ask, [], []);
       onAsked();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -109,14 +138,14 @@ export function AiTab({
       setOut(`Не получилось: ${String(e)}`);
     }
   };
-  const aiAction = (prompt: string) => {
-    if (!src.trim() || toolBusy) return;
+  const aiAction = (prompt: string, text = src) => {
+    if (!text.trim() || toolBusy) return;
     setToolBusy(true);
     setOut("");
     run(
       provider,
       "Ты редактор текста. Верни только результат, без пояснений и кавычек.",
-      [{ role: "user", text: `${prompt}\n\n${src}` }],
+      [{ role: "user", text: `${prompt}\n\n${text}` }],
       (t) => setOut(t),
       (err) => {
         setToolBusy(false);
@@ -124,6 +153,15 @@ export function AiTab({
       },
     );
   };
+
+  useEffect(() => {
+    if (!tool || !visible) return;
+    setView("text");
+    setSrc(tool.text);
+    if (tool.action === "translate") aiAction(TRANSLATE, tool.text);
+    onTool();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool, visible]);
 
   return (
     <div className="tab-ai">
@@ -159,16 +197,37 @@ export function AiTab({
       {view === "chat" ? (
         <>
           <div className="chat list" ref={listRef}>
-            {msgs.length === 0 && <div className="empty">Спроси что угодно. Картинку можно вставить через Ctrl+V.</div>}
+            {msgs.length === 0 && <div className="empty">Спроси что угодно. Картинку можно вставить через Ctrl+V, документ — скрепкой.</div>}
             {msgs.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 {m.images?.map((u, k) => <img key={k} src={u} alt="" />)}
+                {m.docs?.map((d, k) => (
+                  <span key={k} className="doc-chip sent">
+                    {DOC} {d.name}
+                  </span>
+                ))}
                 {m.text || (busy && i === msgs.length - 1 ? <span className="dots"><i /><i /><i /></span> : null)}
               </div>
             ))}
             {error && <div className="set-error">{error}</div>}
+            {docErr && <div className="set-error">{docErr}</div>}
           </div>
+          {docs.length > 0 && (
+            <div className="doc-row">
+              {docs.map((d, k) => (
+                <button key={k} className="doc-chip" title={`${d.text.length.toLocaleString("ru")} знаков — убрать`} onClick={() => setDocs(docs.filter((_, j) => j !== k))}>
+                  {DOC} {d.name}
+                  <span className="x">×</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="chat-input">
+            <button className="clip-btn" aria-label="Приложить документ" title="PDF, Word, Excel, PowerPoint или текст" onClick={attach}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m20 11.5-8.3 8.3a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l8-8" />
+              </svg>
+            </button>
             {images.map((u, k) => (
               <img key={k} className="attach" src={u} alt="" title="Убрать" onClick={() => setImages(images.filter((_, j) => j !== k))} />
             ))}
@@ -204,7 +263,7 @@ export function AiTab({
                 </svg>
               </button>
             ) : (
-              <button className="send" aria-label="Отправить" disabled={!input.trim()} onClick={() => send(input)}>
+              <button className="send" aria-label="Отправить" disabled={!input.trim() && !docs.length} onClick={() => send(input)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 19V5M6 11l6-6 6 6" />
                 </svg>
@@ -238,7 +297,7 @@ export function AiTab({
             ))}
             {(
               [
-                ["Перевести", "Переведи: с русского на английский, с любого другого языка — на русский."],
+                ["Перевести", TRANSLATE],
                 ["Исправить", "Исправь орфографию, пунктуацию и стиль, сохранив смысл и язык."],
                 ["Сократить", "Сократи текст вдвое, сохранив главное."],
                 ["Объяснить", "Объясни простыми словами, что здесь написано."],

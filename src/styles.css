@@ -897,7 +897,7 @@ textarea.note::placeholder {
 }
 .ctl-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .ctl-tile {
@@ -1636,11 +1636,51 @@ select.select option {
 }
 .chat-input {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
-  padding: 4px 4px 4px 10px;
+  padding: 4px 4px 4px 4px;
   border-radius: 14px;
   background: rgb(255 255 255 / 0.08);
+}
+.chat-input .clip-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--muted, rgb(255 255 255 / 0.6));
+}
+.chat-input .clip-btn:hover {
+  color: inherit;
+  background: rgb(255 255 255 / 0.1);
+}
+.doc-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.doc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: 24px;
+  max-width: 200px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgb(255 255 255 / 0.1);
+}
+.doc-chip .x {
+  opacity: 0.5;
+}
+.doc-chip.sent {
+  display: flex;
+  width: fit-content;
+  margin-bottom: 4px;
+  background: rgb(0 0 0 / 0.18);
 }
 .chat-input textarea {
   all: unset;
@@ -1698,6 +1738,9 @@ select.select option {
 }
 .chip.ai {
   color: #f0a47f;
+  flex-direction: row;
+  gap: 4px;
+  white-space: nowrap;
 }
 .chip:disabled {
   opacity: 0.4;
@@ -1944,4 +1987,193 @@ select.select option {
 }
 .volume input:disabled {
   opacity: 0.4;
+}
+
+/* launcher: groups, menu, dragging */
+.launcher.menu {
+  align-items: center;
+  gap: 6px;
+}
+.launcher.menu > .app-icon {
+  margin: 0 2px 0 4px;
+}
+.launch-rename {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+}
+.hotkey-btn {
+  font-variant-numeric: tabular-nums;
+  min-width: 96px;
+}
+.hotkey-btn.bad {
+  box-shadow: inset 0 0 0 1px rgb(255 120 100 / 0.7);
+}
+.text-btn.danger {
+  color: #ff8a7a;
+}
+.group-icon {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 1px;
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.1);
+  place-items: center;
+  overflow: hidden;
+}
+.group-icon > .app-icon {
+  border-radius: 3px;
+}
+.group-icon > .app-icon.letter {
+  font-size: 6px !important;
+}
+.launch-item {
+  position: relative;
+  touch-action: none;
+  transition: transform 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+.launch-item.dragging {
+  opacity: 0.35;
+}
+.launch-item.drop-on {
+  transform: scale(1.06);
+  background: rgb(217 119 87 / 0.28);
+}
+.launch-item.back {
+  padding: 0 10px 0 9px;
+  background: rgb(255 255 255 / 0.1);
+}
+.group-name {
+  font-weight: 600;
+}
+.launcher.in-group .launch-item:not(.back):not(.add) {
+  animation: launch-pop 0.26s cubic-bezier(.3,1.4,.5,1) both;
+}
+.launch-warn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff8a7a;
+}
+.launcher {
+  position: relative;
+}
+.launch-ghost {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.15);
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.5));
+}
+@keyframes launch-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+.set-input.narrow {
+  flex: 0 0 80px;
+}
+
+/* OBS */
+.obs-pill {
+  gap: 7px;
+  padding: 0 14px 0 12px;
+  justify-content: flex-start;
+}
+.obs-logo {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.obs-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #fff;
+}
+.obs-badge.live {
+  background: #e0245e;
+}
+.obs-badge.rec {
+  background: #ff453a;
+  animation: rec 1.6s ease-in-out infinite;
+}
+.obs-badge.rec.paused {
+  background: rgb(255 255 255 / 0.2);
+  animation: none;
+}
+.obs-pill .time {
+  flex: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Steam: the pill fills as the game downloads */
+.download-pill {
+  position: relative;
+  overflow: hidden;
+}
+.dl-progress {
+  position: absolute;
+  inset: 0;
+  width: var(--dl);
+  background: linear-gradient(90deg, rgb(127 208 255 / 0.08), rgb(127 208 255 / 0.22));
+  transition: width 1.8s linear;
+  pointer-events: none;
+}
+.download-pill > :not(.dl-progress) {
+  position: relative;
+}
+
+/* music pill: only the words */
+.line-media {
+  justify-content: center;
+  padding: 0 18px;
+}
+.line-lyric {
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in oklab, var(--accent) 45%, white);
+  text-shadow: 0 0 14px color-mix(in oklab, var(--accent) 60%, transparent);
+  animation: line-in 0.5s var(--ease);
+}
+@keyframes line-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    translate: 0 6px;
+  }
+}
+.launcher .launch-item {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.launcher .launch-item.add,
+.launcher .launch-item.back {
+  flex: none;
+}
+.menu-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-wrap .ctl-tile {
+  padding-right: 34px;
+}
+.ctl-text {
+  min-width: 0;
 }

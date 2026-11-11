@@ -209,6 +209,83 @@ pub struct Download {
     pub size: u64,
     /// Bytes per second over the last poll.
     pub speed: u64,
+    /// Full size when known (Steam), else 0.
+    pub total: u64,
+}
+
+// ---------------------------------------------------------------- steam ----
+
+/// Game downloads in Steam, read from its app manifests: a game counts as
+/// downloading while its byte count keeps moving.
+#[derive(Default)]
+struct Steam {
+    libraries: Vec<PathBuf>,
+    scanned: Option<Instant>,
+    /// manifest → (bytes downloaded, when it last moved)
+    seen: HashMap<PathBuf, (u64, Instant)>,
+}
+
+fn vdf_value(text: &str, key: &str) -> Option<String> {
+    let pat = format!("\"{key}\"");
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix(&pat) {
+            let v = rest.trim().trim_matches('"');
+            return Some(v.replace("\\\\", "\\"));
+        }
+    }
+    None
+}
+
+impl Steam {
+    fn poll(&mut self, secs: f64) -> Vec<Download> {
+        if self.scanned.is_none_or(|t| t.elapsed() > Duration::from_secs(60)) {
+            self.scanned = Some(Instant::now());
+            self.libraries.clear();
+            if let Some(root) = crate::sys::steam_path() {
+                let root = PathBuf::from(root);
+                self.libraries.push(root.join("steamapps"));
+                if let Ok(t) = std::fs::read_to_string(root.join("steamapps").join("libraryfolders.vdf")) {
+                    for line in t.lines() {
+                        let line = line.trim();
+                        if let Some(rest) = line.strip_prefix("\"path\"") {
+                            let p = PathBuf::from(rest.trim().trim_matches('"').replace("\\\\", "\\")).join("steamapps");
+                            if !self.libraries.contains(&p) {
+                                self.libraries.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for lib in &self.libraries {
+            let Ok(rd) = std::fs::read_dir(lib) else { continue };
+            for e in rd.flatten() {
+                let path = e.path();
+                let n = e.file_name().to_string_lossy().into_owned();
+                if !n.starts_with("appmanifest_") || !n.ends_with(".acf") {
+                    continue;
+                }
+                let Ok(t) = std::fs::read_to_string(&path) else { continue };
+                let num = |k: &str| vdf_value(&t, k).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+                let (done, total) = (num("BytesDownloaded"), num("BytesToDownload"));
+                if total == 0 || done >= total {
+                    self.seen.remove(&path);
+                    continue;
+                }
+                let (prev, moved) = self.seen.get(&path).copied().unwrap_or((done, Instant::now() - Duration::from_secs(3600)));
+                let moved = if done != prev { Instant::now() } else { moved };
+                self.seen.insert(path.clone(), (done, moved));
+                if moved.elapsed() < Duration::from_secs(20) {
+                    let name = vdf_value(&t, "name").unwrap_or_else(|| "Steam".into());
+                    let speed = (done.saturating_sub(prev) as f64 / secs) as u64;
+                    out.push(Download { name, size: done, speed, total });
+                }
+            }
+        }
+        out
+    }
 }
 
 const PARTIAL: &[&str] = &["crdownload", "part", "partial", "download", "opdownload"];
@@ -236,6 +313,7 @@ pub fn spawn_downloads(app: AppHandle) {
         let mut before = list(&dir);
         let mut last = Instant::now();
         let mut active_before = false;
+        let mut steam = Steam::default();
         loop {
             thread::sleep(Duration::from_secs(2));
             let now = list(&dir);
@@ -247,8 +325,9 @@ pub fn spawn_downloads(app: AppHandle) {
                 .map(|(n, &size)| {
                     let prev = before.get(n).copied().unwrap_or(size);
                     let name = n.rsplit_once('.').map(|(b, _)| b).unwrap_or(n).to_string();
-                    Download { name, size, speed: ((size.saturating_sub(prev)) as f64 / secs) as u64 }
+                    Download { name, size, speed: ((size.saturating_sub(prev)) as f64 / secs) as u64, total: 0 }
                 })
+                .chain(steam.poll(secs))
                 .collect();
             if !active.is_empty() || active_before {
                 let _ = app.emit_to("island", "downloads", &active);

@@ -157,7 +157,8 @@ export function Buddy({
   };
   // Poking: once is a surprise, a few times annoys him, many times makes him furious.
   const onClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    // On the collapsed pill a click still opens the island; he just notices it.
+    if (!(e.currentTarget as Element).closest(".compact")) e.stopPropagation();
     const k = poke.current;
     const now = Date.now();
     k.n = now - k.since < 1500 ? k.n + 1 : 1;
