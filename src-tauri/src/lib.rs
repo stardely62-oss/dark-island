@@ -1,6 +1,7 @@
 mod agents;
 mod capture;
 mod clip;
+mod live;
 mod settings;
 mod cursor;
 mod sys;
@@ -220,9 +221,14 @@ fn settings_set(
     patch: serde_json::Map<String, serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let captures = patch.get("showInCaptures").and_then(|v| v.as_bool());
+    let city_changed = patch.contains_key("weatherCity");
     let all = ctl.settings.merge(patch);
     if let (Some(show), Some(w)) = (captures, app.get_webview_window("island")) {
         sys::exclude_from_capture(&w, !show);
+    }
+    if city_changed {
+        let (app, s) = (app.clone(), ctl.settings.clone());
+        std::thread::spawn(move || live::refresh_weather(&app, &s));
     }
     let _ = app.emit_to("island", "settings", all.clone());
     all
@@ -330,6 +336,51 @@ fn color_done(app: AppHandle, ctl: State<'_, Ctl>, hex: String) {
     capture::color(&app, &ctl.settings, &hex);
 }
 
+// ---- live information ------------------------------------------------------------
+
+#[tauri::command]
+fn weather_get() -> Option<live::Weather> {
+    live::WEATHER.lock().unwrap().clone()
+}
+
+#[tauri::command]
+async fn weather_refresh(app: AppHandle) {
+    let settings = app.state::<Ctl>().settings.clone();
+    live::refresh_weather(&app, &settings);
+}
+
+#[tauri::command]
+async fn city_search(q: String) -> Vec<live::Place> {
+    live::search_city(&q)
+}
+
+#[tauri::command]
+async fn lyrics_get(artist: String, title: String, duration: u64) -> Option<String> {
+    live::lyrics(&artist, &title, duration)
+}
+
+#[tauri::command]
+async fn mic_toggle() -> Option<bool> {
+    sys::mic_toggle()
+}
+
+#[tauri::command]
+async fn notifications_access(ask: bool) -> String {
+    sys::notifications_access(ask)
+}
+
+/// Opens a page of Windows Settings (only the few the island needs).
+#[tauri::command]
+fn open_windows_settings(app: AppHandle, page: String) {
+    let uri = match page.as_str() {
+        "notifications" => "ms-settings:privacy-notifications",
+        "microphone" => "ms-settings:privacy-microphone",
+        "vpn" => "ms-settings:network-vpn",
+        _ => return,
+    };
+    let _ = app.opener().open_url(uri, None::<&str>);
+}
+
 // ---- hotkeys -------------------------------------------------------------------
 
 /// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
@@ -338,6 +389,8 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
     let toggle = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyI);
     let clipboard = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
     let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let mic = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyM);
+    let through = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT);
     let ca = Some(Modifiers::CONTROL | Modifiers::ALT);
     let screen: [(Shortcut, &str); 5] = [
         (Shortcut::new(ca, Code::KeyS), "area"),
@@ -364,6 +417,16 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                     "clipboard"
                 } else if *sc == command {
                     "command"
+                } else if *sc == through {
+                    "through"
+                } else if *sc == mic {
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        if let Some(muted) = sys::mic_toggle() {
+                            let _ = app.emit_to("island", "mic_muted", muted);
+                        }
+                    });
+                    return;
                 } else {
                     return;
                 };
@@ -372,7 +435,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             .build(),
     )?;
     // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard, command].into_iter().chain(screen_keys) {
+    for sc in [toggle, clipboard, command, mic, through].into_iter().chain(screen_keys) {
         let _ = app.global_shortcut().register(sc);
     }
     Ok(())
@@ -479,7 +542,14 @@ pub fn run() {
             overlay_ready,
             overlay_cancel,
             capture_done,
-            color_done
+            color_done,
+            weather_get,
+            weather_refresh,
+            city_search,
+            lyrics_get,
+            mic_toggle,
+            notifications_access,
+            open_windows_settings
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -502,6 +572,9 @@ pub fn run() {
             let clips = Arc::new(Mutex::new(Clips::load(&data_dir)));
             sys::spawn_clipboard(app.handle().clone(), clips.clone(), settings.clone());
             let agents = agents::start(app.handle().clone(), settings.clone());
+            live::spawn_weather(app.handle().clone(), settings.clone());
+            live::spawn_downloads(app.handle().clone());
+            sys::spawn_notifications(app.handle().clone(), settings.clone());
             // The Start menu is read once in the background for the command bar.
             let apps = Arc::new(Mutex::new(Vec::new()));
             {

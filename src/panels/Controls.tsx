@@ -14,6 +14,7 @@ const MOON = line(<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />);
 const LOCK = line(<><rect x="5" y="11" width="14" height="9.5" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>);
 const SLEEP = line(<path d="M14 4h6l-6 7h6M4 12h5l-5 6h5" />);
 const RESTART = line(<><path d="M20 12a8 8 0 1 1-2.3-5.7" /><path d="M20 4v4.5h-4.5" /></>);
+const MIC = line(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
 const POWER = line(<><path d="M12 3v8.5" /><path d="M6.5 6.8a7.5 7.5 0 1 0 11 0" /></>);
 
 /** Wi-Fi, Bluetooth and the dark theme in one press; lock, sleep, restart, shut down. */
@@ -31,12 +32,16 @@ export function ControlsTab({
   colors,
   onTool,
   onCopyColor,
+  micMuted,
+  onMic,
 }: {
   api: Bridge | null;
   visible: boolean;
   colors: string[];
   onTool: (mode: string) => void;
   onCopyColor: (c: string) => void;
+  micMuted: boolean;
+  onMic: () => void;
 }) {
   const [c, setC] = useState<Controls | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,7 +52,7 @@ export function ControlsTab({
     if (visible) api?.call<Controls>("controls_get").then(setC);
   }, [api, visible]);
 
-  const toggle = (what: "wifi" | "bluetooth" | "dark", on: boolean) => {
+  const toggle = (what: "wifi" | "bluetooth" | "dark" | "mic", on: boolean) => {
     setBusy(what);
     setC((v) => (v ? { ...v, [what]: on } : v));
     api?.call<Controls>("controls_set", { what, on }).then((v) => {
@@ -68,11 +73,11 @@ export function ControlsTab({
     api?.call("power", { action });
   };
 
-  const tile = (what: "wifi" | "bluetooth" | "dark", icon: React.ReactNode, title: string, on: boolean | null | undefined, sub: string) => (
+  const tile = (what: "wifi" | "bluetooth" | "dark" | "mic", icon: React.ReactNode, title: string, on: boolean | null | undefined, sub: string) => (
     <button
       className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
       disabled={on === null || on === undefined}
-      onClick={() => toggle(what, !on)}
+      onClick={() => (what === "mic" ? onMic() : toggle(what, !on))}
     >
       <span className="ctl-icon">{icon}</span>
       <span className="ctl-title">{title}</span>
@@ -86,6 +91,7 @@ export function ControlsTab({
         {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
         {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
         {tile("dark", MOON, "Тёмная тема", c?.dark ?? false, c?.dark ? "включена" : "выключена")}
+        {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
       </div>
       <div className="tools-row">
         {TOOLS.map(([id, label, icon]) => (

@@ -11,7 +11,19 @@ export const DEFAULTS = {
   clipSkipApps: [] as string[],
   searchEngine: "google",
   cardLength: "normal" as "short" | "normal" | "long",
+  weatherOnPill: true,
+  rainWarning: true,
+  lyrics: false,
+  musicPill: "compact" as "compact" | "wide" | "player" | "lyrics",
+  showNotifications: false,
+  notifyMuted: [] as string[],
+  vpnCountry: true,
+  autoHide: false,
+  hideForApps: [] as string[],
+  through: false,
+  launcher: [] as Shortcut[],
 };
+export type Shortcut = { name: string; kind: "app" | "url" | "path"; target: string };
 export type Settings = typeof DEFAULTS & Record<string, unknown>;
 
 export const ENGINES: Record<string, { name: string; url: string }> = {

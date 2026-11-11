@@ -18,6 +18,8 @@ import {
   TabShelf,
   TabControls,
   TabSettings,
+  TabWeather,
+  BellIcon,
   TimerIcon,
 } from "./components/Icons";
 import { ClipboardTab } from "./panels/Clipboard";
@@ -26,22 +28,27 @@ import { NoteTab } from "./panels/Note";
 import { ControlsTab } from "./panels/Controls";
 import { SettingsTab } from "./panels/Settings";
 import { CommandBar, commandHeight } from "./panels/CommandBar";
-import { useSettings } from "./settings";
+import { useSettings, type Shortcut } from "./settings";
+import { WeatherTab } from "./panels/Weather";
+import { Launcher } from "./panels/Launcher";
+import { describe as weatherOf, fmtTemp, rainSoon, type Weather } from "./weather";
+import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
 import { Buddy, animateBuddies, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent";
-type Tab = "home" | "clip" | "shelf" | "note" | "controls" | "settings";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download";
+type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "controls" | "settings";
+type MusicPill = "compact" | "wide" | "player" | "lyrics";
 type Card = {
   key: number;
-  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture";
+  kind: "caps" | "layout" | "timer" | "info" | "agent" | "capture" | "notify";
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { path?: string; url?: string };
+  open?: { path?: string; url?: string; app?: string; reveal?: string };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -61,9 +68,22 @@ const PANEL_W = 460;
 
 function sizeOf(
   mode: Mode,
-  opts: { media?: boolean; battery?: boolean; tab?: Tab; rows?: number; card?: Card | null } = {},
+  opts: {
+    media?: boolean;
+    battery?: boolean;
+    tab?: Tab;
+    rows?: number;
+    card?: Card | null;
+    music?: MusicPill;
+    temp?: boolean;
+    launcher?: boolean;
+  } = {},
 ): Shape {
   switch (mode) {
+    case "tucked":
+      return { w: 160, h: 0 };
+    case "download":
+      return { w: 300, h: 34 };
     case "command":
       return { w: 560, h: commandHeight(opts.rows ?? 0) };
     case "ask":
@@ -72,18 +92,27 @@ function sizeOf(
       return { w: 300, h: 34 };
     case "expanded":
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
-      return opts.media ? { w: PANEL_W, h: 246 } : { w: PANEL_W, h: 168 };
+      return opts.media ? { w: PANEL_W, h: opts.launcher ? 290 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
     case "strip":
       return { w: 150, h: 5 };
     case "card":
-      return opts.card?.kind === "agent" || opts.card?.kind === "capture" ? { w: 380, h: 60 } : { w: 250, h: 34 };
+      return opts.card?.kind === "agent" || opts.card?.kind === "capture" || opts.card?.kind === "notify"
+        ? { w: 380, h: 60 }
+        : { w: 250, h: 34 };
     case "timer":
       return { w: 172, h: 32 };
     case "media":
+      return opts.music === "wide"
+        ? { w: 340, h: 38 }
+        : opts.music === "player"
+          ? { w: 360, h: 44 }
+          : opts.music === "lyrics"
+            ? { w: 410, h: 38 }
+            : { w: 236, h: 34 };
     case "hud":
       return { w: 236, h: 34 };
     default:
-      return opts.battery ? { w: 214, h: 32 } : { w: 140, h: 32 };
+      return { w: (opts.battery ? 214 : 140) + (opts.temp ? 52 : 0), h: 32 };
   }
 }
 
@@ -116,6 +145,12 @@ export function App() {
   const [working, setWorking] = useState<Record<string, AgentEvent & { at: number }>>({});
   const [ask, setAsk] = useState<AgentEvent | null>(null);
   const [settings, setSetting] = useSettings(api);
+  const [weather, setWeather] = useState<Weather | null>(null);
+  const [privacy, setPrivacy] = useState<{ mic: string[]; cam: string[]; micMuted: boolean }>({ mic: [], cam: [], micMuted: false });
+  const [downloads, setDownloads] = useState<{ name: string; size: number; speed: number }[]>([]);
+  const [foreground, setForeground] = useState("");
+  const [lyrics, setLyrics] = useState<Line[] | null>(null);
+  const musicPill = settings.musicPill as MusicPill;
   const cardScale = settings.cardLength === "short" ? 0.7 : settings.cardLength === "long" ? 1.8 : 1;
   const cardScaleRef = useRef(cardScale);
   cardScaleRef.current = cardScale;
@@ -141,6 +176,9 @@ export function App() {
   timerRef.current = timer;
   const expanded = (hoverOpen && !suppressed) || pinned;
   const agentBusy = Object.keys(working).length > 0;
+  const tucked =
+    !commandOpen &&
+    (settings.autoHide || (foreground !== "" && (settings.hideForApps as string[]).some((a) => a.toLowerCase().replace(/\.exe$/, "") === foreground)));
   const mode: Mode = commandOpen
     ? "command"
     : expanded
@@ -151,18 +189,33 @@ export function App() {
           ? "card"
           : hud
             ? "hud"
-            : presence === "strip"
-              ? "strip"
-              : agentBusy
-                ? "agent"
-                : timer.active
-                  ? "timer"
-                  : media?.playing
-                    ? "media"
-                    : "idle";
+            : tucked
+              ? "tucked"
+              : presence === "strip"
+                ? "strip"
+                : agentBusy
+                  ? "agent"
+                  : downloads.length
+                    ? "download"
+                    : timer.active
+                      ? "timer"
+                      : media?.playing
+                        ? "media"
+                        : "idle";
+  const launcherOn = (settings.launcher as Shortcut[]).length > 0 || tab === "home";
   const target = useMemo(
-    () => sizeOf(mode, { media: !!media, battery: !!battery, tab, rows: commandRows, card }),
-    [mode, media, battery, tab, commandRows, card],
+    () =>
+      sizeOf(mode, {
+        media: !!media,
+        battery: !!battery,
+        tab,
+        rows: commandRows,
+        card,
+        music: musicPill === "lyrics" && !lyrics?.length ? "wide" : musicPill,
+        temp: !!weather && settings.weatherOnPill,
+        launcher: launcherOn,
+      }),
+    [mode, media, battery, tab, commandRows, card, musicPill, lyrics, weather, settings.weatherOnPill, launcherOn],
   );
 
   // ---- data from the system --------------------------------------------
@@ -217,8 +270,40 @@ export function App() {
           else if (k.layout) showCard({ kind: "layout", title: "Раскладка", sub: k.layout });
         }),
         b.on("agent", (e) => onAgentRef.current(e)),
+        b.on("weather", setWeather),
+        b.on("privacy", setPrivacy),
+        b.on("foreground", setForeground),
+        b.on("downloads", setDownloads),
+        b.on("download_done", (d) =>
+          showCard({ kind: "capture", title: "Загружено", sub: d.name, open: { reveal: d.path }, ms: 5000 }),
+        ),
+        b.on("mic_muted", (m) => {
+          setPrivacy((p) => ({ ...p, micMuted: m }));
+          showCard({ kind: "info", title: "Микрофон", sub: m ? "выключен" : "включён" });
+        }),
+        b.on("vpn", (v) =>
+          showCard({
+            kind: "info",
+            title: v.on ? "VPN включён" : "VPN выключен",
+            sub: v.on ? [v.country, v.ip].filter(Boolean).join(" · ") || v.name || "" : "",
+            ms: 2500,
+          }),
+        ),
+        b.on("notification", (n) =>
+          showCard({
+            kind: "notify",
+            title: n.title ? `${n.app} · ${n.title}` : n.app,
+            sub: n.body || n.title,
+            open: n.aumid ? { app: n.aumid } : undefined,
+            ms: 5000,
+          }),
+        ),
         b.on("hotkey", (h) => {
           setSuppressed(false);
+          if (h === "through") {
+            setThroughRef.current();
+            return;
+          }
           if (h === "command") {
             setCommandOpen((o) => !o);
             return;
@@ -263,11 +348,13 @@ export function App() {
           }
         }),
       );
-      const [s, c, sh] = await Promise.all([
+      const [s, c, sh, w] = await Promise.all([
         b.getState(),
         b.call<Clip[]>("clip_list"),
         b.call<ShelfItem[]>("shelf_list"),
+        b.call<Weather | null>("weather_get"),
       ]);
+      setWeather(w ?? null);
       if (!alive) return;
       setMedia(s.media);
       setVolume(s.volume);
@@ -282,6 +369,44 @@ export function App() {
       offs.forEach((off) => off());
     };
   }, [showCard]);
+
+  const setThroughRef = useRef(() => {});
+  setThroughRef.current = () => {
+    const on = !settings.through;
+    setSetting({ through: on });
+    showCard({ kind: "info", title: "Сквозной режим", sub: on ? "включён" : "выключен" });
+  };
+
+  // Song lyrics, only for the song that plays and only when turned on.
+  const songKey = media && settings.lyrics ? `${media.artist}\u0001${media.title}` : "";
+  useEffect(() => {
+    setLyrics(null);
+    if (!songKey || !api || !media) return;
+    let alive = true;
+    api
+      .call<string | null>("lyrics_get", { artist: media.artist, title: media.title, duration: Math.round(media.durationMs / 1000) })
+      .then((l) => alive && setLyrics(l ? parseLrc(l) : []));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songKey, api]);
+
+  // A card about an hour before rain or snow, once per spell.
+  const rainShown = useRef(0);
+  useEffect(() => {
+    if (!weather || !settings.rainWarning) return;
+    const check = () => {
+      const r = rainSoon(weather);
+      if (r && Date.now() - rainShown.current > 3 * 3_600_000) {
+        rainShown.current = Date.now();
+        showCard({ kind: "info", title: r.snow ? "Скоро снег" : "Скоро дождь", sub: `через ${r.minutes} мин`, ms: 4000 });
+      }
+    };
+    check();
+    const id = window.setInterval(check, 10 * 60_000);
+    return () => clearInterval(id);
+  }, [weather, settings.rainWarning, showCard]);
 
   // ---- agents ----------------------------------------------------------------
   const onAgentRef = useRef<(e: AgentEvent) => void>(() => {});
@@ -414,14 +539,16 @@ export function App() {
   const clipRef = useRef<SVGPathElement>(null);
   const dropsRef = useRef<SVGPathElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
+  const dotsRef = useRef<HTMLDivElement>(null);
   const blobRefs = [useRef<SVGEllipseElement>(null), useRef<SVGEllipseElement>(null), useRef<SVGEllipseElement>(null)];
   const liquid = useRef<Liquid | null>(null);
   if (!liquid.current) liquid.current = new Liquid(target);
-  const drive = useRef({ target, music: 0, reach: true });
+  const drive = useRef({ target, music: 0, reach: true, through: false });
   drive.current.target = target;
   // The strip stays calm over full-screen video: no dancing to the music.
   drive.current.music = media?.playing && mode !== "strip" && mode !== "command" ? 1 : 0;
-  drive.current.reach = mode !== "strip";
+  drive.current.reach = mode !== "strip" && mode !== "tucked";
+  drive.current.through = !!settings.through && !expanded && mode !== "ask" && !commandOpen;
 
   useEffect(() => {
     if (!api) return;
@@ -457,6 +584,8 @@ export function App() {
       }
 
       animateBuddies(L, c && c.near ? c : null);
+      const dots = dotsRef.current;
+      if (dots) dots.style.left = `${cx + L.w / 2 + 7}px`;
 
       // Equaliser bars follow the same smoothed levels as the edge.
       const lv = L.levels;
@@ -471,7 +600,8 @@ export function App() {
       const t = drive.current.target;
       const w = Math.max(L.w, t.w);
       const h = Math.max(L.h, t.h) + L.sag + 2;
-      const rect = { x: cx - w / 2, y: 0, w, h };
+      // Through mode: the folded island lets every click through and never opens on hover.
+      const rect = drive.current.through ? { x: 0, y: 0, w: 0, h: 0 } : { x: cx - w / 2, y: 0, w, h };
       if (
         (now - sentAt > 33 || !active) &&
         (Math.abs(rect.w - sent.w) > 0.5 || Math.abs(rect.h - sent.h) > 0.5 || Math.abs(rect.x - sent.x) > 0.5)
@@ -500,7 +630,7 @@ export function App() {
     };
   }, [api]);
 
-  useEffect(() => kickRef.current(), [target, media?.playing, mode]);
+  useEffect(() => kickRef.current(), [target, media?.playing, mode, settings.through]);
 
   // ---- input -------------------------------------------------------------
   const onWheel = useCallback(
@@ -551,6 +681,14 @@ export function App() {
         <path ref={dropsRef} className="shape" />
       </svg>
       <div
+        ref={dotsRef}
+        className={`privacy ${mode === "tucked" || mode === "strip" ? "hide" : ""}`}
+        title={[...privacy.cam.map((a) => `Камера: ${a}`), ...privacy.mic.map((a) => `Микрофон: ${a}`)].join("\n")}
+      >
+        {privacy.cam.length > 0 && <i className="cam" />}
+        {privacy.mic.length > 0 && <i className={`mic ${privacy.micMuted ? "muted" : ""}`} />}
+      </div>
+      <div
         ref={boxRef}
         className={`box mode-${mode}`}
         onWheel={onWheel}
@@ -558,6 +696,8 @@ export function App() {
           if (mode === "card" && card?.open) {
             if (card.open.path) api?.call("open_path", { path: card.open.path });
             if (card.open.url) api?.call("open_url", { url: card.open.url });
+            if (card.open.app) api?.call("app_launch", { id: card.open.app });
+            if (card.open.reveal) api?.call("reveal_path", { path: card.open.reveal });
             setCard(null);
           } else if (card?.sticky) setCard(null);
           else if (!expanded) {
@@ -566,11 +706,16 @@ export function App() {
           }
         }}
       >
-        <View on={mode === "idle"} shape={sizeOf("idle", { battery: !!battery })}>
-          <Idle battery={battery} sleeping={sleeping} />
+        <View on={mode === "idle"} shape={sizeOf("idle", { battery: !!battery, temp: !!weather && settings.weatherOnPill })}>
+          <Idle battery={battery} sleeping={sleeping} weather={settings.weatherOnPill ? weather : null} />
         </View>
-        <View on={mode === "media"} shape={sizeOf("media")}>
-          {media && <CompactMedia media={media} accent={accent} live={live} />}
+        {(["compact", "wide", "player", "lyrics"] as MusicPill[]).map((style) => (
+          <View key={style} on={mode === "media" && target.w === sizeOf("media", { music: style }).w} shape={sizeOf("media", { music: style })}>
+            {media && <CompactMedia media={media} accent={accent} live={live} style={style} api={api} lyrics={lyrics} />}
+          </View>
+        ))}
+        <View on={mode === "download"} shape={sizeOf("download")}>
+          <DownloadPill list={downloads} />
         </View>
         <View on={mode === "hud"} shape={sizeOf("hud")}>
           {volume && <VolumeHud volume={volume} />}
@@ -583,11 +728,32 @@ export function App() {
         </View>
         {frame(
           "home",
-          <HomeTab api={api} media={media} volume={volume} accent={accent} live={live} setVolume={setVolume} sleeping={sleeping} />,
+          <HomeTab
+            api={api}
+            media={media}
+            volume={volume}
+            accent={accent}
+            live={live}
+            setVolume={setVolume}
+            sleeping={sleeping}
+            lyrics={lyrics}
+            launcher={settings.launcher as Shortcut[]}
+            setLauncher={(l) => setSetting({ launcher: l })}
+            onTypeStart={takeFocus}
+          />,
         )}
         {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
         {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
         {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} />)}
+        {frame(
+          "weather",
+          <WeatherTab
+            api={api}
+            weather={weather}
+            onTypeStart={takeFocus}
+            onPick={(p) => setSetting({ weatherCity: { name: p.name, lat: p.lat, lon: p.lon } })}
+          />,
+        )}
         {frame(
           "controls",
           <ControlsTab
@@ -598,6 +764,13 @@ export function App() {
               dismiss();
               api?.call("capture_start", { mode: m });
             }}
+            micMuted={privacy.micMuted}
+            onMic={() =>
+              api?.call<boolean | null>("mic_toggle").then((m) => {
+                if (m === null || m === undefined) return;
+                setPrivacy((p) => ({ ...p, micMuted: m }));
+              })
+            }
             onCopyColor={(c) => {
               navigator.clipboard?.writeText(c).catch(() => {});
               showCard({ kind: "capture", title: "Цвет скопирован", sub: c, swatch: c, ms: 2500 });
@@ -633,6 +806,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "clip", label: "Буфер", icon: <TabClip /> },
   { id: "shelf", label: "Полка", icon: <TabShelf /> },
   { id: "note", label: "Заметка и таймер", icon: <TabNote /> },
+  { id: "weather", label: "Погода", icon: <TabWeather /> },
   { id: "controls", label: "Управление", icon: <TabControls /> },
   { id: "settings", label: "Настройки", icon: <TabSettings /> },
 ];
@@ -688,7 +862,7 @@ function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
 }
 
 function CardView({ card }: { card: Card }) {
-  if (card.kind === "capture") {
+  if (card.kind === "capture" || card.kind === "notify") {
     return (
       <div className={`compact card card-agent ${card.open ? "clickable" : ""}`} key={card.key}>
         {card.thumb ? (
@@ -696,9 +870,7 @@ function CardView({ card }: { card: Card }) {
         ) : card.swatch ? (
           <span className="card-swatch" style={{ background: card.swatch }} />
         ) : (
-          <span className="card-icon">
-            <TabClip size={20} />
-          </span>
+          <span className="card-icon">{card.kind === "notify" ? <BellIcon /> : <TabClip size={20} />}</span>
         )}
         <div className="agent-text">
           <div className="card-title">{card.title}</div>
@@ -794,14 +966,22 @@ function useClock(everyMs = 1000) {
 }
 
 const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "long" });
+const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short" });
 
-function Idle({ battery, sleeping }: { battery: Battery | null; sleeping: boolean }) {
+function Idle({ battery, sleeping, weather }: { battery: Battery | null; sleeping: boolean; weather: Weather | null }) {
   const now = useClock();
+  const cur = weather?.points.length
+    ? weather.points.reduce((b, p) => (Math.abs(p.t - now.getTime()) < Math.abs(b.t - now.getTime()) ? p : b))
+    : null;
   return (
     <div className={`idle ${battery ? "with-battery" : ""}`}>
       <Buddy sleeping={sleeping} />
       <span className="time">{timeFmt.format(now)}</span>
+      {cur && (
+        <span className="pill-temp" title={weather?.city}>
+          {weatherOf(cur.symbol).icon} {fmtTemp(cur.temp)}
+        </span>
+      )}
       {battery && (
         <span className="battery">
           <span className="pct">{battery.percent}%</span>
@@ -820,12 +1000,99 @@ function Cover({ src, size, radius }: { src: string | null; size: number; radius
   );
 }
 
-function CompactMedia({ media, accent, live }: { media: Media; accent: string; live: boolean }) {
+function usePosition(media: Media, every = 500) {
+  const now = useClock(every);
+  return Math.min(media.durationMs || Infinity, media.positionMs + (media.playing ? now.getTime() - media.updatedAtMs : 0));
+}
+
+/** The pill while music plays: compact, wide (title + thin bar), mini player, or the current lyric line. */
+function CompactMedia({
+  media,
+  accent,
+  live,
+  style,
+  api,
+  lyrics,
+}: {
+  media: Media;
+  accent: string;
+  live: boolean;
+  style: MusicPill;
+  api: Bridge | null;
+  lyrics: Line[] | null;
+}) {
+  const pos = usePosition(media, style === "lyrics" ? 200 : 1000);
+  const progress = media.durationMs ? pos / media.durationMs : 0;
+  if (style === "compact") {
+    return (
+      <div className="compact">
+        <Cover src={media.cover} size={22} radius={6} />
+        <Buddy />
+        <Bars playing={media.playing} live={live} color={accent} />
+      </div>
+    );
+  }
+  if (style === "player") {
+    return (
+      <div className="compact mini-player">
+        <Cover src={media.cover} size={28} radius={7} />
+        <div className="mp-text">
+          <div className="mp-title">{media.title}</div>
+          <div className="mp-bar">
+            <i style={{ width: `${progress * 100}%`, background: accent }} />
+          </div>
+        </div>
+        <button aria-label="Предыдущий" onClick={(e) => (e.stopPropagation(), api?.media("prev"))}>
+          <Prev size={16} />
+        </button>
+        <button aria-label="Пауза" onClick={(e) => (e.stopPropagation(), api?.media("toggle"))}>
+          {media.playing ? <Pause size={18} /> : <Play size={18} />}
+        </button>
+        <button aria-label="Следующий" onClick={(e) => (e.stopPropagation(), api?.media("next"))}>
+          <Next size={16} />
+        </button>
+      </div>
+    );
+  }
+  const i = style === "lyrics" && lyrics?.length ? lineAt(lyrics, pos) : -1;
+  const line = i >= 0 ? lyrics![i].text || "♪" : null;
   return (
-    <div className="compact">
-      <Cover src={media.cover} size={22} radius={6} />
-      <Buddy />
+    <div className="compact wide-media">
+      <Cover src={media.cover} size={24} radius={6} />
+      <div className="mp-text">
+        {line !== null ? (
+          <div className="mp-lyric" key={i}>
+            {line}
+          </div>
+        ) : (
+          <div className="mp-title">
+            {media.title}
+            {media.artist ? <span className="muted"> · {media.artist}</span> : null}
+          </div>
+        )}
+        <div className="mp-bar">
+          <i style={{ width: `${progress * 100}%`, background: accent }} />
+        </div>
+      </div>
       <Bars playing={media.playing} live={live} color={accent} />
+    </div>
+  );
+}
+
+function DownloadPill({ list }: { list: { name: string; size: number; speed: number }[] }) {
+  const first = list[0];
+  if (!first) return null;
+  const mb = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} ГБ` : `${(b / (1 << 20)).toFixed(1)} МБ`);
+  return (
+    <div className="compact download-pill">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd0ff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 4v11M7 10.5 12 15.5l5-5M5 20h14" />
+      </svg>
+      <span className="dl-name">{list.length > 1 ? `Загрузок: ${list.length}` : first.name}</span>
+      <span className="dl-size">
+        {mb(first.size)}
+        {first.speed > 0 ? ` · ${mb(first.speed)}/с` : ""}
+      </span>
     </div>
   );
 }
@@ -856,6 +1123,10 @@ function HomeTab({
   live,
   setVolume,
   sleeping,
+  lyrics,
+  launcher,
+  setLauncher,
+  onTypeStart,
 }: {
   api: Bridge | null;
   media: Media | null;
@@ -864,6 +1135,10 @@ function HomeTab({
   live: boolean;
   setVolume: (v: Volume) => void;
   sleeping: boolean;
+  lyrics: Line[] | null;
+  launcher: Shortcut[];
+  setLauncher: (l: Shortcut[]) => void;
+  onTypeStart: () => void;
 }) {
   const now = useClock(500);
   const pos = media
@@ -881,9 +1156,15 @@ function HomeTab({
               <div className="title" title={media.title}>
                 {media.title}
               </div>
-              <div className="artist" title={media.artist}>
-                {media.artist || appName(media.app)}
-              </div>
+              {lyrics?.length && lineAt(lyrics, pos) >= 0 ? (
+                <div className="artist lyric-line" key={lineAt(lyrics, pos)}>
+                  {lyrics[lineAt(lyrics, pos)].text || "♪"}
+                </div>
+              ) : (
+                <div className="artist" title={media.artist}>
+                  {media.artist || appName(media.app)}
+                </div>
+              )}
             </div>
             <Bars playing={media.playing} live={live} color={accent} height={18} />
           </div>
@@ -934,6 +1215,7 @@ function HomeTab({
           <span className="num">{Math.round((volume.muted ? 0 : volume.level) * 100)}</span>
         </div>
       )}
+      <Launcher api={api} items={launcher} setItems={setLauncher} onTypeStart={onTypeStart} />
     </>
   );
 }

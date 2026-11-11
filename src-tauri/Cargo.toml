@@ -22,6 +22,7 @@ base64 = "0.22"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.18"
 rqrr = "0.11"
+ureq = { version = "3", features = ["json"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-drag = "2"
 tauri-plugin-opener = "2"
@@ -33,6 +34,12 @@ windows = { version = "0.62", features = [
   "Globalization",
   "Graphics_Imaging",
   "Media_Ocr",
+  "UI_Notifications",
+  "UI_Notifications_Management",
+  "ApplicationModel",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_NetworkManagement_Ndis",
+  "Win32_Networking_WinSock",
   "Devices_Radios",
   "Media_Control",
   "Storage_Streams",

@@ -111,3 +111,7 @@ export const TabControls = ({ size = 17 }: P) =>
   line(size, <><rect x="3.5" y="7" width="17" height="10" rx="5" /><circle cx="15.5" cy="12" r="2.6" /></>);
 export const TabSettings = ({ size = 17 }: P) =>
   line(size, <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6" /></>);
+export const TabWeather = ({ size = 17 }: P) =>
+  line(size, <><path d="M7.5 18.5h9a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6 1.5A3.3 3.3 0 0 0 7.5 18.5Z" /></>);
+export const BellIcon = ({ size = 20 }: P) =>
+  line(size, <><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15Z" /><path d="M10 20.5a2.2 2.2 0 0 0 4 0" /></>);

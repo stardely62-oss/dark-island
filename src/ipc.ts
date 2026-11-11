@@ -32,9 +32,17 @@ type Events = {
   audio: number[];
   clips: Clip[];
   keys: { caps: boolean; layout: string; what: "caps" | "layout" };
-  hotkey: "toggle" | "clipboard" | "command";
+  hotkey: "toggle" | "clipboard" | "command" | "through";
   agent: AgentEvent;
   settings: Record<string, unknown>;
+  weather: import("./weather").Weather | null;
+  privacy: { mic: string[]; cam: string[]; micMuted: boolean };
+  mic_muted: boolean;
+  vpn: { on: boolean; name: string | null; country?: string; ip?: string };
+  downloads: { name: string; size: number; speed: number }[];
+  download_done: { name: string; path: string; size: number };
+  notification: { app: string; aumid: string; title: string; body: string };
+  foreground: string;
   capture: { kind: "shot" | "text" | "qr" | "color" | "error"; text: string; thumb: string | null; path: string | null };
   outside_click: null;
   /** Files dragged over the island from another window. */
@@ -122,6 +130,27 @@ function mockCover(): string {
     <circle cx="60" cy="60" r="30" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="6"/>
     <circle cx="60" cy="60" r="6" fill="#fff" fill-opacity=".8"/></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+function mockWeather() {
+  const now = Date.now();
+  const h0 = Math.floor(now / 3_600_000) * 3_600_000;
+  const syms = ["partlycloudy_day", "cloudy", "lightrain", "rain", "cloudy", "fair_day", "clearsky_night"];
+  const points = Array.from({ length: 24 * 8 }, (_, i) => {
+    const t = h0 + i * 3_600_000;
+    const hour = new Date(t).getHours();
+    return {
+      t,
+      temp: 4 + 5 * Math.sin(((hour - 9) / 24) * 2 * Math.PI) - i * 0.03,
+      wind: 3 + (i % 5),
+      humidity: 70 + (i % 20),
+      pressure: 1012,
+      symbol: hour < 7 || hour > 19 ? "clearsky_night" : syms[Math.floor(i / 5) % syms.length],
+      precip: i >= 1 && i <= 2 ? 0.6 : 0,
+      symbol6: syms[Math.floor(i / 24) % syms.length],
+    };
+  });
+  return { city: "Казань", points, at: now };
 }
 
 function mockBridge(): Bridge {
@@ -273,6 +302,14 @@ function mockBridge(): Bridge {
         emit("capture", r);
       }, 400);
     },
+    weather_get: () => (params.has("noweather") ? null : mockWeather()),
+    city_search: () => [
+      { name: "Казань", full: "Казань, Татарстан, Россия", lat: 55.79, lon: 49.12 },
+      { name: "Казань", full: "Казань, Кировская область, Россия", lat: 58.1, lon: 49.6 },
+    ],
+    lyrics_get: () => "[00:00.00] Ночной проспект, огни вдали\n[01:00.00] Мы едем вдоль пустой реки\n[01:08.00] И город шепчет: не спеши\n[01:16.00] Пока играет midnight drive",
+    mic_toggle: () => true,
+    notifications_access: () => "allowed",
     note_get: () => note,
     note_set: (a) => {
       note = a.text as string;

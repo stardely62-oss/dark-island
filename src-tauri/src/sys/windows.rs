@@ -32,7 +32,16 @@ use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDev
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::core::{w, HSTRING, PCWSTR};
+use windows::core::{w, HSTRING, PCWSTR, PWSTR as PWSTR2};
+use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
+use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds};
+use windows::Win32::Foundation::ERROR_BUFFER_OVERFLOW;
+use windows::Win32::Media::Audio::{eCapture, eCommunications};
+use windows::Win32::NetworkManagement::IpHelper::{
+    GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH,
+};
+use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
+use windows::Win32::System::Registry::{RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, KEY_READ, RRF_RT_REG_QWORD};
 use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat, SoftwareBitmap};
 use windows::Media::Ocr::OcrEngine;
@@ -119,6 +128,11 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
     let mut last_away = Instant::now();
     let mut away = false;
     let mut last_keys = keys();
+    let mut last_privacy = Instant::now();
+    let mut privacy_before = String::new();
+    let mut last_vpn = Instant::now() - Duration::from_secs(60);
+    let mut vpn_before: Option<String> = None;
+    let mut fg_before = String::new();
 
     loop {
         let mut media_dirty = false;
@@ -189,6 +203,38 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
             last_keys = k;
         }
 
+        // Microphone and camera in use, and whether the mic is muted.
+        if last_privacy.elapsed() >= Duration::from_millis(1500) {
+            last_privacy = Instant::now();
+            let mic = in_use("microphone");
+            let cam = in_use("webcam");
+            let muted = mic_muted().unwrap_or(false);
+            let key = format!("{mic:?}{cam:?}{muted}");
+            if key != privacy_before {
+                privacy_before = key;
+                let _ = app.emit_to("island", "privacy", serde_json::json!({ "mic": mic, "cam": cam, "micMuted": muted }));
+            }
+        }
+
+        if last_vpn.elapsed() >= Duration::from_secs(4) {
+            last_vpn = Instant::now();
+            let now = vpn_adapter();
+            if now != vpn_before {
+                vpn_before = now.clone();
+                let _ = app.emit_to("island", "vpn", serde_json::json!({ "on": now.is_some(), "name": now }));
+                if let (Some(name), true) = (now, settings.bool("vpnCountry", true)) {
+                    let app = app.clone();
+                    thread::spawn(move || {
+                        // Give the tunnel a moment to carry traffic.
+                        thread::sleep(Duration::from_secs(2));
+                        if let Some((country, ip)) = crate::live::vpn_country() {
+                            let _ = app.emit_to("island", "vpn", serde_json::json!({ "on": true, "name": name, "country": country, "ip": ip }));
+                        }
+                    });
+                }
+            }
+        }
+
         if last_away.elapsed() >= AWAY_EVERY {
             last_away = Instant::now();
             let now = idle_ms() >= AWAY_AFTER_MS;
@@ -210,6 +256,11 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
                 bottom: (g.y + ZONE_H * g.scale) as i32,
             };
             let p = presence(zone, &mut games, &settings);
+            let fg = foreground_exe();
+            if fg != fg_before && !fg.is_empty() {
+                fg_before = fg.clone();
+                let _ = app.emit_to("island", "foreground", fg);
+            }
             let before = std::mem::replace(&mut shared.snap.lock().unwrap().presence, p);
             if p != before {
                 if let Some(w) = app.get_webview_window("island") {
@@ -1073,5 +1124,229 @@ pub fn utc_offset_secs() -> i64 {
         }
         let v = |f: FILETIME| ((f.dwHighDateTime as i64) << 32) | f.dwLowDateTime as i64;
         (v(local) - v(utc)) / 10_000_000
+    }
+}
+
+// -------------------------------------------------- microphone, camera ----
+
+unsafe fn reg_subkeys(root: HKEY, path: &str) -> Vec<String> {
+    let mut key = HKEY::default();
+    if RegOpenKeyExW(root, &HSTRING::from(path), Some(0), KEY_READ, &mut key).is_err() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut i = 0;
+    loop {
+        let mut buf = [0u16; 512];
+        let mut len = buf.len() as u32;
+        if RegEnumKeyExW(key, i, Some(PWSTR2(buf.as_mut_ptr())), &mut len, None, None, None, None).is_err() {
+            break;
+        }
+        out.push(String::from_utf16_lossy(&buf[..len as usize]));
+        i += 1;
+    }
+    let _ = RegCloseKey(key);
+    out
+}
+
+unsafe fn reg_qword(root: HKEY, path: &str, name: &str) -> Option<u64> {
+    let mut v = 0u64;
+    let mut size = 8u32;
+    RegGetValueW(
+        root,
+        &HSTRING::from(path),
+        &HSTRING::from(name),
+        RRF_RT_REG_QWORD,
+        None,
+        Some(&mut v as *mut u64 as *mut _),
+        Some(&mut size),
+    )
+    .ok()
+    .ok()?;
+    Some(v)
+}
+
+/// Apps using the microphone or the camera right now, from Windows' own
+/// privacy records (the same source as the mic icon in the taskbar).
+pub fn in_use(device: &str) -> Vec<String> {
+    let base = format!("Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\{device}");
+    let mut apps = Vec::new();
+    unsafe {
+        let mut check = |path: String, name: String| {
+            let start = reg_qword(HKEY_CURRENT_USER, &path, "LastUsedTimeStart").unwrap_or(0);
+            let stop = reg_qword(HKEY_CURRENT_USER, &path, "LastUsedTimeStop").unwrap_or(1);
+            if start != 0 && stop == 0 {
+                apps.push(name);
+            }
+        };
+        for k in reg_subkeys(HKEY_CURRENT_USER, &base) {
+            if k == "NonPackaged" {
+                let np = format!("{base}\\NonPackaged");
+                for e in reg_subkeys(HKEY_CURRENT_USER, &np) {
+                    // "C:#Program Files#App#app.exe"
+                    let name = e.rsplit('#').next().unwrap_or(&e).trim_end_matches(".exe").to_string();
+                    check(format!("{np}\\{e}"), name);
+                }
+            } else {
+                let name = k.split('_').next().unwrap_or(&k).rsplit('.').next().unwrap_or(&k).to_string();
+                check(format!("{base}\\{k}"), name);
+            }
+        }
+    }
+    apps
+}
+
+fn capture_endpoint() -> Option<IAudioEndpointVolume> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            .and_then(|e| e.GetDefaultAudioEndpoint(eCapture, eCommunications))
+            .and_then(|d| d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None))
+            .ok()
+    }
+}
+
+pub fn mic_muted() -> Option<bool> {
+    unsafe { capture_endpoint()?.GetMute().ok().map(|b| b.as_bool()) }
+}
+
+/// Mutes or unmutes the default microphone; returns the new state.
+pub fn mic_toggle() -> Option<bool> {
+    let ep = capture_endpoint()?;
+    unsafe {
+        let now = !ep.GetMute().ok()?.as_bool();
+        ep.SetMute(now, std::ptr::null()).ok()?;
+        Some(now)
+    }
+}
+
+// ------------------------------------------------------------------ vpn ----
+
+const VPN_WORDS: &[&str] = &[
+    "wintun", "wireguard", "tap-windows", "openvpn", "vpn", "warp", "cloudflare", "nordlynx", "mullvad", "proton",
+    "amnezia", "outline", "hiddify", "v2ray", "sing-box", "happ", "karing", "windscribe", "tunnel", "tun ",
+];
+
+/// The name of an active VPN adapter, if any.
+pub fn vpn_adapter() -> Option<String> {
+    unsafe {
+        let mut size = 16 * 1024u32;
+        let mut buf = vec![0u8; size as usize];
+        let mut rc = GetAdaptersAddresses(0, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, None, Some(buf.as_mut_ptr() as *mut _), &mut size);
+        if rc == ERROR_BUFFER_OVERFLOW.0 {
+            buf = vec![0u8; size as usize];
+            rc = GetAdaptersAddresses(0, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, None, Some(buf.as_mut_ptr() as *mut _), &mut size);
+        }
+        if rc != 0 {
+            return None;
+        }
+        let mut p = buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
+        while !p.is_null() {
+            let a = &*p;
+            if a.OperStatus == IfOperStatusUp {
+                let name = a.FriendlyName.to_string().unwrap_or_default();
+                let desc = a.Description.to_string().unwrap_or_default();
+                let all = format!("{} {} ", name, desc).to_lowercase();
+                let ppp = a.IfType == 23; // IF_TYPE_PPP: Windows' own VPN connections
+                if ppp || VPN_WORDS.iter().any(|w| all.contains(w)) {
+                    return Some(if name.is_empty() { desc } else { name });
+                }
+            }
+            p = a.Next;
+        }
+        None
+    }
+}
+
+// -------------------------------------------------------- notifications ----
+
+pub fn notifications_access(ask: bool) -> String {
+    let Ok(l) = UserNotificationListener::Current() else { return "unsupported".into() };
+    let status = if ask {
+        l.RequestAccessAsync().and_then(|op| op.join())
+    } else {
+        l.GetAccessStatus()
+    };
+    match status {
+        Ok(s) if s == UserNotificationListenerAccessStatus::Allowed => "allowed",
+        Ok(s) if s == UserNotificationListenerAccessStatus::Denied => "denied",
+        Ok(_) => "unspecified",
+        Err(_) => "unsupported",
+    }
+    .into()
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Toast {
+    pub app: String,
+    pub aumid: String,
+    pub title: String,
+    pub body: String,
+}
+
+/// Shows other programs' notifications on the island while enabled.
+pub fn spawn_notifications(app: AppHandle, settings: Arc<Settings>) {
+    thread::spawn(move || {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        }
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut primed = false;
+        loop {
+            thread::sleep(Duration::from_secs(2));
+            if !settings.bool("showNotifications", false) {
+                primed = false;
+                continue;
+            }
+            let Ok(l) = UserNotificationListener::Current() else { continue };
+            if l.GetAccessStatus().ok() != Some(UserNotificationListenerAccessStatus::Allowed) {
+                continue;
+            }
+            let Ok(list) = l.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.join()) else { continue };
+            let muted = settings.strings("notifyMuted");
+            for n in list {
+                let Ok(id) = n.Id() else { continue };
+                if !seen.insert(id) || !primed {
+                    continue;
+                }
+                let info = n.AppInfo().ok();
+                let name = info
+                    .as_ref()
+                    .and_then(|i| i.DisplayInfo().ok())
+                    .and_then(|d| d.DisplayName().ok())
+                    .map(|h| h.to_string_lossy())
+                    .unwrap_or_default();
+                if muted.iter().any(|m| name.to_lowercase().contains(m)) {
+                    continue;
+                }
+                let aumid = info.and_then(|i| i.AppUserModelId().ok()).map(|h| h.to_string_lossy()).unwrap_or_default();
+                let texts: Vec<String> = n
+                    .Notification()
+                    .and_then(|t| t.Visual())
+                    .and_then(|v| v.GetBinding(&KnownNotificationBindings::ToastGeneric()?))
+                    .and_then(|b| b.GetTextElements())
+                    .map(|els| els.into_iter().filter_map(|e| e.Text().ok()).map(|h| h.to_string_lossy()).collect())
+                    .unwrap_or_default();
+                let title = texts.first().cloned().unwrap_or_default();
+                let body = texts.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
+                let _ = app.emit_to("island", "notification", Toast { app: name, aumid, title, body });
+            }
+            primed = true;
+        }
+    });
+}
+
+/// Name of the program in front (without .exe), for "hide for these apps".
+pub fn foreground_exe() -> String {
+    unsafe {
+        let fg = GetForegroundWindow();
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(fg, Some(&mut pid));
+        if pid == std::process::id() {
+            return String::new();
+        }
+        let path = process_path(pid).to_lowercase();
+        path.rsplit('\\').next().unwrap_or("").trim_end_matches(".exe").to_string()
     }
 }

@@ -52,6 +52,17 @@ export function SettingsTab({
   const [conn, setConn] = useState<Conn | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [skip, setSkip] = useState(settings.clipSkipApps.join(", "));
+  const [hideFor, setHideFor] = useState((settings.hideForApps as string[]).join(", "));
+  const [muted, setMuted] = useState((settings.notifyMuted as string[]).join(", "));
+  const [access, setAccess] = useState<string | null>(null);
+  useEffect(() => {
+    if (visible && settings.showNotifications) api?.call<string>("notifications_access", { ask: false }).then(setAccess);
+  }, [api, visible, settings.showNotifications]);
+  const list = (v: string) =>
+    v
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
   useEffect(() => {
     if (visible) api?.call<Conn>("agents_connections").then(setConn);
   }, [api, visible]);
@@ -84,6 +95,76 @@ export function SettingsTab({
           ]}
           onChange={(v) => set({ cardLength: v })}
         />
+      </Row>
+
+      <Row title="Автоскрытие" sub="Остров уходит за край и возвращается, если задержать курсор у самого верха">
+        <Toggle on={!!settings.autoHide} onChange={(v) => set({ autoHide: v })} />
+      </Row>
+      <Row title="Прятаться в программах" sub="Имена exe через запятую: остров уходит, пока одна из них впереди">
+        <input className="search set-input" value={hideFor} onFocus={onTypeStart} onChange={(e) => setHideFor(e.target.value)} onBlur={() => set({ hideForApps: list(hideFor) })} />
+      </Row>
+      <Row title="Сквозной режим" sub="Свёрнутый остров пропускает клики и не раскрывается под курсором (Ctrl+Alt+T)">
+        <Toggle on={!!settings.through} onChange={(v) => set({ through: v })} />
+      </Row>
+
+      <div className="set-group">Музыка</div>
+      <Row title="Пилюля во время музыки">
+        <Segmented
+          value={settings.musicPill as string}
+          options={[
+            ["compact", "Обычная"],
+            ["wide", "Широкая"],
+            ["player", "Плеер"],
+            ["lyrics", "Текст"],
+          ]}
+          onChange={(v) => set({ musicPill: v as "compact" })}
+        />
+      </Row>
+      <Row title="Текст песни" sub="Строка, которая звучит сейчас; тексты из открытой базы LRCLIB, только для играющей песни">
+        <Toggle on={!!settings.lyrics} onChange={(v) => set({ lyrics: v })} />
+      </Row>
+
+      <div className="set-group">Погода</div>
+      <Row title="Температура на острове" sub="Город выбирается на вкладке «Погода»">
+        <Toggle on={!!settings.weatherOnPill} onChange={(v) => set({ weatherOnPill: v })} />
+      </Row>
+      <Row title="Предупреждать о дожде и снеге" sub="Примерно за час">
+        <Toggle on={!!settings.rainWarning} onChange={(v) => set({ rainWarning: v })} />
+      </Row>
+
+      <div className="set-group">Уведомления Windows</div>
+      <Row
+        title="Показывать на острове"
+        sub={
+          !settings.showNotifications
+            ? "Сообщения других программ карточкой; клик открывает программу"
+            : access === "allowed"
+              ? "Доступ есть"
+              : "Нужно разрешить доступ к уведомлениям в Параметрах Windows"
+        }
+      >
+        {settings.showNotifications && access !== "allowed" && (
+          <button
+            className="text-btn solid"
+            onClick={() =>
+              api?.call<string>("notifications_access", { ask: true }).then((a) => {
+                setAccess(a);
+                if (a !== "allowed") api?.call("open_windows_settings", { page: "notifications" });
+              })
+            }
+          >
+            Разрешить
+          </button>
+        )}
+        <Toggle on={!!settings.showNotifications} onChange={(v) => set({ showNotifications: v })} />
+      </Row>
+      <Row title="Не показывать от программ" sub="Части названий через запятую">
+        <input className="search set-input" value={muted} onFocus={onTypeStart} onChange={(e) => setMuted(e.target.value)} onBlur={() => set({ notifyMuted: list(muted).map((x) => x.toLowerCase()) })} />
+      </Row>
+
+      <div className="set-group">Сеть</div>
+      <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, только когда VPN включается">
+        <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
 
       <div className="set-group">ИИ-агенты в терминале</div>
@@ -153,6 +234,8 @@ export function SettingsTab({
         <span>Ctrl+Alt+O</span> текст с экрана
         <span>Ctrl+Alt+Q</span> QR-код с экрана
         <span>Ctrl+Alt+C</span> пипетка
+        <span>Ctrl+Alt+M</span> микрофон: выключить и включить
+        <span>Ctrl+Alt+T</span> сквозной режим
       </div>
     </div>
   );

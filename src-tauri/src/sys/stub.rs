@@ -83,3 +83,11 @@ pub fn ocr(_png: &[u8]) -> Option<String> {
 pub fn utc_offset_secs() -> i64 {
     0
 }
+
+pub fn mic_toggle() -> Option<bool> {
+    None
+}
+pub fn notifications_access(_ask: bool) -> String {
+    "unsupported".into()
+}
+pub fn spawn_notifications(_app: AppHandle, _settings: Arc<crate::settings::Settings>) {}

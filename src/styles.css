@@ -240,6 +240,10 @@ body.preview {
 .expanded .date {
   font-size: 12.5px;
   color: var(--fg-2);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .expanded .battery {
   align-self: center;
@@ -1004,7 +1008,7 @@ textarea.note::placeholder {
 }
 .ctl-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 .ctl-tile {
@@ -1283,4 +1287,284 @@ textarea.note::placeholder {
 }
 .power-row .power-btn {
   height: 50px;
+}
+
+/* ---- batch 4: live info ---- */
+
+.muted {
+  color: var(--fg-3);
+}
+.pill-temp {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fg-2);
+}
+.idle.with-battery .pill-temp {
+  margin-left: auto;
+}
+.idle.with-battery .pill-temp + .battery {
+  margin-left: 0;
+}
+.privacy {
+  position: absolute;
+  top: 12px;
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+  transition: opacity 0.2s ease;
+}
+.privacy.hide {
+  opacity: 0;
+}
+.privacy i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+.privacy .cam {
+  background: #34c759;
+  color: #34c759;
+}
+.privacy .mic {
+  background: #ff9f0a;
+  color: #ff9f0a;
+}
+.privacy .mic.muted {
+  background: #ff453a;
+  color: #ff453a;
+}
+.wide-media,
+.mini-player {
+  gap: 10px;
+  padding: 0 14px 0 8px;
+}
+.mini-player {
+  padding-right: 8px;
+  gap: 4px;
+}
+.mini-player .cover {
+  margin-right: 6px;
+}
+.mini-player button {
+  width: 30px;
+  height: 30px;
+}
+.mp-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mp-title,
+.mp-lyric {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mp-lyric,
+.lyric-line {
+  animation: lyric-in 0.4s var(--ease);
+}
+.lyric-line {
+  color: #f0c8ff;
+}
+@keyframes lyric-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+}
+.mp-bar {
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+.mp-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.4s linear;
+}
+.download-pill {
+  gap: 10px;
+  padding: 0 14px 0 12px;
+  justify-content: flex-start;
+}
+.dl-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-size {
+  font-size: 11.5px;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* launcher */
+.launcher {
+  display: flex;
+  gap: 4px;
+  min-height: 36px;
+  margin-top: -2px;
+  overflow: hidden;
+}
+.launch-item {
+  width: auto;
+  height: 36px;
+  border-radius: 10px;
+  padding: 0 8px 0 4px;
+  display: flex;
+  gap: 6px;
+  max-width: 120px;
+}
+.launch-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.12);
+  font-size: 12px;
+  font-weight: 700;
+}
+.launch-icon.k-app {
+  background: rgb(217 119 87 / 0.35);
+}
+.launch-icon.k-url {
+  background: rgb(64 169 255 / 0.3);
+}
+.launch-icon.k-path {
+  background: rgb(245 196 81 / 0.3);
+}
+.launch-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launch-item.add .launch-icon {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25);
+}
+.launcher.adding {
+  flex-direction: column;
+  gap: 6px;
+  overflow: visible;
+}
+.launcher-found {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* weather */
+.tab-weather {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.w-now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.w-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+.w-main {
+  flex: 1;
+  min-width: 0;
+}
+.w-temp {
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1;
+}
+.w-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.w-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.w-city {
+  all: unset;
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.08);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.w-hours {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.w-hour {
+  flex: none;
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 0;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.05);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.w-hour .muted {
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.w-h-icon {
+  font-size: 16px;
+}
+.w-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.w-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.w-d-name {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.w-credit {
+  margin-top: auto;
+  font-size: 9.5px;
+  color: var(--fg-3);
+  text-align: right;
 }
