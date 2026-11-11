@@ -2,6 +2,7 @@ mod agents;
 mod ai;
 mod capture;
 mod clip;
+mod diag;
 mod live;
 mod settings;
 mod cursor;
@@ -24,7 +25,7 @@ use types::{Cmd, Geometry, MediaAction, Rect, Snapshot};
 
 /// Logical size of the transparent window that hosts the island.
 pub const WINDOW_W: f64 = 640.0;
-pub const WINDOW_H: f64 = 300.0;
+pub const WINDOW_H: f64 = 360.0;
 
 pub struct Shared {
     pub snap: Mutex<Snapshot>,
@@ -137,6 +138,29 @@ fn volume_mute_toggle(ctl: State<'_, Ctl>) {
     ctl.send(Cmd::MuteToggle);
 }
 
+/// Files dropped on the island: onto the shelf, and the page is told.
+pub fn shelf_dropped(app: &AppHandle, paths: Vec<String>) {
+    let ctl = app.state::<Ctl>();
+    let items = {
+        let mut shelf = ctl.shelf.lock().unwrap();
+        shelf.add(paths);
+        shelf.items.clone()
+    };
+    diag::log(app, &format!("shelf: {} item(s) now", items.len()));
+    let _ = app.emit_to("island", "shelf", items);
+    let _ = app.emit_to("island", "drag", serde_json::json!({ "type": "drop", "paths": [] }));
+}
+
+#[tauri::command]
+fn diag_open(app: AppHandle) {
+    if let Some(p) = diag::path(&app) {
+        if !p.exists() {
+            diag::log(&app, "log created");
+        }
+        let _ = app.opener().open_path(p.to_string_lossy().into_owned(), None::<&str>);
+    }
+}
+
 // ---- clipboard history ----------------------------------------------------
 
 #[tauri::command]
@@ -200,6 +224,22 @@ fn shelf_list(ctl: State<'_, Ctl>) -> Vec<ShelfItem> {
 
 #[tauri::command]
 fn shelf_add(ctl: State<'_, Ctl>, paths: Vec<String>) -> Vec<ShelfItem> {
+    let mut shelf = ctl.shelf.lock().unwrap();
+    shelf.add(paths);
+    shelf.items.clone()
+}
+
+/// The usual file picker, for putting files on the shelf without dragging.
+#[tauri::command]
+async fn shelf_pick(app: AppHandle) -> Vec<ShelfItem> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = app.dialog().file().set_title("Положить на полку").blocking_pick_files().unwrap_or_default();
+    let paths: Vec<String> = picked
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let ctl = app.state::<Ctl>();
     let mut shelf = ctl.shelf.lock().unwrap();
     shelf.add(paths);
     shelf.items.clone()
@@ -424,8 +464,10 @@ async fn lyrics_get(artist: String, title: String, duration: u64) -> Option<Stri
 }
 
 #[tauri::command]
-async fn mic_toggle() -> Option<bool> {
-    sys::mic_toggle()
+async fn mic_toggle(app: AppHandle) -> Option<bool> {
+    let r = sys::mic_toggle();
+    diag::log(&app, &format!("mic toggle -> {r:?}"));
+    r
 }
 
 #[tauri::command]
@@ -702,7 +744,9 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                 } else if *sc == mic {
                     let app = app.clone();
                     std::thread::spawn(move || {
-                        if let Some(muted) = sys::mic_toggle() {
+                        let r = sys::mic_toggle();
+                        diag::log(&app, &format!("mic hotkey -> {r:?}"));
+                        if let Some(muted) = r {
                             let _ = app.emit_to("island", "mic_muted", muted);
                         }
                     });
@@ -790,6 +834,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_drag::init())
         .register_uri_scheme_protocol("frame", |_ctx, _req| capture::protocol())
         .invoke_handler(tauri::generate_handler![
@@ -807,6 +852,7 @@ pub fn run() {
             shelf_list,
             shelf_add,
             shelf_remove,
+            shelf_pick,
             shelf_clear,
             open_path,
             reveal_path,
@@ -849,7 +895,8 @@ pub fn run() {
             record_toggle_cmd,
             record_start,
             monitors_list,
-            icon_get
+            icon_get,
+            diag_open
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());
@@ -901,33 +948,22 @@ pub fn run() {
                 recording: Mutex::new(None),
             });
             register_hotkeys(app.handle())?;
-            // Files dropped on the island go straight to the shelf, handled here
-            // rather than in the page, so nothing is lost on the way.
+            // Files dropped on the island go straight to the shelf (sys::drop).
+            #[cfg(windows)]
             {
                 let app2 = app.handle().clone();
-                win.on_window_event(move |ev| {
-                    use tauri::{DragDropEvent, WindowEvent};
-                    let WindowEvent::DragDrop(dd) = ev else { return };
-                    let emit = |kind: &str| {
-                        let _ = app2.emit_to("island", "drag", serde_json::json!({ "type": kind, "paths": [] }));
-                    };
-                    match dd {
-                        DragDropEvent::Enter { .. } => emit("enter"),
-                        DragDropEvent::Leave => emit("leave"),
-                        DragDropEvent::Drop { paths, .. } => {
-                            let list: Vec<String> = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
-                            let ctl = app2.state::<Ctl>();
-                            let items = {
-                                let mut shelf = ctl.shelf.lock().unwrap();
-                                shelf.add(list);
-                                shelf.items.clone()
-                            };
-                            let _ = app2.emit_to("island", "shelf", items);
-                            emit("drop");
+                if let Ok(h) = win.hwnd() {
+                    let hwnd = h.0 as isize;
+                    // WebView2 creates its child windows over time: register now
+                    // and again a few times as they appear.
+                    std::thread::spawn(move || {
+                        for i in 0u64.. {
+                            let a = app2.clone();
+                            let _ = app2.run_on_main_thread(move || sys::drop::register(&a, hwnd));
+                            std::thread::sleep(std::time::Duration::from_millis(if i < 10 { 500 } else { 5000 }));
                         }
-                        _ => {}
-                    }
-                });
+                    });
+                }
             }
             capture::create_overlay(app.handle())?;
             // By default the island stays out of screenshots, recordings and streams.

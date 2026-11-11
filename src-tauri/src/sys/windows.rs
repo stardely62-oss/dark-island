@@ -44,7 +44,7 @@ use windows::UI::Notifications::Management::{UserNotificationListener, UserNotif
 use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds};
 use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HLOCAL, LocalFree};
 use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
-use windows::Win32::Media::Audio::{eCapture, eCommunications};
+use windows::Win32::Media::Audio::{eCapture, IMMDevice, DEVICE_STATE_ACTIVE};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::NetworkManagement::IpHelper::{
     GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH,
@@ -1210,29 +1210,43 @@ pub fn in_use(device: &str) -> Vec<String> {
     apps
 }
 
-/// The default microphone, and the default one for calls if it is another
-/// device (Windows keeps the two separately).
+/// Every active microphone, the default one first: muting only the default
+/// device misses programs that record from another one.
 fn capture_endpoints() -> Vec<IAudioEndpointVolume> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let Ok(e) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else {
             return Vec::new();
         };
-        let mut ids: Vec<String> = Vec::new();
+        let id_of = |d: &IMMDevice| {
+            d.GetId()
+                .map(|p| {
+                    let s = p.to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(p.0 as *const _));
+                    s
+                })
+                .unwrap_or_default()
+        };
+        let mut devices: Vec<IMMDevice> = Vec::new();
+        if let Ok(d) = e.GetDefaultAudioEndpoint(eCapture, eConsole) {
+            devices.push(d);
+        }
+        if let Ok(list) = e.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) {
+            for i in 0..list.GetCount().unwrap_or(0) {
+                if let Ok(d) = list.Item(i) {
+                    devices.push(d);
+                }
+            }
+        }
+        let mut seen: Vec<String> = Vec::new();
         let mut out = Vec::new();
-        for role in [eConsole, eCommunications] {
-            let Ok(dev) = e.GetDefaultAudioEndpoint(eCapture, role) else { continue };
-            let id = dev.GetId().map(|p| {
-                let s = p.to_string().unwrap_or_default();
-                CoTaskMemFree(Some(p.0 as *const _));
-                s
-            });
-            let id = id.unwrap_or_default();
-            if ids.contains(&id) {
+        for d in devices {
+            let id = id_of(&d);
+            if seen.contains(&id) {
                 continue;
             }
-            ids.push(id);
-            if let Ok(v) = dev.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) {
+            seen.push(id);
+            if let Ok(v) = d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) {
                 out.push(v);
             }
         }

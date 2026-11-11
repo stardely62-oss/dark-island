@@ -423,6 +423,13 @@ export function SettingsTab({
         />
       </Row>
 
+      <div className="set-group">Если что-то не работает</div>
+      <Row title="Журнал" sub="Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось">
+        <button className="text-btn solid" onClick={() => api?.call("diag_open")}>
+          Открыть
+        </button>
+      </Row>
+
       <div className="set-group">Горячие клавиши</div>
       <div className="keys">
         <span>Ctrl+Alt+I</span> открыть или закрыть остров

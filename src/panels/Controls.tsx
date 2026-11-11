@@ -19,10 +19,11 @@ const POWER = line(<><path d="M12 3v8.5" /><path d="M6.5 6.8a7.5 7.5 0 1 0 11 0"
 
 /** Wi-Fi, Bluetooth and the dark theme in one press; lock, sleep, restart, shut down. */
 const TOOLS: [string, string, React.ReactNode][] = [
-  ["area", "Область", line(<><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /></>)],
-  ["full", "Экран", line(<><rect x="3" y="4.5" width="18" height="12.5" rx="1.5" /><path d="M9 20.5h6" /></>)],
-  ["ocr", "Текст", line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
-  ["qr", "QR", line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
+  ["area", "Снимок области", line(<><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /></>)],
+  ["full", "Снимок экрана", line(<><rect x="3" y="4.5" width="18" height="12.5" rx="1.5" /><path d="M9 20.5h6" /></>)],
+  ["record", "Запись экрана", line(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.2" fill="currentColor" /></>)],
+  ["ocr", "Текст с экрана", line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
+  ["qr", "QR-код", line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
   ["color", "Пипетка", line(<><path d="m14.5 6.5 3 3M16 5l3 3-9.5 9.5H6.5v-3Z" /><path d="M6.5 17.5 4 20" /></>)],
 ];
 
@@ -97,7 +98,7 @@ export function ControlsTab({
       </div>
       <div className="tools-row">
         {TOOLS.map(([id, label, icon]) => (
-          <button key={id} className="power-btn" onClick={() => onTool(id)}>
+          <button key={id} className="tool-btn" onClick={() => onTool(id)}>
             {icon}
             <span>{label}</span>
             {id === "color" && lastColor && (

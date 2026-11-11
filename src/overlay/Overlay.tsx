@@ -498,11 +498,15 @@ export function Overlay() {
   );
 }
 
-/** A loupe that follows the cursor: 15×15 pixels at 8×, with the colour. */
+/**
+ * The loupe sits right on the cursor: the pixel in its centre, framed, is
+ * exactly the one a click takes. 17×17 pixels at 8×, the colour below.
+ */
 function Magnifier({ img, at, pick, dpr }: { img: HTMLImageElement; at: Pt; pick: (p: Pt) => string | null; dpr: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const N = 15;
+  const N = 17;
   const Z = 8;
+  const half = (N - 1) / 2;
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
@@ -511,8 +515,9 @@ function Magnifier({ img, at, pick, dpr }: { img: HTMLImageElement; at: Pt; pick
     g.imageSmoothingEnabled = false;
     g.fillStyle = "#000";
     g.fillRect(0, 0, c.width, c.height);
-    g.drawImage(img, Math.round(at.x) - 7, Math.round(at.y) - 7, N, N, 0, 0, N * Z, N * Z);
-    g.strokeStyle = "rgba(255,255,255,.18)";
+    g.drawImage(img, Math.round(at.x) - half, Math.round(at.y) - half, N, N, 0, 0, N * Z, N * Z);
+    g.strokeStyle = "rgba(255,255,255,.12)";
+    g.lineWidth = 1;
     for (let i = 1; i < N; i++) {
       g.beginPath();
       g.moveTo(i * Z + 0.5, 0);
@@ -521,22 +526,30 @@ function Magnifier({ img, at, pick, dpr }: { img: HTMLImageElement; at: Pt; pick
       g.lineTo(N * Z, i * Z + 0.5);
       g.stroke();
     }
+    // The pixel that will be taken: a black and a white frame, visible on any colour.
+    const o = half * Z;
+    g.lineWidth = 3;
+    g.strokeStyle = "#000";
+    g.strokeRect(o - 1, o - 1, Z + 2, Z + 2);
+    g.lineWidth = 1.5;
     g.strokeStyle = "#fff";
-    g.lineWidth = 2;
-    g.strokeRect(7 * Z, 7 * Z, Z, Z);
-  }, [img, at]);
+    g.strokeRect(o - 0.5, o - 0.5, Z + 1, Z + 1);
+  }, [img, at, half]);
   const c = pick(at);
   const x = at.x / dpr;
   const y = at.y / dpr;
-  const flipX = x + 170 > window.innerWidth;
-  const flipY = y + 180 > window.innerHeight;
+  const size = N * Z;
+  // Label under the loupe, or above it near the bottom edge of the screen.
+  const below = y + size / 2 + 40 < window.innerHeight;
   return (
-    <div className="ov-loupe" style={{ left: flipX ? x - 150 : x + 22, top: flipY ? y - 168 : y + 22 }}>
-      <canvas ref={ref} />
-      <div className="ov-loupe-hex">
-        <span style={{ background: c ?? "#000" }} />
-        {c} · клик — копировать
+    <>
+      <div className="ov-loupe" style={{ left: x - size / 2, top: y - size / 2, width: size, height: size }}>
+        <canvas ref={ref} />
       </div>
-    </div>
+      <div className="ov-loupe-hex" style={{ left: x, top: below ? y + size / 2 + 8 : y - size / 2 - 34 }}>
+        <span style={{ background: c ?? "#000" }} />
+        {c} · клик — копировать · Esc — отмена
+      </div>
+    </>
   );
 }

@@ -16,7 +16,7 @@
         "label": "island",
         "title": "Dark Island",
         "width": 640,
-        "height": 300,
+        "height": 360,
         "x": 0,
         "y": 0,
         "visible": false,
@@ -29,7 +29,8 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "focus": false,
-        "backgroundThrottling": "disabled"
+        "backgroundThrottling": "disabled",
+        "dragDropEnabled": false
       }
     ],
     "security": {

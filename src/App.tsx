@@ -102,7 +102,7 @@ function sizeOf(
     case "agent":
       return { w: 300, h: 34 };
     case "expanded":
-      if (opts.fit) return { w: PANEL_W, h: Math.min(292, Math.max(120, Math.ceil(opts.fit))) };
+      if (opts.fit) return { w: PANEL_W, h: Math.min(340, Math.max(120, Math.ceil(opts.fit))) };
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
       return opts.media ? { w: PANEL_W, h: opts.launcher ? 292 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
     case "strip":
@@ -900,7 +900,8 @@ export function App() {
             lastColor={((settings.colorHistory as string[] | undefined) ?? [])[0] ?? null}
             onTool={(m) => {
               dismiss();
-              api?.call("capture_start", { mode: m });
+              if (m === "record") api?.call("record_toggle_cmd");
+              else api?.call("capture_start", { mode: m });
             }}
             micMuted={privacy.micMuted}
             onMic={() =>

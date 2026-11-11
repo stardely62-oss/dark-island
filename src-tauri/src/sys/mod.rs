@@ -2,6 +2,8 @@
 //! other platforms get a stub so the UI can be developed anywhere.
 
 #[cfg(windows)]
+pub mod drop;
+#[cfg(windows)]
 mod meter;
 #[cfg(windows)]
 pub mod record;

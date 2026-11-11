@@ -77,15 +77,24 @@ export function ShelfTab({
               title="Потяни, чтобы перенести все файлы"
               onPointerDown={(e) => down(e, items.map((i) => i.path))}
             >
-              <TabShelf size={15} /> {items.length} {plural(items.length)} — потяни, чтобы перенести все
+              <TabShelf size={15} /> {items.length} {plural(items.length)} · взять все
             </span>
             <span className="grow" />
+            <button className="text-btn" onClick={() => api?.call<ShelfItem[]>("shelf_pick").then(setItems)}>
+              Добавить…
+            </button>
             <button className="text-btn" onClick={() => api?.call<ShelfItem[]>("shelf_clear").then(setItems)}>
               Очистить
             </button>
           </>
         ) : (
-          <span className="hint">Брось файлы на остров — они подождут здесь</span>
+          <>
+            <span className="hint">Брось файлы на остров — они подождут здесь</span>
+            <span className="grow" />
+            <button className="text-btn solid" onClick={() => api?.call<ShelfItem[]>("shelf_pick").then(setItems)}>
+              Добавить файлы…
+            </button>
+          </>
         )}
       </div>
       <div className={`shelf ${dragOver ? "over" : ""} ${items.length ? "" : "empty-shelf"}`}>
