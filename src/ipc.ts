@@ -26,6 +26,8 @@ type Events = {
   battery: Battery | null;
   cursor: Cursor;
   presence: Presence;
+  /** No keyboard or mouse for a couple of minutes. */
+  away: boolean;
   /** Loudness of 6 frequency bands (low → high), 0..1, ~30 times a second. */
   audio: number[];
 };
@@ -97,6 +99,7 @@ function mockBridge(): Bridge {
   if (params.has("nomedia")) state.media = null;
   if (params.has("nobattery")) state.battery = null;
   if (params.has("strip")) state.presence = "strip";
+  if (params.has("away")) setTimeout(() => emit("away", true), 300);
 
   window.addEventListener("pointermove", (e) => {
     const inside = e.clientX >= rect.x && e.clientX <= rect.x + rect.w && e.clientY <= rect.y + rect.h;

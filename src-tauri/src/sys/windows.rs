@@ -31,6 +31,8 @@ use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+use windows::Win32::System::SystemInformation::GetTickCount;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
@@ -45,6 +47,13 @@ const TICK: Duration = Duration::from_millis(150);
 const MEDIA_EVERY: Duration = Duration::from_millis(900);
 const BATTERY_EVERY: Duration = Duration::from_secs(30);
 const PRESENCE_EVERY: Duration = Duration::from_millis(400);
+const AWAY_EVERY: Duration = Duration::from_secs(2);
+/// No keyboard or mouse for this long and the companion falls asleep.
+const AWAY_AFTER_MS: u32 = 120_000;
+/// Half-width and height (logical px) of the screen area the island needs:
+/// a window that reaches under it turns the island into a strip.
+const ZONE_HALF_W: f64 = 125.0;
+const ZONE_H: f64 = 38.0;
 
 pub fn spawn(app: AppHandle, shared: Arc<Shared>) -> Sender<Cmd> {
     let (tx, rx) = channel();
@@ -82,6 +91,8 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
     let mut last_battery = Instant::now() - BATTERY_EVERY;
     let mut last_presence = Instant::now();
     let mut games = GameCache::default();
+    let mut last_away = Instant::now();
+    let mut away = false;
 
     loop {
         let mut media_dirty = false;
@@ -143,10 +154,27 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
             }
         }
 
+        if last_away.elapsed() >= AWAY_EVERY {
+            last_away = Instant::now();
+            let now = idle_ms() >= AWAY_AFTER_MS;
+            if now != away {
+                away = now;
+                let _ = app.emit_to("island", "away", away);
+            }
+        }
+
         if last_presence.elapsed() >= PRESENCE_EVERY {
             last_presence = Instant::now();
             let g = *shared.geom.lock().unwrap();
-            let p = presence(POINT { x: g.x as i32 + 8, y: g.y as i32 + 8 }, &mut games);
+            // The area the collapsed island takes on screen (physical px).
+            let mid = g.x + crate::WINDOW_W / 2.0 * g.scale;
+            let zone = RECT {
+                left: (mid - ZONE_HALF_W * g.scale) as i32,
+                top: g.y as i32,
+                right: (mid + ZONE_HALF_W * g.scale) as i32,
+                bottom: (g.y + ZONE_H * g.scale) as i32,
+            };
+            let p = presence(zone, &mut games);
             let before = std::mem::replace(&mut shared.snap.lock().unwrap().presence, p);
             if p != before {
                 if let Some(w) = app.get_webview_window("island") {
@@ -352,7 +380,8 @@ fn battery() -> Option<Battery> {
 }
 
 /// What the island should do about the window in front, on the island's monitor.
-fn presence(island: POINT, games: &mut GameCache) -> Presence {
+fn presence(zone: RECT, games: &mut GameCache) -> Presence {
+    let island = POINT { x: (zone.left + zone.right) / 2, y: zone.top + 4 };
     unsafe {
         let fg = GetForegroundWindow();
         if fg.is_invalid() || !IsWindowVisible(fg).as_bool() || IsIconic(fg).as_bool() {
@@ -382,14 +411,29 @@ fn presence(island: POINT, games: &mut GameCache) -> Presence {
         // A maximised window with a title bar can cover the screen too
         // (auto-hiding taskbar); that is an ordinary window, not full-screen.
         let titled = GetWindowLongPtrW(fg, GWL_STYLE) as u32 & WS_CAPTION.0 == WS_CAPTION.0;
-        if !covers || (IsZoomed(fg).as_bool() && titled) {
-            return Presence::Normal;
+        if covers && !(IsZoomed(fg).as_bool() && titled) {
+            // Full-screen: games lose the island entirely, the rest get a strip.
+            return if games.is_game(fg, pid, &class) { Presence::Hidden } else { Presence::Strip };
         }
-        if games.is_game(fg, pid, &class) {
-            Presence::Hidden
-        } else {
+        // An ordinary window that reaches under the island (a maximised
+        // browser with its tabs and address bar): step aside to a strip.
+        let overlaps = r.left < zone.right && r.right > zone.left && r.top < zone.bottom && r.bottom > zone.top;
+        if overlaps {
             Presence::Strip
+        } else {
+            Presence::Normal
         }
+    }
+}
+
+/// Milliseconds since the last keyboard or mouse input anywhere.
+fn idle_ms() -> u32 {
+    let mut li = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    unsafe {
+        if !GetLastInputInfo(&mut li).as_bool() {
+            return 0;
+        }
+        GetTickCount().wrapping_sub(li.dwTime)
     }
 }
 

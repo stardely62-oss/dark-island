@@ -3,6 +3,7 @@ import { bridge, type Battery, type Bridge, type Cursor, type Media, type Presen
 import { Liquid, type Shape } from "./liquid";
 import { BatteryIcon, Next, Note, Pause, Play, Prev, Speaker } from "./components/Icons";
 import { Bars } from "./components/Bars";
+import { Buddy, animateBuddies } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip";
@@ -25,7 +26,7 @@ function sizeOf(mode: Mode, hasMedia: boolean, hasBattery: boolean): Shape {
     case "hud":
       return { w: 236, h: 34 };
     default:
-      return hasBattery ? { w: 196, h: 32 } : { w: 124, h: 32 };
+      return hasBattery ? { w: 214, h: 32 } : { w: 140, h: 32 };
   }
 }
 
@@ -40,6 +41,8 @@ export function App() {
   // True while real audio levels arrive; otherwise the bars use a CSS loop.
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>("normal");
+  const [away, setAway] = useState(false);
+  const sleeping = away && !media?.playing;
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
   const accent2 = useMemo(() => shiftHue(accent, 45), [accent]);
 
@@ -72,6 +75,7 @@ export function App() {
         b.on("media", setMedia),
         b.on("battery", setBattery),
         b.on("presence", setPresence),
+        b.on("away", setAway),
         b.on("volume", (v) => {
           const before = knownVolume.current;
           knownVolume.current = v;
@@ -169,6 +173,8 @@ export function App() {
         box.style.borderRadius = `0 0 ${L.radius}px ${L.radius}px`;
       }
 
+      animateBuddies(L, c && c.near ? c : null);
+
       // Equaliser bars follow the same smoothed levels as the edge.
       const lv = L.levels;
       const bars = [0.6 * lv[0] + 0.4 * lv[1], lv[2], lv[3], 0.5 * (lv[4] + lv[5])];
@@ -258,7 +264,7 @@ export function App() {
         onClick={() => !expanded && setExpanded(true)}
       >
         <View on={mode === "idle"} shape={sizeOf("idle", false, !!battery)}>
-          <Idle battery={battery} />
+          <Idle battery={battery} sleeping={sleeping} />
         </View>
         <View on={mode === "media"} shape={sizeOf("media", true, false)}>
           {media && <CompactMedia media={media} accent={accent} live={live} />}
@@ -348,10 +354,11 @@ function useClock(everyMs = 1000) {
 const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
 const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" });
 
-function Idle({ battery }: { battery: Battery | null }) {
+function Idle({ battery, sleeping }: { battery: Battery | null; sleeping: boolean }) {
   const now = useClock();
   return (
     <div className={`idle ${battery ? "with-battery" : ""}`}>
+      <Buddy sleeping={sleeping} />
       <span className="time">{timeFmt.format(now)}</span>
       {battery && (
         <span className="battery">
@@ -375,6 +382,7 @@ function CompactMedia({ media, accent, live }: { media: Media; accent: string; l
   return (
     <div className="compact">
       <Cover src={media.cover} size={22} radius={6} />
+      <Buddy />
       <Bars playing={media.playing} live={live} color={accent} />
     </div>
   );

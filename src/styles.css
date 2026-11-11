@@ -105,12 +105,16 @@ body.preview {
   height: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0 16px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 16px 0 12px;
   box-sizing: border-box;
 }
-.idle.with-battery {
-  justify-content: space-between;
+.idle.with-battery .battery {
+  margin-left: auto;
+}
+.idle .buddy {
+  margin-top: -1px;
 }
 .time {
   font-size: 13.5px;
@@ -365,4 +369,105 @@ button:active {
   gap: 8px;
   color: var(--fg-3);
   font-size: 13px;
+}
+
+/* ---- Клодик ---- */
+
+.buddy {
+  flex: none;
+  overflow: visible;
+  --gx: 0;
+  --gy: 0;
+  --hop: 0;
+  --tilt: 0deg;
+  --squash: 1;
+}
+.buddy .bd-sway {
+  transform-box: view-box;
+  transform-origin: 12px 23px;
+  translate: 0 calc(var(--hop) * 1px);
+  rotate: var(--tilt);
+}
+.buddy .bd-body {
+  transform-box: view-box;
+  transform-origin: 12px 23px;
+  scale: var(--squash) calc(2 - var(--squash));
+  animation: bd-breathe 3.2s ease-in-out infinite;
+}
+.buddy .bd-gaze {
+  translate: calc(var(--gx) * 1px) calc(var(--gy) * 1px);
+  transition: translate 0.12s ease-out;
+}
+.buddy .bd-eyes,
+.buddy .bd-happy {
+  transition: opacity 0.09s ease;
+}
+.buddy.happy .bd-eyes {
+  opacity: 0;
+}
+.buddy .bd-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bd-blink 5.3s infinite;
+}
+.buddy .bd-eye + .bd-eye {
+  animation-delay: 0.03s;
+}
+.buddy .bd-happy {
+  opacity: 0;
+}
+.buddy.happy .bd-happy {
+  opacity: 1;
+}
+.buddy .bd-closed,
+.buddy .bd-zz {
+  opacity: 0;
+}
+.buddy .bd-spark {
+  transform-box: view-box;
+  transform-origin: 12px 4.3px;
+  animation: bd-spin 14s linear infinite;
+}
+
+.buddy.sleep .bd-body {
+  animation-duration: 5.5s;
+}
+.buddy.sleep .bd-eyes,
+.buddy.sleep .bd-happy,
+.buddy.sleep .bd-mouth {
+  opacity: 0;
+}
+.buddy.sleep .bd-closed {
+  opacity: 1;
+}
+.buddy.sleep .bd-spark {
+  animation-duration: 40s;
+  opacity: 0.6;
+}
+.buddy.sleep .bd-zz {
+  opacity: 1;
+}
+.buddy.sleep .bd-zz text {
+  animation: bd-z 3s ease-in-out infinite;
+}
+.buddy.sleep .bd-zz text + text {
+  animation-delay: 1.5s;
+}
+
+@keyframes bd-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.035, 0.965); }
+}
+@keyframes bd-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94% { transform: scaleY(0.12); }
+  96% { transform: scaleY(1); }
+}
+@keyframes bd-spin {
+  to { rotate: 360deg; }
+}
+@keyframes bd-z {
+  0% { opacity: 0; translate: 0 2px; }
+  30% { opacity: 1; }
+  100% { opacity: 0; translate: 1.5px -2.5px; }
 }
