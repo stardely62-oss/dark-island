@@ -33,6 +33,13 @@ use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, 
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetTickCount;
 use windows::core::{w, HSTRING, PCWSTR, PWSTR as PWSTR2};
+use windows::Win32::Foundation::SIZE;
+use windows::Win32::Graphics::Gdi::{GetObjectW, BITMAP};
+use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY};
 use windows::UI::Notifications::Management::{UserNotificationListener, UserNotificationListenerAccessStatus};
 use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds};
 use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HLOCAL, LocalFree};
@@ -1170,6 +1177,7 @@ unsafe fn reg_qword(root: HKEY, path: &str, name: &str) -> Option<u64> {
 /// Apps using the microphone or the camera right now, from Windows' own
 /// privacy records (the same source as the mic icon in the taskbar).
 pub fn in_use(device: &str) -> Vec<String> {
+    let running = running_exes();
     let base = format!("Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\{device}");
     let mut apps = Vec::new();
     unsafe {
@@ -1185,8 +1193,12 @@ pub fn in_use(device: &str) -> Vec<String> {
                 let np = format!("{base}\\NonPackaged");
                 for e in reg_subkeys(HKEY_CURRENT_USER, &np) {
                     // "C:#Program Files#App#app.exe"
-                    let name = e.rsplit('#').next().unwrap_or(&e).trim_end_matches(".exe").to_string();
-                    check(format!("{np}\\{e}"), name);
+                    let name = e.rsplit('#').next().unwrap_or(&e).to_lowercase().trim_end_matches(".exe").to_string();
+                    // Windows can leave a stale "in use" record after a crash: trust it
+                    // only while that program is actually running.
+                    if running.contains(&name) {
+                        check(format!("{np}\\{e}"), name);
+                    }
                 }
             } else {
                 let name = k.split('_').next().unwrap_or(&k).rsplit('.').next().unwrap_or(&k).to_string();
@@ -1375,4 +1387,84 @@ pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
         let _ = LocalFree(Some(HLOCAL(out.pbData as *mut _)));
         Some(v)
     }
+}
+
+// ---------------------------------------------------------------- icons ----
+
+/// The icon Windows shows for a program, file or folder, as a PNG data URL.
+/// `name` is a path, or "shell:AppsFolder\<AppID>" for an installed app.
+pub fn shell_icon(name: &str, size: i32) -> Option<String> {
+    let name = name.to_string();
+    // The shell's image factory wants a single-threaded apartment.
+    thread::spawn(move || unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let f: IShellItemImageFactory = SHCreateItemFromParsingName(&HSTRING::from(name.as_str()), None).ok()?;
+        let hbmp = f.GetImage(SIZE { cx: size, cy: size }, SIIGBF_BIGGERSIZEOK | SIIGBF_ICONONLY).ok()?;
+        let mut bm = BITMAP::default();
+        GetObjectW(hbmp.into(), std::mem::size_of::<BITMAP>() as i32, Some(&mut bm as *mut _ as *mut _));
+        let (w, h) = (bm.bmWidth, bm.bmHeight.abs());
+        if w <= 0 || h <= 0 {
+            let _ = DeleteObject(hbmp.into());
+            return None;
+        }
+        let dc = CreateCompatibleDC(None);
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        let lines = GetDIBits(dc, hbmp, 0, h as u32, Some(px.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS);
+        let _ = DeleteDC(dc);
+        let _ = DeleteObject(hbmp.into());
+        if lines == 0 {
+            return None;
+        }
+        // Old-style icons carry no alpha at all: treat them as opaque.
+        let any_alpha = px.chunks_exact(4).any(|c| c[3] != 0);
+        for c in px.chunks_exact_mut(4) {
+            c.swap(0, 2);
+            if !any_alpha {
+                c[3] = 255;
+            } else if c[3] > 0 && c[3] < 255 {
+                // premultiplied -> straight
+                for i in 0..3 {
+                    c[i] = ((c[i] as u32 * 255) / c[3] as u32).min(255) as u8;
+                }
+            }
+        }
+        let png = crate::clip::encode_png(w as u32, h as u32, &px)?;
+        Some(format!("data:image/png;base64,{}", B64.encode(png)))
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
+/// Names (lower case, without .exe) of running programs.
+pub fn running_exes() -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+        let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        if Process32FirstW(snap, &mut e).is_ok() {
+            loop {
+                let len = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                let name = String::from_utf16_lossy(&e.szExeFile[..len]).to_lowercase();
+                out.insert(name.trim_end_matches(".exe").to_string());
+                if Process32NextW(snap, &mut e).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+    out
 }

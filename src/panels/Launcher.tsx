@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Bridge } from "../ipc";
 import type { Shortcut } from "../settings";
+import { AppIcon } from "../components/AppIcon";
 
 type App = { Name: string; AppID: string };
 
@@ -61,7 +62,8 @@ export function Launcher({
         />
         <div className="launcher-found">
           {found.map((a) => (
-            <button key={a.AppID} className="text-btn solid" onClick={() => add({ name: a.Name, kind: "app", target: a.AppID })}>
+            <button key={a.AppID} className="text-btn solid with-icon" onClick={() => add({ name: a.Name, kind: "app", target: a.AppID })}>
+              <AppIcon api={api} kind="app" target={a.AppID} name={a.Name} size={16} />
               {a.Name}
             </button>
           ))}
@@ -100,13 +102,17 @@ export function Launcher({
             setItems(items.filter((i) => i !== s));
           }}
         >
-          <span className={`launch-icon k-${s.kind}`}>{s.name.slice(0, 1).toUpperCase()}</span>
+          <AppIcon api={api} kind={s.kind} target={s.target} name={s.name} size={22} />
           <span className="launch-name">{s.name}</span>
         </button>
       ))}
       <button className="launch-item add" title="Добавить ярлык" onClick={() => setAdding(true)}>
-        <span className="launch-icon">+</span>
-        <span className="launch-name">{items.length ? "" : "Ярлык"}</span>
+        <span className="launch-icon">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+            <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </span>
+        {!items.length && <span className="launch-name">Добавить ярлык</span>}
       </button>
     </div>
   );

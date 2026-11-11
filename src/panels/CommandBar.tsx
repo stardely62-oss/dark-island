@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 import { calc, convert, fmtNumber, SYSTEM, timerPhrase } from "../command";
 import { ENGINES } from "../settings";
+import { AppIcon } from "../components/AppIcon";
 import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
 export type AppEntry = { Name: string; AppID: string };
 
-type Result = { key: string; icon: string; title: string; sub: string; run: () => void };
+type Result = { key: string; icon: string; title: string; sub: string; run: () => void; app?: string };
 
 const ICONS: Record<string, React.ReactNode> = {
   calc: <path d="M5 8h5M7.5 5.5v5M14 8h5M5 16.5l4-4M9 16.5l-4-4M14 15h5M14 18h5" />,
@@ -127,6 +128,7 @@ export function CommandBar({
       out.push({
         key: `app-${a.AppID}`,
         icon: a.Name.slice(0, 1).toUpperCase(),
+        app: a.AppID,
         title: a.Name,
         sub: "Программа",
         run: () => api?.call("app_launch", { id: a.AppID }),
@@ -203,8 +205,10 @@ export function CommandBar({
               onMouseEnter={() => setSel(i)}
               onClick={() => runAt(i)}
             >
-              <span className="cmd-icon">
-                {ICONS[r.icon] ? (
+              <span className={`cmd-icon ${r.app ? "is-app" : ""}`}>
+                {r.app ? (
+                  <AppIcon api={api} kind="app" target={r.app} name={r.title} size={22} />
+                ) : ICONS[r.icon] ? (
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     {ICONS[r.icon]}
                   </svg>

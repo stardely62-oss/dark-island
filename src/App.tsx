@@ -82,6 +82,8 @@ function sizeOf(
     music?: MusicPill;
     temp?: boolean;
     launcher?: boolean;
+    /** Measured height of the tab's content, for tabs that fit their content. */
+    fit?: number;
   } = {},
 ): Shape {
   switch (mode) {
@@ -100,6 +102,7 @@ function sizeOf(
     case "agent":
       return { w: 300, h: 34 };
     case "expanded":
+      if (opts.fit) return { w: PANEL_W, h: Math.min(292, Math.max(120, Math.ceil(opts.fit))) };
       if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
       return opts.media ? { w: PANEL_W, h: opts.launcher ? 292 : 246 } : { w: PANEL_W, h: opts.launcher ? 212 : 168 };
     case "strip":
@@ -151,6 +154,16 @@ export function App() {
   const [shelf, setShelf] = useState<ShelfItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  // Heights the fitting tabs measured for themselves (fonts differ between systems).
+  const [fits, setFits] = useState<Partial<Record<Tab, number>>>({});
+  const measures = useMemo(
+    () =>
+      Object.fromEntries(
+        FIT.map((t) => [t, (h: number) => setFits((f) => (Math.abs((f[t] ?? 0) - h) < 1 ? f : { ...f, [t]: h }))]),
+      ) as Record<Tab, (h: number) => void>,
+    [],
+  );
+  const measure = (t: Tab) => measures[t];
   const [commandRows, setCommandRows] = useState(0);
   // Agents in a terminal: who is working, and a pending permission question.
   const [working, setWorking] = useState<Record<string, AgentEvent & { at: number }>>({});
@@ -234,8 +247,9 @@ export function App() {
         music: musicPill === "lyrics" && !lyrics?.length ? "wide" : musicPill,
         temp: !!weather && settings.weatherOnPill,
         launcher: launcherOn,
+        fit: FIT.includes(tab) ? fits[tab] : undefined,
       }),
-    [mode, media, battery, tab, commandRows, card, musicPill, lyrics, weather, settings.weatherOnPill, launcherOn],
+    [mode, media, battery, tab, commandRows, card, musicPill, lyrics, weather, settings.weatherOnPill, launcherOn, fits],
   );
 
   // ---- data from the system --------------------------------------------
@@ -307,7 +321,17 @@ export function App() {
             else if (r.error) showCard({ kind: "info", title: "Запись экрана", sub: r.error, ms: 4000 });
           }
         }),
-        b.on("privacy", setPrivacy),
+        b.on("privacy", (p) => {
+          // A card when a program starts using the microphone or the camera.
+          setPrivacy((before) => {
+            const fresh = [
+              ...p.cam.filter((a) => !before.cam.includes(a)).map((a) => ["Камера", a]),
+              ...p.mic.filter((a) => !before.mic.includes(a)).map((a) => ["Микрофон", a]),
+            ];
+            if (fresh.length) showCard({ kind: "info", title: fresh[0][0], sub: fresh[0][1], ms: 2500 });
+            return p;
+          });
+        }),
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
         b.on("download_done", (d) =>
@@ -724,8 +748,13 @@ export function App() {
   );
 
   const frame = (t: Tab, body: React.ReactNode) => (
-    <View key={t} on={mode === "expanded" && tab === t} shape={sizeOf("expanded", { media: !!media, tab: t })}>
-      <div className="expanded">
+    <View
+      key={t}
+      on={mode === "expanded" && tab === t}
+      shape={sizeOf("expanded", { media: !!media, tab: t, fit: FIT.includes(t) ? fits[t] : undefined })}
+      onMeasure={FIT.includes(t) ? measure(t) : undefined}
+    >
+      <div className={`expanded ${FIT.includes(t) ? "fit" : ""}`}>
         <Header battery={battery} tab={tab} setTab={setTab} />
         {body}
       </div>
@@ -764,7 +793,7 @@ export function App() {
       </svg>
       <div
         ref={dotsRef}
-        className={`privacy ${mode === "tucked" || mode === "strip" ? "hide" : ""}`}
+        className={`privacy ${mode === "tucked" || mode === "strip" || mode === "expanded" || mode === "command" ? "hide" : ""}`}
         title={[...privacy.cam.map((a) => `Камера: ${a}`), ...privacy.mic.map((a) => `Микрофон: ${a}`)].join("\n")}
       >
         {privacy.cam.length > 0 && <i className="cam" />}
@@ -909,6 +938,9 @@ export function App() {
     </div>
   );
 }
+
+/** Tabs whose panel takes the height of its content. */
+const FIT: Tab[] = ["home", "controls", "weather"];
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "home", label: "Главная", icon: <TabHome /> },
@@ -1081,9 +1113,34 @@ function paintLight(
 }
 
 /** A view is laid out at its final size and revealed by the growing body. */
-function View({ on, shape, children, top }: { on: boolean; shape: Shape; children: React.ReactNode; top?: boolean }) {
+function View({
+  on,
+  shape,
+  children,
+  top,
+  onMeasure,
+}: {
+  on: boolean;
+  shape: Shape;
+  children: React.ReactNode;
+  top?: boolean;
+  onMeasure?: (h: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current?.firstElementChild as HTMLElement | null;
+    if (!el || !onMeasure) return;
+    const ro = new ResizeObserver(() => onMeasure(el.getBoundingClientRect().height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onMeasure]);
   return (
-    <div className={`view ${on ? "on" : ""}`} style={{ width: shape.w, height: top ? undefined : shape.h }} aria-hidden={!on}>
+    <div
+      ref={ref}
+      className={`view ${on ? "on" : ""}`}
+      style={{ width: shape.w, height: top || onMeasure ? undefined : shape.h }}
+      aria-hidden={!on}
+    >
       {children}
     </div>
   );

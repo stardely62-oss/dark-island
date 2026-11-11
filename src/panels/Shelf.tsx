@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { Bridge, ShelfItem } from "../ipc";
 import { CloseIcon, FileIcon, FolderIcon, TabShelf } from "../components/Icons";
+import { AppIcon } from "../components/AppIcon";
 
 let dragIcon: string | null = null;
 /** The picture under the cursor while files are dragged out (PNG data URL). */
@@ -100,7 +101,14 @@ export function ShelfTab({
               api?.call("reveal_path", { path: it.path });
             }}
           >
-            {it.dir ? <FolderIcon /> : <FileIcon ext={ext(it.name) || "file"} />}
+            <AppIcon
+              api={api}
+              kind="path"
+              target={it.path}
+              name={it.name}
+              size={32}
+              fallback={it.dir ? <FolderIcon /> : <FileIcon ext={ext(it.name) || "file"} />}
+            />
             <span className="name">{it.name}</span>
             <span className="size">{it.dir ? "папка" : size(it.size)}</span>
             <button

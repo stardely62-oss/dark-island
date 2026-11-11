@@ -98,3 +98,7 @@ pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
 pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
     Some(data.to_vec())
 }
+
+pub fn shell_icon(_name: &str, _size: i32) -> Option<String> {
+    None
+}

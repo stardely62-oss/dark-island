@@ -80,8 +80,10 @@ export function ControlsTab({
       onClick={() => (what === "mic" ? onMic() : toggle(what, !on))}
     >
       <span className="ctl-icon">{icon}</span>
-      <span className="ctl-title">{title}</span>
-      <span className="ctl-sub">{sub}</span>
+      <span className="ctl-text">
+        <span className="ctl-title">{title}</span>
+        <span className="ctl-sub">{sub}</span>
+      </span>
     </button>
   );
 

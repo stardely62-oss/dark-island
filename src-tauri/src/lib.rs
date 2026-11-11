@@ -612,6 +612,29 @@ fn record_start(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
     let _ = (x, y, w, h);
 }
 
+// ---- icons -----------------------------------------------------------------------
+
+static ICONS: std::sync::LazyLock<Mutex<std::collections::HashMap<String, Option<String>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+/// An icon for a launcher entry, a command-bar app or a shelf file:
+/// kind "app" (AppID), "path" (file or folder), or "url" (the site's own favicon).
+#[tauri::command]
+async fn icon_get(kind: String, target: String) -> Option<String> {
+    let key = format!("{kind}\u{1}{target}");
+    if let Some(v) = ICONS.lock().unwrap().get(&key) {
+        return v.clone();
+    }
+    let icon = match kind.as_str() {
+        "app" => sys::shell_icon(&format!("shell:AppsFolder\\{target}"), 64),
+        "path" => sys::shell_icon(&target, 64),
+        "url" => live::favicon(&target),
+        _ => None,
+    };
+    ICONS.lock().unwrap().insert(key, icon.clone());
+    icon
+}
+
 // ---- hotkeys -------------------------------------------------------------------
 
 /// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
@@ -825,7 +848,8 @@ pub fn run() {
             dictate_toggle,
             record_toggle_cmd,
             record_start,
-            monitors_list
+            monitors_list,
+            icon_get
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());

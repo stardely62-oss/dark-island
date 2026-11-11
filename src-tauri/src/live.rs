@@ -277,3 +277,32 @@ pub fn vpn_country() -> Option<(String, String)> {
     }
     Some((v.get("country_code")?.as_str()?.to_string(), v.get("ip")?.as_str()?.to_string()))
 }
+
+/// The site's own icon (only that site is asked), as a data URL.
+pub fn favicon(url: &str) -> Option<String> {
+    let url = if url.contains("://") { url.to_string() } else { format!("https://{url}") };
+    let rest = url.split_once("://")?.1;
+    let host = rest.split(['/', '?', '#']).next()?;
+    if host.is_empty() {
+        return None;
+    }
+    let mut resp = agent().get(format!("https://{host}/favicon.ico")).header("User-Agent", UA).call().ok()?;
+    let mime = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/x-icon")
+        .split(';')
+        .next()
+        .unwrap_or("image/x-icon")
+        .to_string();
+    if !mime.starts_with("image/") {
+        return None;
+    }
+    let bytes = resp.body_mut().with_config().limit(512 * 1024).read_to_vec().ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    use base64::Engine;
+    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
