@@ -2280,3 +2280,18 @@ header .buddy-home {
   padding-left: 10px;
   box-sizing: border-box;
 }
+.pet-hearts {
+  margin-left: 6px;
+  color: #ff6f9c;
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+.pet-hearts i {
+  font-style: normal;
+  color: rgb(255 255 255 / 0.15);
+}
+.pet-buttons {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}

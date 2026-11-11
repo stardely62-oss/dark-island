@@ -39,7 +39,9 @@ export type Reaction =
   /** …and back: he falls onto his place from above. */
   | "plop"
   /** Scrolled over: his head spins. */
-  | "dizzy";
+  | "dizzy"
+  /** The charger went in: he gets a jolt of energy. */
+  | "charged";
 
 // ---------------------------------------------------------------- the life ----
 
@@ -71,6 +73,8 @@ const WHIMS: [string, number, number][] = [
   ["work", 2600, 2],
   ["nod", 2400, 1],
   ["wiggle", 1500, 2],
+  ["eat", 3200, 1],
+  ["crave", 3200, 0],
   // Things he does with things: a little resident of the computer.
   ["paper", 4200, 4],
   ["magnify", 4600, 4],
@@ -81,11 +85,54 @@ const WHIMS: [string, number, number][] = [
   ["juggle", 3600, 3],
   ["water", 4600, 3],
   ["think", 3600, 3],
+  ["ball", 3600, 2],
+  ["kite", 3000, 1],
 ];
 
 /** How he looks and whether he lives on his own; set from the settings. */
-export type BuddyLook = { life: boolean; color: string; hat: string; name: string };
-let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик" };
+export type BuddyLook = {
+  life: boolean;
+  color: string;
+  hat: string;
+  name: string;
+  /** What the weather outside asks for: rain → umbrella, snow → scarf, hot → sunglasses. */
+  weather: "" | "rain" | "snow" | "hot";
+};
+let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "" };
+
+// ------------------------------------------------------------------ the pet ----
+
+/** A pet's needs, kept on this computer: when he last ate, how close you are, whether he sleeps. */
+type Pet = { fed: number; love: number; asleep: boolean };
+const PET_KEY = "island.pet";
+const HUNGRY_AFTER = 4 * 3600_000;
+let pet: Pet = (() => {
+  try {
+    return { fed: Date.now(), love: 0, asleep: false, ...JSON.parse(localStorage.getItem(PET_KEY) ?? "{}") };
+  } catch {
+    return { fed: Date.now(), love: 0, asleep: false };
+  }
+})();
+function savePet() {
+  try {
+    localStorage.setItem(PET_KEY, JSON.stringify(pet));
+  } catch {
+    /* no storage: he simply forgets */
+  }
+}
+const isHungry = () => look.life && Date.now() - pet.fed > HUNGRY_AFTER;
+/** Friendship from 0 to 10 hearts. */
+export const hearts = () => Math.min(10, Math.floor(Math.sqrt(pet.love)));
+
+/** Seasons dress him up when he wears nothing of his own. */
+function seasonalHat() {
+  const d = new Date();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  if ((m === 12 && day >= 20) || (m === 1 && day <= 10)) return "santa";
+  if (m === 10 && day >= 24) return "witch";
+  return "none";
+}
 export const HATS: [string, string][] = [
   ["none", "Без"],
   ["cap", "Кепка"],
@@ -97,6 +144,8 @@ export const HATS: [string, string][] = [
   ["headphones", "Наушники"],
   ["glasses", "Очки"],
   ["flower", "Цветок"],
+  ["santa", "Дед Мороз"],
+  ["witch", "Ведьма"],
 ];
 export const COLORS: [string, string][] = [
   ["#d97757", "Терракота"],
@@ -115,6 +164,8 @@ function weight(name: string, w: number) {
   if (h >= 6 && h < 11 && name === "coffee") return w * 3;
   if ((h >= 23 || h < 5) && (name === "nod" || name === "yawn")) return w * 3;
   if (h >= 9 && h < 19 && (name === "laptop" || name === "paper")) return w * 1.5;
+  if (h >= 12 && h < 14 && name === "eat") return w * 4;
+  if (isHungry() && name === "crave") return 30;
   return w;
 }
 
@@ -122,11 +173,13 @@ let lifeStarted = false;
 function startLife() {
   if (lifeStarted) return;
   lifeStarted = true;
+  // Hunger comes with time: look again every minute.
+  window.setInterval(notify, 60_000);
   const next = () => {
     const wait = 4000 + Math.random() * 9000;
     window.setTimeout(() => {
       const now = Date.now();
-      if (look.life && !(reaction && reaction.until > now) && !(action && action.until > now)) {
+      if (look.life && !pet.asleep && !(reaction && reaction.until > now) && !(action && action.until > now)) {
         const pool = (state === "bored" ? [["sigh", 2600, 1] as [string, number, number], ...WHIMS.filter(([n]) => n === "look" || n === "sit" || n === "yawn")] : WHIMS).map(
           ([n, ms, w]) => [n, ms, weight(n, w)] as [string, number, number],
         );
@@ -167,6 +220,44 @@ export const buddy = {
   get look() {
     return look;
   },
+  /** A cookie: he chomps it and likes you more. */
+  feed() {
+    pet.fed = Date.now();
+    pet.love += 3;
+    pet.asleep = false;
+    savePet();
+    reaction = null;
+    action = { name: "eat", until: Date.now() + 3200 };
+    notify();
+    window.setTimeout(() => buddy.react("love", 1800), 3200);
+  },
+  /** A ball to kick around. */
+  play() {
+    pet.love += 2;
+    pet.asleep = false;
+    savePet();
+    reaction = null;
+    action = { name: "ball", until: Date.now() + 3600 };
+    notify();
+    window.setTimeout(() => buddy.react("excited", 1400), 3600);
+  },
+  /** Puts him to bed (nightcap and all) or wakes him up. */
+  toggleSleep() {
+    pet.asleep = !pet.asleep;
+    savePet();
+    action = null;
+    if (!pet.asleep) buddy.react("surprised", 900);
+    else notify();
+  },
+  /** Petting and the like count towards friendship. */
+  befriend(n = 1) {
+    pet.love += n;
+    savePet();
+    notify();
+  },
+  get pet() {
+    return { ...pet, hungry: isHungry(), hearts: hearts() };
+  },
   /** bored, tired or nothing. */
   setState(s: string | null) {
     if (s === state) return;
@@ -179,7 +270,9 @@ function snapshot() {
   const now = Date.now();
   const re = reaction && reaction.until > now ? reaction.name : "";
   const act = action && action.until > now ? action.name : "";
-  return `${re}|${look.life ? act : ""}|${look.life ? (state ?? "") : ""}|${look.hat}|${look.name}`;
+  const hat = look.hat === "none" ? seasonalHat() : look.hat;
+  const st = pet.asleep ? "" : isHungry() ? "hungry" : look.life ? (state ?? "") : "";
+  return `${re}|${look.life && !pet.asleep ? act : ""}|${st}|${pet.asleep ? "nightcap" : hat}|${look.name}|${look.weather}|${pet.asleep ? 1 : 0}|${hearts()}`;
 }
 
 function useLife() {
@@ -189,6 +282,12 @@ function useLife() {
     return () => listeners.delete(cb);
   }, []);
   return useSyncExternalStore(subscribe, snapshot).split("|");
+}
+
+/** The pet's needs for the settings page, kept fresh. */
+export function usePet() {
+  useLife();
+  return buddy.pet;
 }
 
 // ------------------------------------------------------------- the sprite ----
@@ -207,7 +306,8 @@ export function Buddy({
   /** No whims or reactions (e.g. a copy in flight). */
   still?: boolean;
 }) {
-  const [re, act, st, hat, name] = useLife();
+  const [re, act, st, hat, name, wx, asleepS] = useLife();
+  const asleep = asleepS === "1" && !still;
   const hover = useRef(0);
   const pet = useRef({ lastX: 0, dir: 0, flips: 0, since: 0 });
   const poke = useRef({ n: 0, since: 0 });
@@ -234,6 +334,7 @@ export function Buddy({
       if (p.flips >= 4) {
         p.flips = 0;
         buddy.react("love", 2600);
+        buddy.befriend(1);
       }
     }
   };
@@ -263,7 +364,8 @@ export function Buddy({
   const classes = [
     "buddy",
     className,
-    sleeping && !mood && !re ? "sleep" : "",
+    (sleeping || asleep) && !mood && !re ? "sleep" : "",
+    wx && !still ? `wx-${wx}` : "",
     mood ? `mood-${mood}` : "",
     !still && re ? `re-${re}` : "",
     !still && !re && act && !mood && !sleeping ? `act-${act}` : "",
@@ -376,6 +478,23 @@ export function Buddy({
               <P x={8} y={5} fill={INK} />
               <P x={10} y={5} fill={INK} />
             </g>
+            {wx === "snow" && !still && (
+              <g className="bd-scarf">
+                <P x={2} y={6} w={11} fill="#d6403a" />
+                <P x={10} y={7} w={2} h={2} fill="#d6403a" />
+                <P x={4} y={6} fill="#f2f2f2" />
+                <P x={8} y={6} fill="#f2f2f2" />
+              </g>
+            )}
+            {wx === "hot" && !still && hat !== "glasses" && (
+              <g className="bd-shades">
+                <P x={4} y={3} w={3} h={2} fill="#111" />
+                <P x={8} y={3} w={3} h={2} fill="#111" />
+                <P x={7} y={3} fill="#111" />
+                <P x={5} y={3} fill="#5a6b80" />
+                <P x={9} y={3} fill="#5a6b80" />
+              </g>
+            )}
             {hat !== "none" && <Hat hat={hat} />}
           </g>
         </g>
@@ -453,6 +572,24 @@ function Hat({ hat }: { hat: string }) {
           {r(3, 3, 1, 2, INK)}{r(7, 3, 1, 1, INK)}{r(11, 3, 1, 2, INK)}
         </g>
       );
+    case "santa":
+      return (
+        <g className="bd-hat">
+          {r(4, -2, 6, 2, "#d6403a")}{r(9, -3, 3, 1, "#d6403a")}{r(12, -3, 1, 1, "#fff")}{r(3, 0, 9, 1, "#fff")}
+        </g>
+      );
+    case "witch":
+      return (
+        <g className="bd-hat">
+          {r(7, -4, 2, 1, "#4b2a6b")}{r(6, -3, 3, 1, "#4b2a6b")}{r(5, -2, 5, 1, "#4b2a6b")}{r(5, -1, 5, 1, "#f5a03a")}{r(2, 0, 11, 1, "#4b2a6b")}
+        </g>
+      );
+    case "nightcap":
+      return (
+        <g className="bd-hat">
+          {r(4, -1, 8, 2, "#6f8dff")}{r(10, -2, 3, 1, "#6f8dff")}{r(13, -1, 1, 2, "#6f8dff")}{r(13, 1, 1, 1, "#fff")}{r(5, 0, 1, 1, "#ffd84a")}{r(9, -1, 1, 1, "#ffd84a")}
+        </g>
+      );
     case "flower":
       return <g className="bd-hat">{r(11, -2, 1, 1, "#ff8fb4")}{r(10, -1, 1, 1, "#ff8fb4")}{r(12, -1, 1, 1, "#ff8fb4")}{r(11, 0, 1, 1, "#ff8fb4")}{r(11, -1, 1, 1, "#ffd84a")}</g>;
   }
@@ -507,6 +644,27 @@ function Props() {
         {r(18, 9, 3, 2, "#a0522d")}
         <g className="bd-sprout">{r(19, 7, 1, 2, "#59a85c")}{r(18, 7, 1, 1, "#7cbf5a")}{r(20, 6, 1, 1, "#7cbf5a")}</g>
       </g>
+      <g className="bd-p bd-p-eat">
+        <g className="bd-cookie">{r(13, 3, 3, 3, "#c98a4b")}{r(14, 3, 1, 1, "#5a3420")}{r(13, 5, 1, 1, "#5a3420")}</g>
+        <g className="bd-crumbs">{r(12, 8, 1, 1, "#c98a4b", "a")}{r(15, 9, 1, 1, "#c98a4b", "b")}{r(10, 9, 1, 1, "#c98a4b", "c")}</g>
+      </g>
+      <g className="bd-p bd-p-crave">
+        {r(14, 1, 1, 1, "#e6e6e6")}{r(15, 0, 1, 1, "#e6e6e6")}
+        {r(16, -3, 7, 3, "#f2f2f2")}{r(17, -4, 5, 1, "#f2f2f2")}{r(17, 0, 5, 1, "#f2f2f2")}
+        {r(18, -3, 3, 3, "#c98a4b")}{r(19, -3, 1, 1, "#5a3420")}{r(18, -1, 1, 1, "#5a3420")}
+      </g>
+      <g className="bd-p bd-p-ball">
+        <g className="bd-kickball">{r(15, 8, 2, 2, "#ff6f9c")}{r(15, 8, 1, 1, "#ffd0e0")}</g>
+      </g>
+      <g className="bd-p bd-p-kite">
+        <g className="bd-kite">{r(19, -4, 2, 1, "#ffd84a")}{r(18, -3, 4, 1, "#ff6f9c")}{r(19, -2, 2, 1, "#6f8dff")}{r(19, -1, 1, 1, "#6f8dff")}</g>
+        {r(15, 3, 1, 1, "#ddd")}{r(16, 2, 1, 1, "#ddd")}{r(17, 1, 1, 1, "#ddd")}{r(18, 0, 1, 1, "#ddd")}
+      </g>
+      <g className="bd-umbrella">
+        {r(3, -2, 15, 1, "#6f8dff")}{r(5, -3, 11, 1, "#6f8dff")}{r(8, -4, 5, 1, "#8fa6ff")}{r(14, -1, 1, 6, "#bbb")}{r(13, 4, 1, 1, "#bbb")}
+        <g className="bd-rain">{r(-1, 0, 1, 1, "#9fd8ff", "a")}{r(15, -1, 1, 1, "#9fd8ff", "b")}{r(17, 2, 1, 1, "#9fd8ff", "c")}</g>
+      </g>
+      <g className="bd-bolt">{r(13, -3, 2, 1, "#ffd84a")}{r(12, -2, 2, 1, "#ffd84a")}{r(13, -1, 2, 1, "#ffd84a")}{r(12, 0, 2, 1, "#ffd84a")}</g>
       <g className="bd-p bd-p-think">
         {r(14, 1, 1, 1, "#e6e6e6")}{r(15, 0, 1, 1, "#e6e6e6")}
         <g className="bd-cloud">{r(16, -3, 7, 3, "#f2f2f2")}{r(17, -4, 5, 1, "#f2f2f2")}{r(17, 0, 5, 1, "#f2f2f2")}

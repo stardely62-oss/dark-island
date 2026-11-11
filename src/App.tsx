@@ -545,6 +545,24 @@ export function App() {
     return () => clearInterval(id);
   }, [weather, settings.rainWarning, showCard]);
 
+  // Клодик dresses for the weather outside: umbrella, scarf or sunglasses.
+  useEffect(() => {
+    const now = Date.now();
+    const cur = weather?.points.length
+      ? weather.points.reduce((b, p) => (Math.abs(p.t - now) < Math.abs(b.t - now) ? p : b))
+      : null;
+    const sym = cur?.symbol ?? "";
+    const wx = !cur ? "" : /snow|sleet/.test(sym) ? "snow" : /rain|drizzle|thunder/.test(sym) ? "rain" : cur.temp >= 27 ? "hot" : cur.temp <= -5 ? "snow" : "";
+    buddy.configure({ weather: wx });
+  }, [weather]);
+  // The charger went in: a jolt of energy.
+  const wasCharging = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!battery) return;
+    if (wasCharging.current === false && battery.charging) buddy.react("charged", 2000);
+    wasCharging.current = battery.charging;
+  }, [battery]);
+
   // Клодик's lasting states: tired on a low battery, bored when nobody has
   // come by for a while and nothing is going on.
   useEffect(() => {
@@ -1653,6 +1671,16 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [cls, setCls] = useState("");
   const [visit, setVisit] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    if (!shown) setMenu(false);
+  }, [shown]);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [menu]);
   const placed = useRef(false);
   const SIZE = Math.round(20 * scale);
 
@@ -1717,9 +1745,41 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
 
   if (!pos) return null;
   return (
-    <div className={`tab-buddy ${cls} ${shown ? "" : "gone"} ${spot === "home" ? "mirror" : ""}`} style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}>
-      <Buddy size={SIZE} sleeping={sleeping} />
-    </div>
+    <>
+      <div
+        className={`tab-buddy ${cls} ${shown ? "" : "gone"} ${spot === "home" ? "mirror" : ""}`}
+        style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenu((m) => !m);
+        }}
+      >
+        <Buddy size={SIZE} sleeping={sleeping} />
+      </div>
+      {menu && shown && (
+        <div className="buddy-menu" style={{ left: `calc(50% + ${Math.min(Math.max(pos.x - 160, -220), -110)}px)`, top: pos.y + (SIZE * 11) / 15 + 6 }} onClick={(e) => e.stopPropagation()}>
+          {(
+            [
+              ["Покормить", () => buddy.feed()],
+              ["Поиграть", () => buddy.play()],
+              [buddy.pet.asleep ? "Разбудить" : "Уложить спать", () => buddy.toggleSleep()],
+              ["Трюк", () => buddy.act(["flip", "spin", "dance", "juggle", "kite"][Math.floor(Math.random() * 5)], 2600)],
+            ] as [string, () => void][]
+          ).map(([label, f]) => (
+            <button
+              key={label}
+              onClick={() => {
+                f();
+                setMenu(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

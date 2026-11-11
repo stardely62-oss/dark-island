@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
-import { Buddy, COLORS, HATS, buddy } from "../components/Buddy";
+import { Buddy, COLORS, HATS, buddy, usePet } from "../components/Buddy";
 
 type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean };
 
@@ -23,6 +23,52 @@ function Row({ title, sub, children }: { title: string; sub?: string; children: 
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * A slider that applies its value only when let go: moving or resizing the
+ * island under the cursor while dragging makes it jump. The label shows the
+ * value as it moves.
+ */
+function SlowRange({
+  title,
+  value,
+  min,
+  max,
+  step,
+  label,
+  onCommit,
+}: {
+  title: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  label: (v: number) => string;
+  onCommit: (v: number) => void;
+}) {
+  const [v, setV] = useState<number | null>(null);
+  const shown = v ?? value;
+  const commit = () => {
+    if (v !== null && v !== value) onCommit(v);
+    setV(null);
+  };
+  return (
+    <Row title={title} sub={v !== null && v !== value ? `${label(shown)} — отпусти, чтобы применить` : label(shown)}>
+      <input
+        className="range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={shown}
+        onChange={(e) => setV(Number(e.target.value))}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+      />
+    </Row>
   );
 }
 
@@ -51,6 +97,7 @@ export function SettingsTab({
   visible: boolean;
   onTypeStart: () => void;
 }) {
+  const pet = usePet();
   const [conn, setConn] = useState<Conn | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [skip, setSkip] = useState(settings.clipSkipApps.join(", "));
@@ -169,17 +216,15 @@ export function SettingsTab({
           onChange={(v) => set({ islandTheme: v })}
         />
       </Row>
-      <Row title="Размер" sub={`${Math.round(((settings.islandScale as number) ?? 1) * 100)}%`}>
-        <input
-          className="range"
-          type="range"
-          min={0.8}
-          max={2}
-          step={0.1}
-          value={(settings.islandScale as number) ?? 1}
-          onChange={(e) => set({ islandScale: Number(e.target.value) })}
-        />
-      </Row>
+      <SlowRange
+        title="Размер"
+        value={(settings.islandScale as number) ?? 1}
+        min={0.8}
+        max={2}
+        step={0.1}
+        label={(v) => `${Math.round(v * 100)}%`}
+        onCommit={(v) => set({ islandScale: v })}
+      />
       <Row title="Прозрачность свёрнутого" sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
         <input className="range" type="range" min={0.3} max={1} step={0.05} value={(settings.pillOpacity as number) ?? 1} onChange={(e) => set({ pillOpacity: Number(e.target.value) })} />
       </Row>
@@ -195,9 +240,15 @@ export function SettingsTab({
           />
         </Row>
       )}
-      <Row title="Сдвиг вдоль края" sub={`${(settings.islandOffset as number) ?? 0} px`}>
-        <input className="range" type="range" min={-800} max={800} step={20} value={(settings.islandOffset as number) ?? 0} onChange={(e) => set({ islandOffset: Number(e.target.value) })} />
-      </Row>
+      <SlowRange
+        title="Сдвиг вдоль края"
+        value={(settings.islandOffset as number) ?? 0}
+        min={-800}
+        max={800}
+        step={20}
+        label={(v) => `${v} px`}
+        onCommit={(v) => set({ islandOffset: v })}
+      />
 
       <div className="set-group">{settings.buddyName || "Клодик"}</div>
       <div className="set-row buddy-card">
@@ -223,6 +274,7 @@ export function SettingsTab({
                 ["laptop", "Ноутбук"],
                 ["water", "Цветок"],
                 ["juggle", "Жонглировать"],
+                ["kite", "Змей"],
                 ["dance", "Танец"],
               ] as [string, string][]
             ).map(([id, label]) => (
@@ -233,11 +285,33 @@ export function SettingsTab({
           </div>
         </div>
       </div>
+      <div className="set-row pet-row">
+        <div className="set-text">
+          <div className="set-title">
+            Дружба <span className="pet-hearts">{"♥".repeat(pet.hearts)}<i>{"♥".repeat(10 - pet.hearts)}</i></span>
+          </div>
+          <div className="set-sub">
+            {pet.asleep ? "Спит в колпаке — не шуми" : pet.hungry ? "Проголодался и мечтает о печеньке" : "Сыт и доволен"}. Гладь, корми и играй — дружба растёт.
+            Правый клик по нему в острове — то же меню.
+          </div>
+        </div>
+        <div className="pet-buttons">
+          <button className={`text-btn solid ${pet.hungry ? "accent" : ""}`} onClick={() => buddy.feed()}>
+            Покормить
+          </button>
+          <button className="text-btn solid" onClick={() => buddy.play()}>
+            Поиграть
+          </button>
+          <button className="text-btn solid" onClick={() => buddy.toggleSleep()}>
+            {pet.asleep ? "Разбудить" : "Спать"}
+          </button>
+        </div>
+      </div>
       <Row
         title="Живёт своей жизнью"
         sub={
           settings.buddyLife
-            ? "Сам находит себе дела: бумаги, лупа, кофе, книга, ноутбук, метла, цветок; гуляет по вкладкам"
+            ? "Сам находит себе дела, гуляет по вкладкам, одевается по погоде и к праздникам, голодает, если не кормить"
             : "Сидит на своём месте и следит за курсором"
         }
       >
