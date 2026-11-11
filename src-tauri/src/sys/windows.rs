@@ -743,13 +743,24 @@ pub fn send_paste() {
 
 static PREVIOUS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
+/// Whether it is safe to attach to the input of `fg`'s thread: never to a
+/// window that hangs (we would hang with it) or to one of the island's own.
+unsafe fn safe_to_attach(fg: HWND) -> bool {
+    if fg.0.is_null() || windows::Win32::UI::WindowsAndMessaging::IsHungAppWindow(fg).as_bool() {
+        return false;
+    }
+    let mut pid = 0u32;
+    GetWindowThreadProcessId(fg, Some(&mut pid));
+    pid != windows::Win32::System::Threading::GetCurrentProcessId()
+}
+
 /// Brings a window to the front even from the background, by briefly
 /// attaching to the input of the window that is in front now.
 unsafe fn force_foreground(hwnd: HWND) {
     let fg = GetForegroundWindow();
     let fg_thread = GetWindowThreadProcessId(fg, None);
     let me = GetCurrentThreadId();
-    let attached = fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, true).as_bool();
+    let attached = fg_thread != 0 && fg_thread != me && safe_to_attach(fg) && AttachThreadInput(me, fg_thread, true).as_bool();
     let _ = SetForegroundWindow(hwnd);
     if attached {
         let _ = AttachThreadInput(me, fg_thread, false);
@@ -795,7 +806,7 @@ pub fn keys() -> (bool, String) {
         let fg_thread = GetWindowThreadProcessId(fg, None);
         let me = GetCurrentThreadId();
         // Toggle state is per input queue: read it from the one in front.
-        let attached = fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, true).as_bool();
+        let attached = fg_thread != 0 && fg_thread != me && safe_to_attach(fg) && AttachThreadInput(me, fg_thread, true).as_bool();
         let caps = GetKeyState(VK_CAPITAL.0 as i32) & 1 == 1;
         if attached {
             let _ = AttachThreadInput(me, fg_thread, false);

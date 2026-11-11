@@ -235,7 +235,7 @@ fn shelf_add(ctl: State<'_, Ctl>, paths: Vec<String>) -> Vec<ShelfItem> {
 #[tauri::command]
 async fn shelf_pick(app: AppHandle) -> Vec<ShelfItem> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = app.dialog().file().set_title("Положить на полку").blocking_pick_files().unwrap_or_default();
+    let picked = in_dialog(|| app.dialog().file().set_title("Положить на полку").blocking_pick_files()).unwrap_or_default();
     let paths: Vec<String> = picked
         .into_iter()
         .filter_map(|p| p.into_path().ok())
@@ -382,6 +382,17 @@ fn tour_start(app: AppHandle) {
     let _ = app.emit_to("island", "tour", ());
 }
 
+/// File dialogs open now: the main thread is busy with them on purpose.
+static DIALOGS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Runs a blocking file dialog; the watchdog leaves the island alone meanwhile.
+fn in_dialog<T>(f: impl FnOnce() -> T) -> T {
+    DIALOGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let r = f();
+    DIALOGS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    r
+}
+
 /// Keys that belong to this computer, never exported, imported or reset.
 const LOCAL_KEYS: &[&str] = &["agentToken", "agentPort", "vpnProxy"];
 
@@ -393,14 +404,15 @@ async fn settings_export(app: AppHandle) -> Result<Option<String>, String> {
     for k in LOCAL_KEYS {
         all.remove(*k);
     }
-    let Some(path) = app
-        .dialog()
-        .file()
-        .set_title("Сохранить настройки")
-        .set_file_name("dark-island-settings.json")
-        .add_filter("JSON", &["json"])
-        .blocking_save_file()
-        .and_then(|p| p.into_path().ok())
+    let Some(path) = in_dialog(|| {
+        app.dialog()
+            .file()
+            .set_title("Сохранить настройки")
+            .set_file_name("dark-island-settings.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file()
+    })
+    .and_then(|p| p.into_path().ok())
     else {
         return Ok(None);
     };
@@ -429,12 +441,7 @@ fn settings_replace(app: &AppHandle, mut next: serde_json::Map<String, serde_jso
 #[tauri::command]
 async fn settings_import(app: AppHandle) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let Some(path) = app
-        .dialog()
-        .file()
-        .set_title("Загрузить настройки")
-        .add_filter("JSON", &["json"])
-        .blocking_pick_file()
+    let Some(path) = in_dialog(|| app.dialog().file().set_title("Загрузить настройки").add_filter("JSON", &["json"]).blocking_pick_file())
         .and_then(|p| p.into_path().ok())
     else {
         return Ok(None);
@@ -776,13 +783,14 @@ struct Doc {
 #[tauri::command]
 async fn doc_pick(app: AppHandle) -> Vec<Doc> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = app
-        .dialog()
-        .file()
-        .set_title("Приложить документ")
-        .add_filter("Документы", &["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv", "json", "log", "xml", "html", "rs", "py", "js", "ts"])
-        .blocking_pick_files()
-        .unwrap_or_default();
+    let picked = in_dialog(|| {
+        app.dialog()
+            .file()
+            .set_title("Приложить документ")
+            .add_filter("Документы", &["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv", "json", "log", "xml", "html", "rs", "py", "js", "ts"])
+            .blocking_pick_files()
+    })
+    .unwrap_or_default();
     picked
         .into_iter()
         .filter_map(|p| p.into_path().ok())
@@ -1466,6 +1474,36 @@ pub fn run() {
             }
 
             build_tray(app.handle())?;
+            // A watchdog: if the main thread stops answering, the island quits
+            // rather than sit on top of the desktop blocking clicks.
+            {
+                let app = app.handle().clone();
+                std::thread::spawn(move || {
+                    // Counts the main thread's answers; missed checks in a row
+                    // (not wall time) decide, so sleep and hibernation don't count.
+                    let beat = Arc::new(std::sync::atomic::AtomicU64::new(0));
+                    let mut seen = 0u64;
+                    let mut missed = 0u32;
+                    loop {
+                        let b = beat.clone();
+                        let _ = app.run_on_main_thread(move || {
+                            b.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        });
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        let now = beat.load(std::sync::atomic::Ordering::Relaxed);
+                        if now == seen && DIALOGS.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+                            missed += 1;
+                        } else {
+                            missed = 0;
+                            seen = now;
+                        }
+                        if missed >= 10 {
+                            diag::log(&app, "main thread silent for 20s: quitting so the desktop is not blocked");
+                            std::process::exit(1);
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
