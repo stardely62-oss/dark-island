@@ -31,6 +31,11 @@ export const DEFAULTS = {
   vpnAdmin: false,
   recordFormat: "mp4" as "mp4" | "gif",
   recordSound: "none" as "none" | "system" | "mic",
+  buddyLife: true,
+  buddyScale: 1.6,
+  buddyColor: "#d97757",
+  buddyHat: "none",
+  buddyName: "Клодик",
   obsEnabled: false,
   obsPort: "4455",
 };

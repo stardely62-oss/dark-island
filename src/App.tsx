@@ -190,6 +190,12 @@ export function App() {
   const [aiTool, setAiTool] = useState<{ text: string; action: "translate" } | null>(null);
   const reminders = (settings.reminders as Reminder[] | undefined) ?? [];
   useEffect(() => applyTheme((settings.islandTheme as string) ?? "dark"), [settings.islandTheme]);
+  useEffect(
+    () => buddy.configure({ life: settings.buddyLife, color: settings.buddyColor, hat: settings.buddyHat, name: settings.buddyName || "Клодик" }),
+    [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName],
+  );
+  const buddyScale = settings.buddyScale;
+  useEffect(() => document.documentElement.style.setProperty("--bd-size", `${Math.round(20 * buddyScale)}px`), [buddyScale]);
   const cardScale = settings.cardLength === "short" ? 0.7 : settings.cardLength === "long" ? 1.8 : 1;
   const cardScaleRef = useRef(cardScale);
   cardScaleRef.current = cardScale;
@@ -287,7 +293,10 @@ export function App() {
         b.on("battery", setBattery),
         b.on("presence", setPresence),
         b.on("away", setAway),
-        b.on("clips", setClips),
+        b.on("clips", (c) => {
+          setClips(c);
+          buddy.act("paper", 4200); // he files the new copy away
+        }),
         b.on("volume", (v) => {
           const before = knownVolume.current;
           knownVolume.current = v;
@@ -411,6 +420,7 @@ export function App() {
           }
         }),
         b.on("capture", (r) => {
+          if (r.kind === "text" || r.kind === "qr") buddy.act("magnify", 4600);
           const first = r.text.split("\n")[0];
           if (r.kind === "shot")
             showCard({ kind: "capture", title: "Снимок готов", sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
@@ -628,7 +638,7 @@ export function App() {
   // Folding: Клодик climbs up and out over the top edge of the screen.
   const wasExpanded = useRef(false);
   useEffect(() => {
-    if (wasExpanded.current && !expanded) {
+    if (wasExpanded.current && !expanded && buddy.look.life) {
       climbOut(document.querySelector(".tab-buddy .buddy"));
       // The pill's Клодик is the same one: gone while he climbs, then he falls back onto his place.
       buddy.react("away", 1000);
@@ -909,7 +919,7 @@ export function App() {
         }}
       >
         <View on={mode === "idle"} shape={sizeOf("idle", { battery: !!battery, temp: !!weather && settings.weatherOnPill })}>
-          <Idle battery={battery} sleeping={sleeping} weather={settings.weatherOnPill ? weather : null} />
+          <Idle battery={battery} sleeping={sleeping} weather={settings.weatherOnPill ? weather : null} scale={buddyScale} />
         </View>
         {(["compact", "wide", "player", "lyrics", "line"] as MusicPill[]).map((style) => (
           <View key={style} on={mode === "media" && target.w === sizeOf("media", { music: style }).w} shape={sizeOf("media", { music: style })}>
@@ -937,7 +947,7 @@ export function App() {
         <View on={mode === "card"} shape={sizeOf("card", { card })}>
           {card && <CardView card={card} onDone={() => setCard(null)} onSnooze={snooze} />}
         </View>
-        <TabBuddy tab={tab} shown={mode === "expanded"} sleeping={sleeping} />
+        <TabBuddy tab={tab} shown={mode === "expanded"} sleeping={sleeping} scale={buddyScale} life={settings.buddyLife} />
         {frame(
           "home",
           <HomeTab
@@ -1051,7 +1061,7 @@ function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; s
   return (
     <header>
       {/* Клодик's own place: he sits here on Home and hops to the other tabs. */}
-      <span className="buddy-home" aria-hidden />
+      <span className="buddy-home" aria-hidden style={{ width: `calc(var(--bd-size, 20px) + 4px)` }} />
       <span className="clock" title={dateFmt.format(now)}>
         {timeFmt.format(now)}
       </span>
@@ -1255,14 +1265,14 @@ function useClock(everyMs = 1000) {
 const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
 const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short" });
 
-function Idle({ battery, sleeping, weather }: { battery: Battery | null; sleeping: boolean; weather: Weather | null }) {
+function Idle({ battery, sleeping, weather, scale }: { battery: Battery | null; sleeping: boolean; weather: Weather | null; scale: number }) {
   const now = useClock();
   const cur = weather?.points.length
     ? weather.points.reduce((b, p) => (Math.abs(p.t - now.getTime()) < Math.abs(b.t - now.getTime()) ? p : b))
     : null;
   return (
     <div className={`idle ${battery ? "with-battery" : ""}`}>
-      <Buddy sleeping={sleeping} />
+      <Buddy sleeping={sleeping} size={Math.round(26 * Math.min(1.15, scale))} />
       <span className="time">{timeFmt.format(now)}</span>
       {cur && (
         <span className="pill-temp" title={weather?.city}>
@@ -1639,12 +1649,12 @@ function offsetWithin(el: HTMLElement, ancestor: HTMLElement) {
  * on other tabs he stands under the open tab, and he hops between them. Now
  * and then he goes for a walk to another tab and comes back.
  */
-function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping: boolean }) {
+function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: boolean; sleeping: boolean; scale: number; life: boolean }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [cls, setCls] = useState("");
   const [visit, setVisit] = useState<string | null>(null);
   const placed = useRef(false);
-  const SIZE = 20;
+  const SIZE = Math.round(20 * scale);
 
   /** Where he stands: "home" (by the clock) or a tab id. */
   const measure = useCallback((spot: string) => {
@@ -1655,16 +1665,17 @@ function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping
       const slot = view.querySelector<HTMLElement>(".buddy-home");
       if (!slot) return null;
       const o = offsetWithin(slot, view);
-      return { x: o.x + slot.offsetWidth / 2 - SIZE / 2 - half, y: o.y + slot.offsetHeight / 2 - (SIZE * 11) / 15 / 2 };
+      return { x: o.x - half, y: o.y + slot.offsetHeight / 2 - (SIZE * 11) / 15 / 2 };
     }
     const i = TABS.findIndex((t) => t.id === spot);
     const btn = view.querySelectorAll<HTMLElement>("nav.tabs button")[i];
     if (!btn) return null;
     const o = offsetWithin(btn, view);
     return { x: o.x + btn.offsetWidth / 2 - SIZE / 2 - half, y: o.y + btn.offsetHeight - 2 };
-  }, []);
+  }, [SIZE]);
 
-  const spot = visit ?? (tab === "home" ? "home" : tab);
+  // Without his own life he keeps to his place and only watches the cursor.
+  const spot = !life ? "home" : (visit ?? (tab === "home" ? "home" : tab));
   useLayoutEffect(() => {
     if (!shown) {
       placed.current = false;
@@ -1680,11 +1691,11 @@ function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping
     setCls(first ? "drop-in" : "hopping");
     const t = window.setTimeout(() => setCls(""), 720);
     return () => clearTimeout(t);
-  }, [spot, shown, measure]);
+  }, [spot, shown, measure, SIZE]);
 
   // A walk now and then: to a random tab, a look around, and back.
   useEffect(() => {
-    if (!shown || sleeping) return;
+    if (!shown || sleeping || !life) return;
     let t = 0;
     const plan = () => {
       t = window.setTimeout(() => {
@@ -1702,11 +1713,11 @@ function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping
       clearTimeout(t);
       setVisit(null);
     };
-  }, [shown, sleeping, tab]);
+  }, [shown, sleeping, tab, life]);
 
   if (!pos) return null;
   return (
-    <div className={`tab-buddy ${cls} ${shown ? "" : "gone"}`} style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}>
+    <div className={`tab-buddy ${cls} ${shown ? "" : "gone"} ${spot === "home" ? "mirror" : ""}`} style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}>
       <Buddy size={SIZE} sleeping={sleeping} />
     </div>
   );

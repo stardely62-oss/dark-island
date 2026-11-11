@@ -37,7 +37,9 @@ export type Reaction =
   /** Out of the pill while he climbs over the screen edge… */
   | "away"
   /** …and back: he falls onto his place from above. */
-  | "plop";
+  | "plop"
+  /** Scrolled over: his head spins. */
+  | "dizzy";
 
 // ---------------------------------------------------------------- the life ----
 
@@ -69,7 +71,52 @@ const WHIMS: [string, number, number][] = [
   ["work", 2600, 2],
   ["nod", 2400, 1],
   ["wiggle", 1500, 2],
+  // Things he does with things: a little resident of the computer.
+  ["paper", 4200, 4],
+  ["magnify", 4600, 4],
+  ["coffee", 4000, 3],
+  ["read", 5200, 3],
+  ["laptop", 4400, 3],
+  ["sweep", 4000, 3],
+  ["juggle", 3600, 3],
+  ["water", 4600, 3],
+  ["think", 3600, 3],
 ];
+
+/** How he looks and whether he lives on his own; set from the settings. */
+export type BuddyLook = { life: boolean; color: string; hat: string; name: string };
+let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик" };
+export const HATS: [string, string][] = [
+  ["none", "Без"],
+  ["cap", "Кепка"],
+  ["beanie", "Шапка"],
+  ["bow", "Бантик"],
+  ["crown", "Корона"],
+  ["tophat", "Цилиндр"],
+  ["party", "Колпак"],
+  ["headphones", "Наушники"],
+  ["glasses", "Очки"],
+  ["flower", "Цветок"],
+];
+export const COLORS: [string, string][] = [
+  ["#d97757", "Терракота"],
+  ["#e8a13a", "Мёд"],
+  ["#7cbf5a", "Мох"],
+  ["#4fb3c8", "Море"],
+  ["#6f8dff", "Сирень"],
+  ["#c27ce0", "Слива"],
+  ["#ff7fa8", "Зефир"],
+  ["#9aa0a6", "Графит"],
+];
+
+/** Whims weigh differently by the hour: coffee in the morning, nodding off at night. */
+function weight(name: string, w: number) {
+  const h = new Date().getHours();
+  if (h >= 6 && h < 11 && name === "coffee") return w * 3;
+  if ((h >= 23 || h < 5) && (name === "nod" || name === "yawn")) return w * 3;
+  if (h >= 9 && h < 19 && (name === "laptop" || name === "paper")) return w * 1.5;
+  return w;
+}
 
 let lifeStarted = false;
 function startLife() {
@@ -79,8 +126,10 @@ function startLife() {
     const wait = 4000 + Math.random() * 9000;
     window.setTimeout(() => {
       const now = Date.now();
-      if (!(reaction && reaction.until > now)) {
-        const pool = state === "bored" ? [["sigh", 2600, 1] as [string, number, number], ...WHIMS.filter(([n]) => n === "look" || n === "sit" || n === "yawn")] : WHIMS;
+      if (look.life && !(reaction && reaction.until > now) && !(action && action.until > now)) {
+        const pool = (state === "bored" ? [["sigh", 2600, 1] as [string, number, number], ...WHIMS.filter(([n]) => n === "look" || n === "sit" || n === "yawn")] : WHIMS).map(
+          ([n, ms, w]) => [n, ms, weight(n, w)] as [string, number, number],
+        );
         const total = pool.reduce((s, w) => s + w[2], 0);
         let r = Math.random() * total;
         const pick = pool.find((w) => (r -= w[2]) < 0) ?? pool[0];
@@ -102,6 +151,22 @@ export const buddy = {
     notify();
     window.setTimeout(notify, ms + 30);
   },
+  /** Something to do because something happened (a copy → he files the paper). */
+  act(name: string, ms = 4000) {
+    if (!look.life) return;
+    action = { name, until: Date.now() + ms };
+    notify();
+    window.setTimeout(notify, ms + 30);
+  },
+  configure(l: Partial<BuddyLook>) {
+    look = { ...look, ...l };
+    document.documentElement.style.setProperty("--bd-color", look.color);
+    if (!look.life) action = null;
+    notify();
+  },
+  get look() {
+    return look;
+  },
   /** bored, tired or nothing. */
   setState(s: string | null) {
     if (s === state) return;
@@ -114,7 +179,7 @@ function snapshot() {
   const now = Date.now();
   const re = reaction && reaction.until > now ? reaction.name : "";
   const act = action && action.until > now ? action.name : "";
-  return `${re}|${act}|${state ?? ""}`;
+  return `${re}|${look.life ? act : ""}|${look.life ? (state ?? "") : ""}|${look.hat}|${look.name}`;
 }
 
 function useLife() {
@@ -142,7 +207,8 @@ export function Buddy({
   /** No whims or reactions (e.g. a copy in flight). */
   still?: boolean;
 }) {
-  const [re, act, st] = useLife();
+  const [re, act, st, hat, name] = useLife();
+  const hover = useRef(0);
   const pet = useRef({ lastX: 0, dir: 0, flips: 0, since: 0 });
   const poke = useRef({ n: 0, since: 0 });
 
@@ -150,6 +216,9 @@ export function Buddy({
   const onMove = (e: React.PointerEvent) => {
     const p = pet.current;
     const now = Date.now();
+    // A cursor that rests on him gets a wave.
+    clearTimeout(hover.current);
+    hover.current = window.setTimeout(() => look.life && buddy.act("wave", 1600), 1300);
     const dx = e.clientX - p.lastX;
     p.lastX = e.clientX;
     if (Math.abs(dx) < 1.5) return;
@@ -167,6 +236,16 @@ export function Buddy({
         buddy.react("love", 2600);
       }
     }
+  };
+  // Scrolling over him makes his head spin; a double click is a trick.
+  const onWheel = () => buddy.react("dizzy", 1600);
+  const onDouble = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const tricks = ["flip", "spin", "dance", "juggle"];
+    action = { name: tricks[Math.floor(Math.random() * tricks.length)], until: Date.now() + 2400 };
+    reaction = null;
+    notify();
+    window.setTimeout(notify, 2430);
   };
   // Poking: once is a surprise, a few times annoys him, many times makes him furious.
   const onClick = (e: React.MouseEvent) => {
@@ -203,9 +282,19 @@ export function Buddy({
       aria-hidden
       onPointerMove={still ? undefined : onMove}
       onPointerEnter={still ? undefined : () => window.dispatchEvent(new CustomEvent("buddy-hover", { detail: true }))}
-      onPointerLeave={still ? undefined : () => window.dispatchEvent(new CustomEvent("buddy-hover", { detail: false }))}
+      onPointerLeave={
+        still
+          ? undefined
+          : () => {
+              clearTimeout(hover.current);
+              window.dispatchEvent(new CustomEvent("buddy-hover", { detail: false }));
+            }
+      }
       onClick={still ? undefined : onClick}
+      onDoubleClick={still ? undefined : onDouble}
+      onWheel={still ? undefined : onWheel}
     >
+      {!still && <title>{name}</title>}
       <g className="bd-sway">
         <g className="bd-jump">
           <g className="bd-legs">
@@ -275,6 +364,19 @@ export function Buddy({
             <g className="bd-mouth">
               <P x={7} y={6} fill={INK} />
             </g>
+            <g className="bd-x">
+              <P x={4} y={3} fill={INK} />
+              <P x={6} y={3} fill={INK} />
+              <P x={5} y={4} fill={INK} />
+              <P x={4} y={5} fill={INK} />
+              <P x={6} y={5} fill={INK} />
+              <P x={8} y={3} fill={INK} />
+              <P x={10} y={3} fill={INK} />
+              <P x={9} y={4} fill={INK} />
+              <P x={8} y={5} fill={INK} />
+              <P x={10} y={5} fill={INK} />
+            </g>
+            {hat !== "none" && <Hat hat={hat} />}
           </g>
         </g>
       </g>
@@ -312,7 +414,106 @@ export function Buddy({
         <rect x="14" y="4" width="2" height="1" />
         <rect x="16" y="3" width="1" height="1" />
       </g>
+      {!still && <Props />}
     </svg>
+  );
+}
+
+// ------------------------------------------------------------------ hats ----
+
+function Hat({ hat }: { hat: string }) {
+  const r = (x: number, y: number, w: number, h: number, f: string) => <rect x={x} y={y} width={w} height={h} fill={f} />;
+  switch (hat) {
+    case "cap":
+      return <g className="bd-hat">{r(3, -1, 9, 2, "#3b6fd9")}{r(10, 0, 5, 1, "#2c56b0")}{r(7, -1, 1, 1, "#fff")}</g>;
+    case "beanie":
+      return <g className="bd-hat">{r(3, -1, 9, 2, "#59a85c")}{r(2, 0, 11, 1, "#3f8a44")}{r(7, -2, 1, 1, "#e8f1e8")}</g>;
+    case "bow":
+      return <g className="bd-hat">{r(8, -1, 2, 2, "#ff5f93")}{r(11, -1, 2, 2, "#ff5f93")}{r(10, 0, 1, 1, "#d43f74")}</g>;
+    case "crown":
+      return (
+        <g className="bd-hat">
+          {r(4, -1, 7, 2, "#f5c451")}{r(4, -3, 1, 2, "#f5c451")}{r(7, -3, 1, 2, "#f5c451")}{r(10, -3, 1, 2, "#f5c451")}{r(7, 0, 1, 1, "#e0445e")}
+        </g>
+      );
+    case "tophat":
+      return <g className="bd-hat">{r(4, -4, 7, 4, "#222")}{r(4, -1, 7, 1, "#c4314b")}{r(2, 0, 11, 1, "#222")}</g>;
+    case "party":
+      return (
+        <g className="bd-hat">
+          {r(7, -4, 1, 1, "#ffd84a")}{r(6, -3, 3, 1, "#6f8dff")}{r(5, -2, 5, 1, "#ff6f9c")}{r(4, -1, 7, 1, "#6f8dff")}{r(5, 0, 5, 1, "#ffd84a")}
+        </g>
+      );
+    case "headphones":
+      return <g className="bd-hat">{r(3, -1, 9, 1, "#333")}{r(2, 0, 1, 2, "#333")}{r(12, 0, 1, 2, "#333")}{r(1, 2, 2, 3, "#555")}{r(12, 2, 2, 3, "#555")}</g>;
+    case "glasses":
+      return (
+        <g className="bd-hat">
+          {r(4, 2, 3, 1, INK)}{r(8, 2, 3, 1, INK)}{r(4, 5, 3, 1, INK)}{r(8, 5, 3, 1, INK)}
+          {r(3, 3, 1, 2, INK)}{r(7, 3, 1, 1, INK)}{r(11, 3, 1, 2, INK)}
+        </g>
+      );
+    case "flower":
+      return <g className="bd-hat">{r(11, -2, 1, 1, "#ff8fb4")}{r(10, -1, 1, 1, "#ff8fb4")}{r(12, -1, 1, 1, "#ff8fb4")}{r(11, 0, 1, 1, "#ff8fb4")}{r(11, -1, 1, 1, "#ffd84a")}</g>;
+  }
+  return null;
+}
+
+// ----------------------------------------------------------------- props ----
+
+/** The things he busies himself with; each shows only during its whim. */
+function Props() {
+  const r = (x: number, y: number, w: number, h: number, f: string, k?: string) => <rect key={k} x={x} y={y} width={w} height={h} fill={f} />;
+  return (
+    <g className="bd-props">
+      <g className="bd-p bd-p-paper">
+        {r(15, 7, 6, 3, "#efeae0")}{r(16, 6, 5, 1, "#e2dccf")}{r(16, 8, 4, 1, "#b9b2a4")}{r(15, 10, 6, 1, "#d8d1c2")}
+        <g className="bd-scraps">
+          {r(16, 5, 1, 1, "#fff", "a")}{r(18, 4, 1, 1, "#efeae0", "b")}{r(20, 5, 1, 1, "#fff", "c")}
+        </g>
+        <g className="bd-ball">{r(17, 3, 2, 2, "#e2dccf")}</g>
+      </g>
+      <g className="bd-p bd-p-magnify">
+        <g className="bd-lens">
+          {r(15, 0, 3, 1, "#cfd6e0")}{r(14, 1, 1, 3, "#cfd6e0")}{r(18, 1, 1, 3, "#cfd6e0")}{r(15, 4, 3, 1, "#cfd6e0")}
+          <rect x={15} y={1} width={3} height={3} fill="#9fd8ff" opacity={0.5} />
+          {r(14, 4, 1, 1, "#8a5a3c")}{r(13, 5, 1, 1, "#8a5a3c")}
+        </g>
+      </g>
+      <g className="bd-p bd-p-coffee">
+        <g className="bd-mug">{r(14, 3, 4, 4, "#f4f4f4")}{r(18, 4, 1, 2, "#f4f4f4")}{r(14, 3, 4, 1, "#6b3f2a")}</g>
+        <g className="bd-steam2">{r(15, 1, 1, 1, "#e6e6e6")}{r(16, 0, 1, 1, "#e6e6e6")}</g>
+      </g>
+      <g className="bd-p bd-p-read">
+        {r(2, 6, 11, 4, "#8a5a3c")}{r(3, 6, 4, 3, "#fbf7ee")}{r(8, 6, 4, 3, "#fbf7ee")}{r(7, 6, 1, 3, "#d8cfbd")}
+        {r(4, 7, 2, 1, "#c9c0ad")}{r(9, 7, 2, 1, "#c9c0ad")}
+        <g className="bd-page">{r(8, 6, 4, 3, "#fffdf6")}</g>
+      </g>
+      <g className="bd-p bd-p-laptop">
+        {r(16, 3, 7, 6, "#3a3d44")}{r(17, 4, 5, 4, "#1c2433")}<g className="bd-code">{r(17, 5, 3, 1, "#7fd0ff")}{r(17, 7, 4, 1, "#9ff0a0")}</g>{r(14, 9, 9, 1, "#5a5e66")}
+      </g>
+      <g className="bd-p bd-p-sweep">
+        <g className="bd-broom">{r(14, 1, 1, 1, "#8a5a3c")}{r(15, 2, 1, 2, "#8a5a3c")}{r(16, 4, 1, 3, "#8a5a3c")}{r(15, 7, 3, 3, "#e3b85a")}</g>
+        <g className="bd-dust">{r(18, 9, 1, 1, "#b8b0a0")}{r(19, 8, 1, 1, "#cfc8b8")}</g>
+      </g>
+      <g className="bd-p bd-p-juggle">
+        <g className="bd-j1">{r(6, -2, 2, 2, "#ff6f9c")}</g>
+        <g className="bd-j2">{r(6, -2, 2, 2, "#ffd84a")}</g>
+        <g className="bd-j3">{r(6, -2, 2, 2, "#7fd0ff")}</g>
+      </g>
+      <g className="bd-p bd-p-water">
+        <g className="bd-can">{r(14, 3, 3, 3, "#6f8dff")}{r(17, 3, 1, 1, "#6f8dff")}{r(18, 2, 1, 1, "#6f8dff")}</g>
+        <g className="bd-drops">{r(19, 4, 1, 1, "#9fd8ff")}{r(19, 6, 1, 1, "#9fd8ff")}</g>
+        {r(18, 9, 3, 2, "#a0522d")}
+        <g className="bd-sprout">{r(19, 7, 1, 2, "#59a85c")}{r(18, 7, 1, 1, "#7cbf5a")}{r(20, 6, 1, 1, "#7cbf5a")}</g>
+      </g>
+      <g className="bd-p bd-p-think">
+        {r(14, 1, 1, 1, "#e6e6e6")}{r(15, 0, 1, 1, "#e6e6e6")}
+        <g className="bd-cloud">{r(16, -3, 7, 3, "#f2f2f2")}{r(17, -4, 5, 1, "#f2f2f2")}{r(17, 0, 5, 1, "#f2f2f2")}
+          <g className="bd-dots">{r(17, -2, 1, 1, "#888", "1")}{r(19, -2, 1, 1, "#888", "2")}{r(21, -2, 1, 1, "#888", "3")}</g>
+        </g>
+      </g>
+    </g>
   );
 }
 
@@ -416,6 +617,8 @@ export function animateBuddies(L: Liquid, cursor: { x: number; y: number } | nul
     const shuffle = Math.sin(L.t * 2 * Math.PI * 0.55) * (0.5 + 0.6 * mid) * m;
     // Either open or squinting, never a mix: CSS fades between the two.
     const happy = beat * m > 0.55 ? 1 : 0;
+    // At his place by the clock he faces the other way (his things go left).
+    if (el.closest(".mirror")) gx = -gx;
     el.style.setProperty("--gx", gx.toFixed(2));
     el.style.setProperty("--gy", gy.toFixed(2));
     el.style.setProperty("--hop", hop.toFixed(2));

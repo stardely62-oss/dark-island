@@ -234,7 +234,7 @@ body.preview {
 }
 .expanded header {
   /* room under the tab bar for Клодик */
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2211,4 +2211,72 @@ header .buddy-home {
   width: 24px;
   height: 20px;
   margin-right: 6px;
+}
+
+/* settings: Клодик */
+.buddy-card {
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+}
+.buddy-stage {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 110px;
+  height: 84px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 70%, rgb(255 255 255 / 0.08), transparent 70%);
+}
+.buddy-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.set-row > .buddy-side .buddy-name,
+.buddy-name {
+  width: 100%;
+  flex: none;
+}
+.buddy-tricks,
+.hat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hat-grid {
+  flex: 1 1 260px;
+  justify-content: flex-end;
+}
+.chip.on {
+  background: #d97757;
+  color: #1a0d08;
+}
+.swatches {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.swatch.on {
+  box-shadow: 0 0 0 2px var(--fg, #fff);
+  transform: scale(1.1);
+}
+.buddy-name {
+  box-sizing: border-box;
+}
+.buddy-stage {
+  width: 128px;
+  justify-items: start;
+  padding-left: 10px;
+  box-sizing: border-box;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
+import { Buddy, COLORS, HATS, buddy } from "../components/Buddy";
 
 type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean };
 
@@ -197,6 +198,79 @@ export function SettingsTab({
       <Row title="Сдвиг вдоль края" sub={`${(settings.islandOffset as number) ?? 0} px`}>
         <input className="range" type="range" min={-800} max={800} step={20} value={(settings.islandOffset as number) ?? 0} onChange={(e) => set({ islandOffset: Number(e.target.value) })} />
       </Row>
+
+      <div className="set-group">{settings.buddyName || "Клодик"}</div>
+      <div className="set-row buddy-card">
+        <div className="buddy-stage" title="Наведи, погладь, покрути колесо, кликни дважды">
+          <Buddy size={64} />
+        </div>
+        <div className="buddy-side">
+          <input
+            className="search set-input buddy-name"
+            defaultValue={settings.buddyName}
+            maxLength={20}
+            placeholder="Имя"
+            onFocus={onTypeStart}
+            onBlur={(e) => set({ buddyName: e.target.value.trim() || "Клодик" })}
+          />
+          <div className="buddy-tricks">
+            {(
+              [
+                ["paper", "Бумаги"],
+                ["magnify", "Лупа"],
+                ["coffee", "Кофе"],
+                ["read", "Книга"],
+                ["laptop", "Ноутбук"],
+                ["water", "Цветок"],
+                ["juggle", "Жонглировать"],
+                ["dance", "Танец"],
+              ] as [string, string][]
+            ).map(([id, label]) => (
+              <button key={id} className="chip" disabled={!settings.buddyLife} onClick={() => buddy.act(id, 4600)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <Row
+        title="Живёт своей жизнью"
+        sub={
+          settings.buddyLife
+            ? "Сам находит себе дела: бумаги, лупа, кофе, книга, ноутбук, метла, цветок; гуляет по вкладкам"
+            : "Сидит на своём месте и следит за курсором"
+        }
+      >
+        <Toggle on={settings.buddyLife} onChange={(v) => set({ buddyLife: v })} />
+      </Row>
+      <Row title="Размер" sub={`${Math.round(settings.buddyScale * 100)}%`}>
+        <input className="range" type="range" min={1} max={2} step={0.1} value={settings.buddyScale} onChange={(e) => set({ buddyScale: Number(e.target.value) })} />
+      </Row>
+      <Row title="Цвет">
+        <div className="swatches">
+          {COLORS.map(([c, name]) => (
+            <button
+              key={c}
+              className={`swatch ${settings.buddyColor === c ? "on" : ""}`}
+              title={name}
+              style={{ background: c }}
+              onClick={() => set({ buddyColor: c })}
+            />
+          ))}
+        </div>
+      </Row>
+      <div className="set-row hats">
+        <div className="set-text">
+          <div className="set-title">Наряд</div>
+        </div>
+        <div className="hat-grid">
+          {HATS.map(([id, label]) => (
+            <button key={id} className={`chip ${settings.buddyHat === id ? "on" : ""}`} onClick={() => set({ buddyHat: id })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="set-group">ИИ</div>
       <Row title="Сервис" sub={preset.note}>

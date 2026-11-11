@@ -639,3 +639,284 @@
 .tab-buddy.gone {
   transition: none;
 }
+
+/* ---- his colour (settings) ---- */
+.buddy rect[fill="#d97757"] {
+  fill: var(--bd-color, #d97757);
+}
+.buddy .bd-x {
+  opacity: 0;
+}
+.buddy.re-dizzy .bd-eyes,
+.buddy.re-dizzy .bd-gaze .bd-look > * {
+  opacity: 0;
+}
+.buddy.re-dizzy .bd-x {
+  opacity: 1;
+}
+.buddy.re-dizzy .bd-jump {
+  animation: bd-wobble 0.4s ease-in-out 4;
+}
+@keyframes bd-wobble {
+  0%, 100% { transform: rotate(0deg) translateX(0); }
+  25% { transform: rotate(-10deg) translateX(-1px); }
+  75% { transform: rotate(10deg) translateX(1px); }
+}
+
+/* ---- things he busies himself with ---- */
+.buddy .bd-p {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.buddy .bd-p * {
+  transform-box: fill-box;
+}
+/* In the small pill there is no room for things: only the body moves. */
+.compact .buddy .bd-props {
+  display: none;
+}
+.buddy.act-paper .bd-p-paper,
+.buddy.act-magnify .bd-p-magnify,
+.buddy.act-coffee .bd-p-coffee,
+.buddy.act-read .bd-p-read,
+.buddy.act-laptop .bd-p-laptop,
+.buddy.act-sweep .bd-p-sweep,
+.buddy.act-juggle .bd-p-juggle,
+.buddy.act-water .bd-p-water,
+.buddy.act-think .bd-p-think {
+  opacity: 1;
+}
+
+/* paper: digs through a pile, scraps fly, a crumpled ball is thrown away */
+.buddy.act-paper .bd-jump {
+  animation: bd-lean 4.2s ease-in-out;
+}
+.buddy.act-paper .bd-arm-r,
+.buddy.act-paper .bd-arm-l {
+  animation: bd-tap 0.16s steps(1) 20;
+}
+.buddy.act-paper .bd-gaze {
+  translate: 0.8px 0.7px;
+}
+.buddy.act-paper .bd-scraps rect {
+  animation: bd-scrap 0.8s ease-out 4;
+}
+.buddy.act-paper .bd-scraps rect:nth-child(2) {
+  animation-delay: 0.27s;
+}
+.buddy.act-paper .bd-scraps rect:nth-child(3) {
+  animation-delay: 0.53s;
+}
+.buddy.act-paper .bd-ball {
+  opacity: 0;
+  animation: bd-throw 1s ease-out 3.2s forwards;
+}
+@keyframes bd-lean {
+  0%, 100% { transform: rotate(0deg); }
+  10%, 75% { transform: rotate(7deg) translateY(0.5px); }
+  85% { transform: rotate(-3deg); }
+}
+@keyframes bd-scrap {
+  0% { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(1px, -3px); opacity: 0; }
+}
+@keyframes bd-throw {
+  0% { opacity: 1; transform: translate(-3px, 2px); }
+  50% { opacity: 1; transform: translate(2px, -4px); }
+  100% { opacity: 0; transform: translate(6px, 4px); }
+}
+
+/* magnifier: studies everything around, finds something */
+.buddy.act-magnify .bd-lens {
+  animation: bd-search 4.6s ease-in-out;
+}
+.buddy.act-magnify .bd-arm-r {
+  translate: 0 -1px;
+}
+.buddy.act-magnify .bd-gaze {
+  animation: bd-search-eyes 4.6s ease-in-out;
+}
+.buddy.act-magnify .bd-bang {
+  animation: bd-found 4.6s steps(1);
+}
+@keyframes bd-search {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(1px, 3px); }
+  40% { transform: translate(-1px, 4px); }
+  60% { transform: translate(2px, 1px); }
+  80% { transform: translate(0, 2px) scale(1.2); }
+}
+@keyframes bd-search-eyes {
+  0%, 100% { translate: 1px 0; }
+  20% { translate: 1px 1px; }
+  40% { translate: 0.5px 1px; }
+  60% { translate: 1px 0; }
+}
+@keyframes bd-found {
+  0%, 82% { opacity: 0; }
+  83%, 100% { opacity: 1; }
+}
+
+/* coffee: sips, steam rises, blissful eyes */
+.buddy.act-coffee .bd-mug {
+  animation: bd-sip 2s ease-in-out 2;
+  transform-origin: 0% 100%;
+}
+.buddy.act-coffee .bd-steam2 rect {
+  animation: bd-float 1.3s ease-out 3;
+}
+.buddy.act-coffee .bd-steam2 rect + rect {
+  animation-delay: 0.6s;
+}
+.buddy.act-coffee .bd-eyes {
+  animation: bd-bliss 2s steps(1) 2;
+}
+.buddy.act-coffee .bd-happy {
+  animation: bd-bliss-on 2s steps(1) 2;
+}
+@keyframes bd-sip {
+  0%, 30%, 100% { transform: translate(0, 0) rotate(0deg); }
+  45%, 70% { transform: translate(-1px, -1px) rotate(-25deg); }
+}
+@keyframes bd-bliss {
+  0%, 40%, 80%, 100% { opacity: 1; }
+  45%, 75% { opacity: 0; }
+}
+@keyframes bd-bliss-on {
+  0%, 40%, 80%, 100% { opacity: 0; }
+  45%, 75% { opacity: 1; }
+}
+
+/* reading: eyes run along the lines, a page turns */
+.buddy.act-read .bd-gaze {
+  animation: bd-lines 1.3s steps(4) 4;
+}
+.buddy.act-read .bd-page {
+  opacity: 0;
+  animation: bd-turnpage 1.3s ease-in-out 4;
+  transform-origin: 0% 50%;
+}
+@keyframes bd-lines {
+  0% { translate: -1px 0.8px; }
+  100% { translate: 1px 0.8px; }
+}
+@keyframes bd-turnpage {
+  0%, 70% { opacity: 0; transform: scaleX(1); }
+  80% { opacity: 1; transform: scaleX(-1) translateX(1px); }
+  100% { opacity: 0; transform: scaleX(-1); }
+}
+
+/* laptop: types fast, code appears */
+.buddy.act-laptop .bd-arm-l,
+.buddy.act-laptop .bd-arm-r {
+  animation: bd-tap 0.14s steps(1) 30;
+}
+.buddy.act-laptop .bd-gaze {
+  translate: 1px 0.5px;
+}
+.buddy.act-laptop .bd-code rect {
+  animation: bd-type 0.9s steps(3) infinite;
+  transform-origin: 0 50%;
+}
+.buddy.act-laptop .bd-code rect + rect {
+  animation-delay: 0.45s;
+}
+@keyframes bd-type {
+  0% { transform: scaleX(0.2); }
+  100% { transform: scaleX(1); }
+}
+
+/* sweeping: broom back and forth, dust */
+.buddy.act-sweep .bd-jump {
+  animation: bd-shuffle 1s ease-in-out 4;
+}
+.buddy.act-sweep .bd-broom {
+  animation: bd-broom 0.5s ease-in-out 8;
+}
+.buddy.act-sweep .bd-dust rect {
+  animation: bd-scrap 0.5s ease-out 8;
+}
+@keyframes bd-broom {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  50% { transform: translateX(-2px) rotate(-12deg); }
+}
+
+/* juggling: three balls in turns */
+.buddy.act-juggle .bd-j1,
+.buddy.act-juggle .bd-j2,
+.buddy.act-juggle .bd-j3 {
+  animation: bd-juggle 0.9s ease-in-out infinite;
+}
+.buddy.act-juggle .bd-j2 {
+  animation-delay: -0.3s;
+}
+.buddy.act-juggle .bd-j3 {
+  animation-delay: -0.6s;
+}
+.buddy.act-juggle .bd-arm-l {
+  animation: bd-wave 0.45s ease-in-out infinite alternate;
+}
+.buddy.act-juggle .bd-arm-r {
+  animation: bd-wave 0.45s ease-in-out infinite alternate -0.45s;
+}
+.buddy.act-juggle .bd-gaze {
+  translate: 0 -0.8px;
+}
+@keyframes bd-juggle {
+  0% { transform: translate(-6px, 6px); }
+  25% { transform: translate(-3px, 0); }
+  50% { transform: translate(0, -1px); }
+  75% { transform: translate(3px, 0); }
+  100% { transform: translate(6px, 6px); }
+}
+
+/* watering: drops fall, a sprout grows */
+.buddy.act-water .bd-can {
+  animation: bd-pour 4.6s ease-in-out;
+  transform-origin: 0% 100%;
+}
+.buddy.act-water .bd-drops rect {
+  animation: bd-drip 0.5s ease-in 7 0.6s;
+}
+.buddy.act-water .bd-sprout {
+  transform-origin: 50% 100%;
+  animation: bd-grow 4.6s ease-out forwards;
+}
+.buddy.act-water .bd-eyes {
+  animation: bd-bliss 4.6s steps(1);
+}
+@keyframes bd-pour {
+  0%, 100% { transform: rotate(0deg); }
+  12%, 85% { transform: rotate(20deg); }
+}
+@keyframes bd-grow {
+  0%, 15% { transform: scaleY(0.2); }
+  100% { transform: scaleY(1.4); }
+}
+
+/* thinking: a cloud with dots appearing one by one */
+.buddy.act-think .bd-jump {
+  animation: bd-sit 3.6s ease-in-out;
+}
+.buddy.act-think .bd-gaze {
+  translate: 0.8px -0.8px;
+}
+.buddy.act-think .bd-arm-r {
+  translate: -1px -1px;
+}
+.buddy.act-think .bd-dots rect {
+  animation: bd-dot 1.2s steps(1) 3;
+}
+.buddy.act-think .bd-dots rect:nth-child(2) {
+  animation-delay: 0.3s;
+}
+.buddy.act-think .bd-dots rect:nth-child(3) {
+  animation-delay: 0.6s;
+}
+@keyframes bd-dot {
+  0% { opacity: 0; }
+  30%, 100% { opacity: 1; }
+}
+.tab-buddy.mirror .buddy {
+  scale: -1 1;
+}
