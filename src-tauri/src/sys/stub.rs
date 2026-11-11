@@ -17,3 +17,5 @@ pub fn prepare_window(_win: &WebviewWindow) {}
 pub fn cursor_pos() -> Option<(f64, f64)> {
     None
 }
+
+pub fn spawn_meter(_app: AppHandle) {}

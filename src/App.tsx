@@ -32,6 +32,8 @@ export function App() {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hud, setHud] = useState(false);
+  // True while real audio levels arrive; otherwise the bars use a CSS loop.
+  const [live, setLive] = useState(false);
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
 
   const mode: Mode = expanded ? "expanded" : hud ? "hud" : media?.playing ? "media" : "idle";
@@ -42,6 +44,8 @@ export function App() {
   const kickRef = useRef<() => void>(() => {});
   const hudTimer = useRef<number>(0);
   const knownVolume = useRef<Volume | null>(null);
+  const bandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0]);
+  const liveTimer = useRef<number>(0);
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +65,15 @@ export function App() {
             clearTimeout(hudTimer.current);
             hudTimer.current = window.setTimeout(() => setHud(false), HUD_MS);
           }
+        }),
+        b.on("audio", (bands) => {
+          bandsRef.current = bands;
+          if (bands.some((v) => v > 0.02)) {
+            setLive(true);
+            clearTimeout(liveTimer.current);
+            liveTimer.current = window.setTimeout(() => setLive(false), 2500);
+          }
+          kickRef.current();
         }),
         b.on("cursor", (c) => {
           cursorRef.current = c.near || c.inside ? c : null;
@@ -115,6 +128,7 @@ export function App() {
       const active = L.step(dt, {
         target: drive.current.target,
         music: drive.current.music,
+        bands: bandsRef.current,
         cursor: c ? { x: c.x - cx, y: c.y } : null,
       });
 
@@ -125,6 +139,15 @@ export function App() {
         box.style.height = `${L.h}px`;
         box.style.borderRadius = `0 0 ${L.radius}px ${L.radius}px`;
       }
+
+      // Equaliser bars follow the same smoothed levels as the edge.
+      const lv = L.levels;
+      const bars = [0.6 * lv[0] + 0.4 * lv[1], lv[2], lv[3], 0.5 * (lv[4] + lv[5])];
+      document.querySelectorAll<HTMLElement>(".bars.live").forEach((el) => {
+        el.querySelectorAll<HTMLElement>("span").forEach((bar, i) => {
+          bar.style.transform = `scaleY(${(0.22 + 0.78 * bars[i]).toFixed(3)})`;
+        });
+      });
 
       // Tell Rust which area should catch the mouse.
       const t = drive.current.target;
@@ -187,13 +210,21 @@ export function App() {
           <Idle battery={battery} />
         </View>
         <View on={mode === "media"} shape={sizeOf("media", true, false)}>
-          {media && <CompactMedia media={media} accent={accent} />}
+          {media && <CompactMedia media={media} accent={accent} live={live} />}
         </View>
         <View on={mode === "hud"} shape={sizeOf("hud", false, false)}>
           {volume && <VolumeHud volume={volume} />}
         </View>
         <View on={mode === "expanded"} shape={sizeOf("expanded", !!media, !!battery)}>
-          <Expanded api={api} media={media} volume={volume} battery={battery} accent={accent} setVolume={setVolume} />
+          <Expanded
+            api={api}
+            media={media}
+            volume={volume}
+            battery={battery}
+            accent={accent}
+            live={live}
+            setVolume={setVolume}
+          />
         </View>
       </div>
     </div>
@@ -246,11 +277,11 @@ function Cover({ src, size, radius }: { src: string | null; size: number; radius
   );
 }
 
-function CompactMedia({ media, accent }: { media: Media; accent: string }) {
+function CompactMedia({ media, accent, live }: { media: Media; accent: string; live: boolean }) {
   return (
     <div className="compact">
       <Cover src={media.cover} size={22} radius={6} />
-      <Bars playing={media.playing} color={accent} />
+      <Bars playing={media.playing} live={live} color={accent} />
     </div>
   );
 }
@@ -279,6 +310,7 @@ function Expanded({
   volume,
   battery,
   accent,
+  live,
   setVolume,
 }: {
   api: Bridge | null;
@@ -286,6 +318,7 @@ function Expanded({
   volume: Volume | null;
   battery: Battery | null;
   accent: string;
+  live: boolean;
   setVolume: (v: Volume) => void;
 }) {
   const now = useClock(500);
@@ -320,7 +353,7 @@ function Expanded({
                 {media.artist || appName(media.app)}
               </div>
             </div>
-            <Bars playing={media.playing} color={accent} height={18} />
+            <Bars playing={media.playing} live={live} color={accent} height={18} />
           </div>
           <div className="progress">
             <span>{fmtTime(pos)}</span>

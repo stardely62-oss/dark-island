@@ -150,6 +150,7 @@ pub fn run() {
 
             let tx = sys::spawn(app.handle().clone(), shared.clone());
             cursor::spawn(app.handle().clone(), shared.clone());
+            sys::spawn_meter(app.handle().clone());
             app.manage(Ctl { shared, tx: Mutex::new(tx) });
 
             build_tray(app.handle())?;

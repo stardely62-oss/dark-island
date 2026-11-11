@@ -153,6 +153,12 @@ body.preview {
 .bars.on span {
   animation: bar 1s ease-in-out infinite alternate;
 }
+.bars.live span {
+  transition: none;
+}
+.bars:not(.live):not(.on) span {
+  transform: scaleY(0.22) !important;
+}
 @keyframes bar {
   0% { transform: scaleY(0.25); }
   35% { transform: scaleY(0.85); }

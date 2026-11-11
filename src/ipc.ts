@@ -23,6 +23,8 @@ type Events = {
   volume: Volume | null;
   battery: Battery | null;
   cursor: Cursor;
+  /** Loudness of 6 frequency bands (low → high), 0..1, ~30 times a second. */
+  audio: number[];
 };
 
 export interface Bridge {
@@ -114,6 +116,25 @@ function mockBridge(): Bridge {
         : { ...m, title: action === "next" ? "Glass Harbour" : "Midnight Drive", positionMs: 0, updatedAtMs: now };
     setTimeout(() => emit("media", state.media), 60);
   };
+  // Fake music analysis: a kick drum at 118 bpm plus deliberately noisy
+  // bands, to show that the island smooths jitter out.
+  const t0 = performance.now();
+  window.setInterval(() => {
+    if (!state.media?.playing) return;
+    const t = (performance.now() - t0) / 1000;
+    const kick = Math.exp(-((t * 118) / 60 % 1) * 7);
+    const n = () => (Math.random() - 0.5) * 0.25;
+    const c = (v: number) => Math.min(1, Math.max(0, v));
+    emit("audio", [
+      c(0.3 + 0.65 * kick + n()),
+      c(0.25 + 0.5 * kick + n()),
+      c(0.45 + 0.2 * Math.sin(t * 1.3) + n()),
+      c(0.5 + 0.25 * Math.sin(t * 2.1 + 1) + n()),
+      c(0.35 + 0.3 * Math.max(0, Math.sin(t * 4.7)) + n()),
+      c(0.25 + 0.2 * Math.sin(t * 3.3) + n()),
+    ]);
+  }, 33);
+
   // Lets screenshots and tests drive the mock: window.__island.emit("volume", ...)
   (window as unknown as { __island: unknown }).__island = { emit, state };
 

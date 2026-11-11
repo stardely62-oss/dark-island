@@ -16,9 +16,21 @@ export type Drive = {
   target: Shape;
   /** Cursor in island coordinates (0,0 = top centre of the island). */
   cursor: { x: number; y: number } | null;
-  /** 0..1, how much the edge sways with music. */
+  /** 0..1, how much the edge moves with music (1 while something plays). */
   music: number;
+  /** Latest loudness of 6 bands, low → high, 0..1. Smoothed here. */
+  bands: ArrayLike<number>;
 };
+
+// Music: band levels follow the sound quickly on the way up and slowly on
+// the way down (like a VU meter), then the edge springs filter them again.
+const ATTACK = 0.07; // s
+const RELEASE = 0.3; // s
+const BASS_SAG = 9; // px the middle of the edge drops on a kick
+const MID_WAVE = 3.6; // px
+const HIGH_WAVE = 2; // px
+const SWAY = 0.8; // px, always there while music plays
+const BASS_GROW = 4; // px the body widens on a kick
 
 const N = 28; // points along the lower edge
 const SUB = 3; // physics substeps per frame
@@ -32,7 +44,7 @@ const EDGE_K = 70; // pull towards the target shape
 const EDGE_T = 2600; // tension between neighbours: the smoothing force
 const EDGE_D = 10; // damping
 const INERTIA = 0.028; // how much the edge lags behind the body's motion
-const EDGE_MAX = 12; // px, hard safety limit
+const EDGE_MAX = 14; // px, hard safety limit
 
 // Cursor attraction.
 const REACH = 120; // px: distance at which the edge starts to reach
@@ -54,6 +66,8 @@ export class Liquid {
   private v = new Float32Array(N);
   private goal = new Float32Array(N);
   private music = 0;
+  /** Smoothed band levels, 0..1. */
+  readonly levels = new Float32Array(6);
   private t = 0;
 
   constructor(shape: Shape) {
@@ -70,15 +84,29 @@ export class Liquid {
     const dt = Math.min(dtRaw, 1 / 30);
     this.t += dt;
 
+    this.music += (d.music - this.music) * Math.min(1, dt * 3);
+    const up = 1 - Math.exp(-dt / ATTACK);
+    const down = 1 - Math.exp(-dt / RELEASE);
+    let loud = 0;
+    for (let k = 0; k < 6; k++) {
+      const goal = (d.bands[k] ?? 0) * d.music;
+      const cur = this.levels[k];
+      this.levels[k] = cur + (goal - cur) * (goal > cur ? up : down);
+      loud += this.levels[k];
+    }
+    const L = this.levels;
+    const bass = 0.6 * L[0] + 0.4 * L[1];
+    const mid = 0.5 * (L[2] + L[3]);
+    const high = 0.5 * (L[4] + L[5]);
+
     // Body size.
-    const aw = SIZE_K * (d.target.w - this.w) - SIZE_C * this.vw;
+    const tw = d.target.w + BASS_GROW * bass;
+    const aw = SIZE_K * (tw - this.w) - SIZE_C * this.vw;
     const ah = SIZE_K * (d.target.h - this.h) - SIZE_C * this.vh;
     this.vw += aw * dt;
     this.vh += ah * dt;
     this.w += this.vw * dt;
     this.h += this.vh * dt;
-
-    this.music += (d.music - this.music) * Math.min(1, dt * 3);
 
     // Where the edge wants to be.
     const r = this.radius;
@@ -103,12 +131,13 @@ export class Liquid {
       let g = 0;
       if (pull > 0) g += pull * Math.exp(-((x - cx) ** 2) / (2 * SIGMA * SIGMA));
       if (m > 0.001) {
-        // Two long, slow waves travelling in opposite directions.
+        // Bass: the whole edge sags, most in the middle. Mids and highs: long,
+        // slow waves travelling in opposite directions — never short ripples.
         g +=
-          m *
-          (1.5 * Math.sin(2 * Math.PI * (1.1 * u - 0.45 * this.t)) +
-            0.9 * Math.sin(2 * Math.PI * (2.2 * u + 0.32 * this.t) + 1.3) +
-            0.8);
+          BASS_SAG * bass * (0.55 + 0.45 * Math.sin(Math.PI * u)) +
+          MID_WAVE * mid * Math.sin(2 * Math.PI * (1.0 * u - 0.3 * this.t)) +
+          HIGH_WAVE * high * Math.sin(2 * Math.PI * (1.9 * u + 0.45 * this.t) + 1.3) +
+          SWAY * m * Math.sin(2 * Math.PI * (1.1 * u - 0.4 * this.t));
       }
       this.goal[i] = g * env[i];
     }
@@ -129,16 +158,16 @@ export class Liquid {
     for (let i = 0; i < N; i++) energy += Math.abs(this.v[i]) + Math.abs(this.goal[i] - this.y[i]);
 
     const settled =
-      Math.abs(d.target.w - this.w) < 0.05 &&
+      Math.abs(tw - this.w) < 0.05 &&
       Math.abs(d.target.h - this.h) < 0.05 &&
       Math.abs(this.vw) < 0.05 &&
       Math.abs(this.vh) < 0.05;
     if (settled) {
-      this.w = d.target.w;
+      this.w = tw;
       this.h = d.target.h;
       this.vw = this.vh = 0;
     }
-    return !settled || energy > 0.05 || m > 0.001 || this.music > 0.001 || pull > 0;
+    return !settled || energy > 0.05 || m > 0.001 || this.music > 0.001 || pull > 0 || loud > 0.005;
   }
 
   /** Lowest point of the edge below the body, for hit-testing. */
