@@ -58,6 +58,23 @@ export function ControlsTab({
   const [busy, setBusy] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [btOpen, setBtOpen] = useState(false);
+  // Two halves: the switches and power, and the tools; the last one is remembered.
+  const [view, setView] = useState<"system" | "tools">(() => {
+    try {
+      return localStorage.getItem("island.controls") === "tools" ? "tools" : "system";
+    } catch {
+      return "system";
+    }
+  });
+  const pickView = (v: "system" | "tools") => {
+    setView(v);
+    setBtOpen(false);
+    try {
+      localStorage.setItem("island.controls", v);
+    } catch {
+      /* no storage */
+    }
+  };
   const armTimer = useRef(0);
 
   const [vpn, setVpn] = useState<string | null | undefined>(undefined);
@@ -121,71 +138,83 @@ export function ControlsTab({
     </button>
   );
 
+  const toolBtn = ([id, label, icon]: [string, string, React.ReactNode]) => (
+    <button key={id} className="tool-btn" onClick={() => onTool(id)}>
+      {icon}
+      <span>{label}</span>
+      {id === "color" && lastColor && (
+        <i
+          className="last-color"
+          title={`${lastColor} — скопировать`}
+          style={{ background: lastColor }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopyColor(lastColor);
+          }}
+        />
+      )}
+    </button>
+  );
+  const SCREEN = ["area", "full", "record", "ocr", "qr", "color"];
+
   return (
     <div className="tab-controls">
-      <div className="ctl-grid">
-        {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
-        <div className="tile-wrap">
-          {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
-          {c?.bluetooth && (
-            <button className={`tile-more ${btOpen ? "on" : ""}`} title="Устройства" onClick={() => setBtOpen(!btOpen)}>
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-                <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+      <div className="segmented ctl-switch">
+        <button className={view === "system" ? "on" : ""} onClick={() => pickView("system")}>
+          Система
+        </button>
+        <button className={view === "tools" ? "on" : ""} onClick={() => pickView("tools")}>
+          Инструменты
+        </button>
+      </div>
+      {view === "system" ? (
+        <>
+          <div className="ctl-grid">
+            {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
+            <div className="tile-wrap">
+              {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
+              {c?.bluetooth && (
+                <button className={`tile-more ${btOpen ? "on" : ""}`} title="Устройства" onClick={() => setBtOpen(!btOpen)}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                    <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, vpnErr ? "не вышло" : vpn ? vpn : vpnClient === "warp" ? "WARP выключен" : "выключен")}
+            {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
+            {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
+            {tile("through", THROUGH, "Сквозной", through, through ? "клики насквозь" : "выключен")}
+          </div>
+          {btOpen ? (
+            <BtDevices api={api} />
+          ) : (
+            <>
+              <div className="ctl-label">Питание</div>
+              <div className="power-row">
+                {[
+                  ["lock", LOCK, "Блокировка", false],
+                  ["sleep", SLEEP, "Сон", false],
+                  ["restart", RESTART, "Перезагрузка", true],
+                  ["shutdown", POWER, "Выключение", true],
+                ].map(([id, icon, label, confirm]) => (
+                  <button key={id as string} className={`power-btn ${armed === id ? "armed" : ""}`} onClick={() => power(id as string, confirm as boolean)}>
+                    {icon as React.ReactNode}
+                    <span>{armed === id ? "Ещё раз" : (label as string)}</span>
+                  </button>
+                ))}
+              </div>
+            </>
           )}
-        </div>
-        {tile(
-          "vpn",
-          SHIELD,
-          "VPN",
-          vpn === undefined ? false : !!vpn,
-          vpnErr ? "не вышло" : vpn ? vpn : vpnClient === "warp" ? "WARP выключен" : "выключен",
-        )}
-        {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
-        {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
-        {tile("through", THROUGH, "Сквозной", through, through ? "клики насквозь" : "выключен")}
-      </div>
-      {btOpen ? (
-        <BtDevices api={api} />
+        </>
       ) : (
-      <div className="tools-row">
-        {TOOLS.map(([id, label, icon]) => (
-          <button key={id} className="tool-btn" onClick={() => onTool(id)}>
-            {icon}
-            <span>{label}</span>
-            {id === "color" && lastColor && (
-              <i
-                className="last-color"
-                title={`${lastColor} — скопировать`}
-                style={{ background: lastColor }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopyColor(lastColor);
-                }}
-              />
-            )}
-          </button>
-        ))}
-      </div>
+        <>
+          <div className="ctl-label">Экран</div>
+          <div className="tools-row screen">{TOOLS.filter(([id]) => SCREEN.includes(id)).map(toolBtn)}</div>
+          <div className="ctl-label">Голос и время</div>
+          <div className="tools-row extra">{TOOLS.filter(([id]) => !SCREEN.includes(id)).map(toolBtn)}</div>
+        </>
       )}
-      {!btOpen && <div className="power-row">
-        {[
-          ["lock", LOCK, "Блокировка", false],
-          ["sleep", SLEEP, "Сон", false],
-          ["restart", RESTART, "Перезагрузка", true],
-          ["shutdown", POWER, "Выключение", true],
-        ].map(([id, icon, label, confirm]) => (
-          <button
-            key={id as string}
-            className={`power-btn ${armed === id ? "armed" : ""}`}
-            onClick={() => power(id as string, confirm as boolean)}
-          >
-            {icon as React.ReactNode}
-            <span>{armed === id ? "Ещё раз" : (label as string)}</span>
-          </button>
-        ))}
-      </div>}
     </div>
   );
 }

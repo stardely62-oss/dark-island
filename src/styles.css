@@ -2688,3 +2688,28 @@ body.settings-page.preview {
   width: 230px;
   flex-basis: 230px;
 }
+
+/* controls: two halves, small group titles, room at the bottom */
+.tab-controls {
+  padding-bottom: 12px;
+}
+.ctl-switch {
+  align-self: flex-start;
+}
+.ctl-label {
+  margin: 2px 2px -4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+.tools-row.screen {
+  grid-template-columns: repeat(3, 1fr);
+}
+.tools-row.extra {
+  grid-template-columns: repeat(2, 1fr);
+}
+.tools-row.screen .tool-btn,
+.tools-row.extra .tool-btn {
+  height: 56px;
+  font-size: 11.5px;
+}
