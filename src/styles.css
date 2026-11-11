@@ -1,0 +1,345 @@
+:root {
+  --fg: #f5f5f7;
+  --fg-2: rgb(235 235 245 / 0.6);
+  --fg-3: rgb(235 235 245 / 0.3);
+  --track: rgb(255 255 255 / 0.16);
+  --island: #000;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  color: var(--fg);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* In a browser (npm run dev) a wallpaper stands in for the desktop. */
+body.preview {
+  background:
+    radial-gradient(1200px 500px at 15% 110%, #e86a4c 0%, transparent 60%),
+    radial-gradient(900px 600px at 85% 120%, #7c3f9e 0%, transparent 60%),
+    linear-gradient(160deg, #b5427f, #6b3f8f 55%, #d97a52);
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.body {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.28));
+}
+.body path {
+  fill: var(--island);
+}
+
+.box {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  overflow: hidden;
+}
+
+.view {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  translate: -50% 0;
+  opacity: 0;
+  scale: 0.94;
+  filter: blur(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    scale 0.36s var(--ease),
+    filter 0.2s ease;
+}
+.view.on {
+  opacity: 1;
+  scale: 1;
+  filter: none;
+  pointer-events: auto;
+  transition:
+    opacity 0.26s ease 0.07s,
+    scale 0.45s var(--ease),
+    filter 0.3s ease 0.05s;
+}
+
+/* ---- collapsed ---- */
+
+.idle {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+.idle.with-battery {
+  justify-content: space-between;
+}
+.time {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.battery .pct {
+  color: var(--fg-2);
+}
+
+.compact {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px 0 8px;
+  box-sizing: border-box;
+}
+
+.cover {
+  flex: none;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgb(255 255 255 / 0.1);
+  color: var(--fg-2);
+}
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+}
+.bars span {
+  width: 3px;
+  height: 100%;
+  border-radius: 3px;
+  background: currentColor;
+  transform-origin: center;
+  transform: scaleY(0.22);
+  transition: transform 0.4s var(--ease);
+}
+.bars.on span {
+  animation: bar 1s ease-in-out infinite alternate;
+}
+@keyframes bar {
+  0% { transform: scaleY(0.25); }
+  35% { transform: scaleY(0.85); }
+  65% { transform: scaleY(0.45); }
+  100% { transform: scaleY(1); }
+}
+
+.hud {
+  gap: 10px;
+  padding: 0 14px;
+}
+.hud .track {
+  flex: 1;
+}
+.num {
+  width: 24px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  height: 5px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+.track .fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fg);
+  transition: width 0.18s linear;
+}
+
+/* ---- expanded ---- */
+
+.expanded {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.expanded header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  height: 20px;
+}
+.expanded .clock {
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.expanded .date {
+  font-size: 12.5px;
+  color: var(--fg-2);
+}
+.expanded .battery {
+  align-self: center;
+}
+.grow {
+  flex: 1;
+}
+
+.track-info {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.titles {
+  flex: 1;
+  min-width: 0;
+}
+.title,
+.artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.artist {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.progress span {
+  width: 34px;
+}
+.progress span:last-child {
+  text-align: right;
+}
+.progress .track {
+  flex: 1;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 34px;
+  margin-top: -4px;
+}
+
+button {
+  all: unset;
+  display: grid;
+  place-items: center;
+  color: var(--fg);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  transition:
+    background 0.15s ease,
+    scale 0.15s var(--ease);
+}
+button:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+button:active {
+  scale: 0.88;
+}
+.controls button.main {
+  width: 46px;
+  height: 46px;
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-2);
+}
+.volume button {
+  width: 30px;
+  height: 30px;
+  color: var(--fg-2);
+}
+.volume input {
+  flex: 1;
+  margin: 0;
+  height: 18px;
+  appearance: none;
+  background: transparent;
+}
+.volume input::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 5px;
+  background: linear-gradient(to right, var(--fg) var(--v), var(--track) var(--v));
+}
+.volume input::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--fg);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.volume:hover input::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--fg-3);
+  font-size: 13px;
+}
