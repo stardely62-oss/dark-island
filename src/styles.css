@@ -1875,3 +1875,73 @@ select.select option {
   box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.5);
   cursor: pointer;
 }
+
+.segmented.tiny button {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 10.5px;
+}
+.tile-wrap {
+  position: relative;
+  display: grid;
+}
+.tile-more {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 26px;
+  height: 26px;
+  color: var(--fg-2);
+  background: rgb(255 255 255 / 0.08);
+}
+.tile-more.on {
+  rotate: 90deg;
+  background: rgb(255 255 255 / 0.18);
+  color: var(--fg);
+}
+.bt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.bt-list > .text-btn {
+  align-self: flex-start;
+}
+.bt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.05);
+}
+.bt-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.25);
+}
+.bt-row.on .bt-dot {
+  background: #34c759;
+}
+.bt-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bt-battery {
+  font-size: 11.5px;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+.volume input:disabled {
+  opacity: 0.4;
+}

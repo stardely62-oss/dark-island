@@ -47,6 +47,7 @@ export function ControlsTab({
   const [c, setC] = useState<Controls | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
+  const [btOpen, setBtOpen] = useState(false);
   const armTimer = useRef(0);
 
   useEffect(() => {
@@ -92,10 +93,22 @@ export function ControlsTab({
     <div className="tab-controls">
       <div className="ctl-grid">
         {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
-        {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
+        <div className="tile-wrap">
+          {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
+          {c?.bluetooth && (
+            <button className={`tile-more ${btOpen ? "on" : ""}`} title="Устройства" onClick={() => setBtOpen(!btOpen)}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+        </div>
         {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
         {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
       </div>
+      {btOpen ? (
+        <BtDevices api={api} />
+      ) : (
       <div className="tools-row">
         {TOOLS.map(([id, label, icon]) => (
           <button key={id} className="tool-btn" onClick={() => onTool(id)}>
@@ -115,7 +128,8 @@ export function ControlsTab({
           </button>
         ))}
       </div>
-      <div className="power-row">
+      )}
+      {!btOpen && <div className="power-row">
         {[
           ["lock", LOCK, "Блокировка", false],
           ["sleep", SLEEP, "Сон", false],
@@ -131,7 +145,54 @@ export function ControlsTab({
             <span>{armed === id ? "Ещё раз" : (label as string)}</span>
           </button>
         ))}
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+type Bt = { id: string; name: string; connected: boolean; battery: number | null; audio: boolean; container: string };
+
+/** Paired Bluetooth devices with their charge; headphones and speakers connect in one press. */
+function BtDevices({ api }: { api: Bridge | null }) {
+  const [list, setList] = useState<Bt[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => api?.call<Bt[]>("bt_devices").then((l) => setList(l ?? []));
+  useEffect(() => {
+    load();
+    const id = window.setInterval(load, 5000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+  const toggle = (d: Bt) => {
+    setBusy(d.container);
+    setErr(null);
+    api
+      ?.call("bt_connect", { container: d.container, on: !d.connected })
+      .then(() => window.setTimeout(load, 2500))
+      .catch((e) => setErr(String(e)))
+      .finally(() => window.setTimeout(() => setBusy(null), 2500));
+  };
+  return (
+    <div className="bt-list">
+      {list === null && <div className="hint-line">Ищу устройства…</div>}
+      {list?.length === 0 && <div className="hint-line">Нет сопряжённых устройств</div>}
+      {list?.map((d) => (
+        <div key={d.container} className={`bt-row ${d.connected ? "on" : ""}`}>
+          <span className="bt-dot" />
+          <span className="bt-name">{d.name}</span>
+          {d.battery !== null && <span className="bt-battery">{d.battery}%</span>}
+          {d.audio && (
+            <button className="text-btn solid" disabled={busy === d.container} onClick={() => toggle(d)}>
+              {busy === d.container ? "…" : d.connected ? "Отключить" : "Подключить"}
+            </button>
+          )}
+        </div>
+      ))}
+      {err && <div className="set-error">{err}</div>}
+      <button className="text-btn" onClick={() => api?.call("open_windows_settings", { page: "bluetooth" })}>
+        Параметры Bluetooth
+      </button>
     </div>
   );
 }

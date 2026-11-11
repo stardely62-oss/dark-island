@@ -27,7 +27,11 @@ pub fn record_mic(stop: Arc<AtomicBool>, level: impl Fn(f32)) -> Result<Vec<i16>
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let e: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| e.to_string())?;
-        let dev = e.GetDefaultAudioEndpoint(eCapture, eConsole).map_err(|_| "Нет микрофона".to_string())?;
+        let chosen = super::windows::AUDIO_PREFS.lock().unwrap().1.clone();
+        let dev = match super::devices::device(eCapture, &chosen) {
+            Some(d) => d,
+            None => e.GetDefaultAudioEndpoint(eCapture, eConsole).map_err(|_| "Нет микрофона".to_string())?,
+        };
         let client: IAudioClient = dev.Activate(CLSCTX_ALL, None).map_err(|e| e.to_string())?;
         let wf = client.GetMixFormat().map_err(|e| e.to_string())?;
         let raw: WAVEFORMATEX = std::ptr::read_unaligned(wf);

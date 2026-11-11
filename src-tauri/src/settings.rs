@@ -49,6 +49,10 @@ impl Settings {
         self.values.lock().unwrap().get(key).and_then(Value::as_bool).unwrap_or(default)
     }
 
+    pub fn string(&self, key: &str) -> String {
+        self.values.lock().unwrap().get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    }
+
     pub fn strings(&self, key: &str) -> Vec<String> {
         self.values
             .lock()

@@ -159,6 +159,8 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
             Err(RecvTimeoutError::Disconnected) => break,
         }
 
+        *AUDIO_PREFS.lock().unwrap() = (settings.string("volumeDevice"), settings.string("micDevice"));
+
         // Volume: cheap, polled every tick so hardware keys show up instantly.
         let vol = audio.read();
         let changed = {
@@ -409,10 +411,18 @@ fn now_ms() -> u64 {
 
 // ---------------------------------------------------------------- audio ----
 
+/// The output and the microphone the user chose ("" = Windows' default).
+pub static AUDIO_PREFS: std::sync::Mutex<(String, String)> = std::sync::Mutex::new((String::new(), String::new()));
+
+fn prefs() -> (String, String) {
+    AUDIO_PREFS.lock().unwrap().clone()
+}
+
 #[derive(Default)]
 struct Audio {
     endpoint: Option<IAudioEndpointVolume>,
     fetched: Option<Instant>,
+    device: String,
 }
 
 impl Audio {
@@ -420,14 +430,12 @@ impl Audio {
     /// endpoint is looked up again every couple of seconds.
     fn endpoint(&mut self) -> Option<&IAudioEndpointVolume> {
         let stale = self.fetched.map_or(true, |t| t.elapsed() > Duration::from_secs(2));
-        if self.endpoint.is_none() || stale {
+        let want = prefs().0;
+        if self.endpoint.is_none() || stale || want != self.device {
             self.fetched = Some(Instant::now());
-            self.endpoint = unsafe {
-                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
-                    .and_then(|e| e.GetDefaultAudioEndpoint(eRender, eConsole))
-                    .and_then(|d| d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None))
-                    .ok()
-            };
+            self.device = want.clone();
+            self.endpoint = super::devices::device(eRender, &want)
+                .and_then(|d| unsafe { d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok());
         }
         self.endpoint.as_ref()
     }
@@ -599,7 +607,7 @@ impl GameCache {
     }
 }
 
-fn process_path(pid: u32) -> String {
+pub fn process_path(pid: u32) -> String {
     unsafe {
         let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
             return String::new();
@@ -1213,6 +1221,15 @@ pub fn in_use(device: &str) -> Vec<String> {
 /// Every active microphone, the default one first: muting only the default
 /// device misses programs that record from another one.
 fn capture_endpoints() -> Vec<IAudioEndpointVolume> {
+    // A chosen microphone: only that one.
+    let chosen = prefs().1;
+    if !chosen.is_empty() {
+        if let Some(d) = super::devices::device(eCapture, &chosen) {
+            if let Ok(v) = unsafe { d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) } {
+                return vec![v];
+            }
+        }
+    }
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let Ok(e) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else {

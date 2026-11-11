@@ -475,6 +475,61 @@ async fn notifications_access(ask: bool) -> String {
     sys::notifications_access(ask)
 }
 
+// ---- sound devices and Bluetooth --------------------------------------------------
+
+#[tauri::command]
+async fn audio_devices() -> serde_json::Value {
+    #[cfg(windows)]
+    return serde_json::to_value(sys::devices::audio_devices()).unwrap_or_default();
+    #[cfg(not(windows))]
+    serde_json::json!({ "outputs": [], "inputs": [] })
+}
+
+#[tauri::command]
+async fn player_volume_get(app_id: String) -> Option<f32> {
+    #[cfg(windows)]
+    return sys::devices::player_volume(&app_id, &sys::AUDIO_PREFS.lock().unwrap().0.clone());
+    #[cfg(not(windows))]
+    {
+        let _ = app_id;
+        None
+    }
+}
+
+#[tauri::command]
+async fn player_volume_set(app_id: String, level: f32) -> bool {
+    #[cfg(windows)]
+    return sys::devices::set_player_volume(&app_id, &sys::AUDIO_PREFS.lock().unwrap().0.clone(), level);
+    #[cfg(not(windows))]
+    {
+        let _ = (app_id, level);
+        false
+    }
+}
+
+#[tauri::command]
+async fn bt_devices() -> serde_json::Value {
+    #[cfg(windows)]
+    return serde_json::to_value(sys::devices::bt_devices()).unwrap_or_default();
+    #[cfg(not(windows))]
+    serde_json::json!([])
+}
+
+#[tauri::command]
+async fn bt_connect(app: AppHandle, container: String, on: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let r = sys::devices::bt_connect(&container, on);
+        diag::log(&app, &format!("bluetooth {} {container}: {r:?}", if on { "connect" } else { "disconnect" }));
+        r
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, container, on);
+        Err("только в Windows".into())
+    }
+}
+
 /// Opens a page of Windows Settings (only the few the island needs).
 #[tauri::command]
 fn open_windows_settings(app: AppHandle, page: String) {
@@ -482,6 +537,8 @@ fn open_windows_settings(app: AppHandle, page: String) {
         "notifications" => "ms-settings:privacy-notifications",
         "microphone" => "ms-settings:privacy-microphone",
         "vpn" => "ms-settings:network-vpn",
+        "bluetooth" => "ms-settings:bluetooth",
+        "sound" => "ms-settings:sound",
         _ => return,
     };
     let _ = app.opener().open_url(uri, None::<&str>);
@@ -896,7 +953,12 @@ pub fn run() {
             record_start,
             monitors_list,
             icon_get,
-            diag_open
+            diag_open,
+            audio_devices,
+            player_volume_get,
+            player_volume_set,
+            bt_devices,
+            bt_connect
         ])
         .setup(|app| {
             let shared = Arc::new(Shared::default());

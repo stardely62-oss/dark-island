@@ -64,6 +64,7 @@ export function SettingsTab({
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [models, setModels] = useState<string[]>([]);
   const [modelErr, setModelErr] = useState<string | null>(null);
+  const [devices, setDevices] = useState<{ outputs: { id: string; name: string; default: boolean }[]; inputs: { id: string; name: string; default: boolean }[] }>({ outputs: [], inputs: [] });
   const [monitors, setMonitors] = useState<{ index: number; name: string; width: number; height: number; primary: boolean }[]>([]);
   const refreshKeys = () =>
     api
@@ -73,6 +74,7 @@ export function SettingsTab({
     if (!visible) return;
     refreshKeys();
     api?.call<typeof monitors>("monitors_list").then((m) => setMonitors(m ?? []));
+    api?.call<typeof devices>("audio_devices").then((d) => d && setDevices(d));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, visible]);
   const provider = providerOf(settings);
@@ -305,6 +307,28 @@ export function SettingsTab({
         title: (settings.uploadService as string) === "imgur" ? "Client ID Imgur" : "Ключ ImgBB",
         url: (settings.uploadService as string) === "imgur" ? "https://api.imgur.com/oauth2/addclient" : "https://api.imgbb.com/",
       })}
+
+      <div className="set-group">Звук</div>
+      <Row title="Громкость острова" sub="Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается">
+        <select className="search set-input select" value={(settings.volumeDevice as string) ?? ""} onChange={(e) => set({ volumeDevice: e.target.value })}>
+          <option value="">Как в Windows</option>
+          {devices.outputs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row title="Микрофон острова" sub="Что выключает кнопка микрофона и откуда пишет диктовка">
+        <select className="search set-input select" value={(settings.micDevice as string) ?? ""} onChange={(e) => set({ micDevice: e.target.value })}>
+          <option value="">Все (диктовка — с основного)</option>
+          {devices.inputs.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </Row>
 
       <div className="set-group">Музыка</div>
       <Row title="Пилюля во время музыки">

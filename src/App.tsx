@@ -1433,25 +1433,7 @@ function HomeTab({
       )}
 
       {volume && (
-        <div className="volume">
-          <button aria-label="Без звука" onClick={() => api?.muteToggle()}>
-            <Speaker level={volume.level} muted={volume.muted} />
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume.muted ? 0 : volume.level}
-            style={{ "--v": `${(volume.muted ? 0 : volume.level) * 100}%` } as React.CSSProperties}
-            onChange={(e) => {
-              const level = Number(e.target.value);
-              setVolume({ level, muted: false });
-              api?.volumeSet(level);
-            }}
-          />
-          <span className="num">{Math.round((volume.muted ? 0 : volume.level) * 100)}</span>
-        </div>
+        <VolumeRow api={api} volume={volume} setVolume={setVolume} media={media} />
       )}
       <Launcher api={api} items={launcher} setItems={setLauncher} onTypeStart={onTypeStart} />
     </>
@@ -1613,6 +1595,72 @@ function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping
       style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}
     >
       <Buddy size={SIZE} sleeping={sleeping} />
+    </div>
+  );
+}
+
+/**
+ * The volume slider of Home. With music playing it can switch between the
+ * computer's volume and the player's own (its audio session in Windows).
+ */
+function VolumeRow({
+  api,
+  volume,
+  setVolume,
+  media,
+}: {
+  api: Bridge | null;
+  volume: Volume;
+  setVolume: (v: Volume) => void;
+  media: Media | null;
+}) {
+  const [target, setTarget] = useState<"pc" | "player">("pc");
+  const [player, setPlayer] = useState<number | null>(null);
+  const appId = media?.app ?? "";
+  useEffect(() => {
+    setPlayer(null);
+    if (target !== "player" || !appId) return;
+    api?.call<number | null>("player_volume_get", { appId }).then((v) => setPlayer(v ?? null));
+  }, [target, appId, api]);
+  const usePlayer = target === "player" && media;
+  const level = usePlayer ? (player ?? 0) : volume.muted ? 0 : volume.level;
+  return (
+    <div className="volume">
+      <button aria-label="Без звука" onClick={() => api?.muteToggle()}>
+        <Speaker level={volume.level} muted={volume.muted} />
+      </button>
+      {media && (
+        <div className="segmented tiny">
+          <button className={target === "pc" ? "on" : ""} onClick={() => setTarget("pc")}>
+            Компьютер
+          </button>
+          <button className={target === "player" ? "on" : ""} onClick={() => setTarget("player")}>
+            Плеер
+          </button>
+        </div>
+      )}
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        disabled={!!usePlayer && player === null}
+        value={level}
+        style={{ "--v": `${level * 100}%` } as React.CSSProperties}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (usePlayer) {
+            setPlayer(v);
+            api?.call("player_volume_set", { appId, level: v });
+          } else {
+            setVolume({ level: v, muted: false });
+            api?.volumeSet(v);
+          }
+        }}
+      />
+      <span className="num" title={usePlayer && player === null ? "Плеер не найден среди звуков Windows" : undefined}>
+        {usePlayer && player === null ? "—" : Math.round(level * 100)}
+      </span>
     </div>
   );
 }
