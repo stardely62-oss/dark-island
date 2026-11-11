@@ -901,6 +901,34 @@ pub fn run() {
                 recording: Mutex::new(None),
             });
             register_hotkeys(app.handle())?;
+            // Files dropped on the island go straight to the shelf, handled here
+            // rather than in the page, so nothing is lost on the way.
+            {
+                let app2 = app.handle().clone();
+                win.on_window_event(move |ev| {
+                    use tauri::{DragDropEvent, WindowEvent};
+                    let WindowEvent::DragDrop(dd) = ev else { return };
+                    let emit = |kind: &str| {
+                        let _ = app2.emit_to("island", "drag", serde_json::json!({ "type": kind, "paths": [] }));
+                    };
+                    match dd {
+                        DragDropEvent::Enter { .. } => emit("enter"),
+                        DragDropEvent::Leave => emit("leave"),
+                        DragDropEvent::Drop { paths, .. } => {
+                            let list: Vec<String> = paths.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                            let ctl = app2.state::<Ctl>();
+                            let items = {
+                                let mut shelf = ctl.shelf.lock().unwrap();
+                                shelf.add(list);
+                                shelf.items.clone()
+                            };
+                            let _ = app2.emit_to("island", "shelf", items);
+                            emit("drop");
+                        }
+                        _ => {}
+                    }
+                });
+            }
             capture::create_overlay(app.handle())?;
             // By default the island stays out of screenshots, recordings and streams.
             let show_in_captures = app.state::<Ctl>().settings.bool("showInCaptures", false);

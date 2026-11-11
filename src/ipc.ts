@@ -49,8 +49,9 @@ type Events = {
   recording: { on: boolean; path?: string; error?: string };
   capture: { kind: "shot" | "text" | "qr" | "link" | "color" | "error"; text: string; thumb: string | null; path: string | null };
   outside_click: null;
-  /** Files dragged over the island from another window. */
+  /** Files dragged over the island from another window (dropped ones are already on the shelf). */
   drag: { type: "enter" | "leave" | "drop"; paths: string[] };
+  shelf: ShelfItem[];
 };
 
 export type Clip = {
@@ -110,14 +111,6 @@ async function tauriBridge(): Promise<Bridge> {
       invoke("plugin:drag|start_drag", { item: paths, image: icon, options: { mode: "copy" }, onEvent }).catch(() => {});
     },
     on(event, cb) {
-      if (event === "drag") {
-        const offs = (["enter", "leave", "drop"] as const).map((type) =>
-          listen<{ paths?: string[] }>(`tauri://drag-${type}`, (e) =>
-            cb({ type, paths: e.payload?.paths ?? [] } as never),
-          ),
-        );
-        return () => offs.forEach((p) => p.then((un) => un()));
-      }
       const p = listen(event, (e) => cb(e.payload as never));
       return () => {
         p.then((un) => un());

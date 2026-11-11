@@ -411,9 +411,9 @@ export function App() {
             setDragOver(true);
           } else {
             setDragOver(false);
-            if (d.type === "drop" && d.paths.length) b.call<ShelfItem[]>("shelf_add", { paths: d.paths }).then(setShelf);
           }
         }),
+        b.on("shelf", setShelf),
       );
       const [s, c, sh, w] = await Promise.all([
         b.getState(),
@@ -897,7 +897,7 @@ export function App() {
           <ControlsTab
             api={api}
             visible={mode === "expanded" && tab === "controls"}
-            colors={(settings.colorHistory as string[] | undefined) ?? []}
+            lastColor={((settings.colorHistory as string[] | undefined) ?? [])[0] ?? null}
             onTool={(m) => {
               dismiss();
               api?.call("capture_start", { mode: m });

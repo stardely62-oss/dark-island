@@ -45,6 +45,7 @@ use windows::UI::Notifications::{KnownNotificationBindings, NotificationKinds};
 use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HLOCAL, LocalFree};
 use windows::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
 use windows::Win32::Media::Audio::{eCapture, eCommunications};
+use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::NetworkManagement::IpHelper::{
     GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER, GAA_FLAG_SKIP_MULTICAST, IP_ADAPTER_ADDRESSES_LH,
 };
@@ -1209,27 +1210,52 @@ pub fn in_use(device: &str) -> Vec<String> {
     apps
 }
 
-fn capture_endpoint() -> Option<IAudioEndpointVolume> {
+/// The default microphone, and the default one for calls if it is another
+/// device (Windows keeps the two separately).
+fn capture_endpoints() -> Vec<IAudioEndpointVolume> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)
-            .and_then(|e| e.GetDefaultAudioEndpoint(eCapture, eCommunications))
-            .and_then(|d| d.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None))
-            .ok()
+        let Ok(e) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else {
+            return Vec::new();
+        };
+        let mut ids: Vec<String> = Vec::new();
+        let mut out = Vec::new();
+        for role in [eConsole, eCommunications] {
+            let Ok(dev) = e.GetDefaultAudioEndpoint(eCapture, role) else { continue };
+            let id = dev.GetId().map(|p| {
+                let s = p.to_string().unwrap_or_default();
+                CoTaskMemFree(Some(p.0 as *const _));
+                s
+            });
+            let id = id.unwrap_or_default();
+            if ids.contains(&id) {
+                continue;
+            }
+            ids.push(id);
+            if let Ok(v) = dev.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) {
+                out.push(v);
+            }
+        }
+        out
     }
 }
 
 pub fn mic_muted() -> Option<bool> {
-    unsafe { capture_endpoint()?.GetMute().ok().map(|b| b.as_bool()) }
+    let eps = capture_endpoints();
+    unsafe { eps.first()?.GetMute().ok().map(|b| b.as_bool()) }
 }
 
-/// Mutes or unmutes the default microphone; returns the new state.
+/// Mutes or unmutes the microphone (both defaults); returns the new state.
 pub fn mic_toggle() -> Option<bool> {
-    let ep = capture_endpoint()?;
+    let eps = capture_endpoints();
+    let first = eps.first()?;
     unsafe {
-        let now = !ep.GetMute().ok()?.as_bool();
-        ep.SetMute(now, std::ptr::null()).ok()?;
-        Some(now)
+        let now = !first.GetMute().ok()?.as_bool();
+        let mut ok = false;
+        for ep in &eps {
+            ok |= ep.SetMute(now, std::ptr::null()).is_ok();
+        }
+        ok.then_some(now)
     }
 }
 

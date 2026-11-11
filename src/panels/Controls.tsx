@@ -29,7 +29,7 @@ const TOOLS: [string, string, React.ReactNode][] = [
 export function ControlsTab({
   api,
   visible,
-  colors,
+  lastColor,
   onTool,
   onCopyColor,
   micMuted,
@@ -37,7 +37,7 @@ export function ControlsTab({
 }: {
   api: Bridge | null;
   visible: boolean;
-  colors: string[];
+  lastColor: string | null;
   onTool: (mode: string) => void;
   onCopyColor: (c: string) => void;
   micMuted: boolean;
@@ -100,16 +100,20 @@ export function ControlsTab({
           <button key={id} className="power-btn" onClick={() => onTool(id)}>
             {icon}
             <span>{label}</span>
+            {id === "color" && lastColor && (
+              <i
+                className="last-color"
+                title={`${lastColor} — скопировать`}
+                style={{ background: lastColor }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyColor(lastColor);
+                }}
+              />
+            )}
           </button>
         ))}
       </div>
-      {colors.length > 0 && (
-        <div className="swatches">
-          {colors.map((c) => (
-            <button key={c} title={`${c} — скопировать`} style={{ background: c }} onClick={() => onCopyColor(c)} />
-          ))}
-        </div>
-      )}
       <div className="power-row">
         {[
           ["lock", LOCK, "Блокировка", false],
