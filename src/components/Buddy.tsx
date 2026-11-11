@@ -308,6 +308,8 @@ export function Buddy({
   mood = null,
   className = "",
   still = false,
+  wear,
+  tint,
 }: {
   size?: number;
   sleeping?: boolean;
@@ -315,6 +317,10 @@ export function Buddy({
   className?: string;
   /** No whims or reactions (e.g. a copy in flight). */
   still?: boolean;
+  /** Shows him in this hat instead of his own (settings previews). */
+  wear?: string;
+  /** Shows him in this colour instead of his own (settings previews). */
+  tint?: string;
 }) {
   const [re, act, st, hat, name, wx, asleepS] = useLife();
   const asleep = asleepS === "1" && !still;
@@ -387,6 +393,7 @@ export function Buddy({
   return (
     <svg
       className={classes}
+      style={tint ? ({ "--bd-color": tint } as React.CSSProperties) : undefined}
       width={size}
       height={(size * 11) / 15}
       viewBox="0 0 15 11"
@@ -505,7 +512,7 @@ export function Buddy({
                 <P x={9} y={3} fill="#5a6b80" />
               </g>
             )}
-            {hat !== "none" && <Hat hat={hat} />}
+            {(wear ?? hat) !== "none" && <Hat hat={wear ?? hat} />}
           </g>
         </g>
       </g>

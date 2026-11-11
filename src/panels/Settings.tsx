@@ -377,30 +377,23 @@ export function SettingsTab({
       <Row title="Размер" sub={`${Math.round(settings.buddyScale * 100)}%`}>
         <input className="range" type="range" min={1} max={2} step={0.1} value={settings.buddyScale} onChange={(e) => set({ buddyScale: Number(e.target.value) })} />
       </Row>
-      <Row title="Цвет">
-        <div className="swatches">
-          {COLORS.map(([c, name]) => (
-            <button
-              key={c}
-              className={`swatch ${settings.buddyColor === c ? "on" : ""}`}
-              title={name}
-              style={{ background: c }}
-              onClick={() => set({ buddyColor: c })}
-            />
-          ))}
-        </div>
-      </Row>
-      <div className="set-row hats">
-        <div className="set-text">
-          <div className="set-title">Наряд</div>
-        </div>
-        <div className="hat-grid">
-          {HATS.map(([id, label]) => (
-            <button key={id} className={`chip ${settings.buddyHat === id ? "on" : ""}`} onClick={() => set({ buddyHat: id })}>
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="look-label">Цвет</div>
+      <div className="look-grid">
+        {COLORS.map(([c, name]) => (
+          <button key={c} className={`look-tile ${settings.buddyColor === c ? "on" : ""}`} title={name} onClick={() => set({ buddyColor: c })}>
+            <Buddy size={30} still tint={c} wear={settings.buddyHat} />
+            <span>{name}</span>
+          </button>
+        ))}
+      </div>
+      <div className="look-label">Наряд</div>
+      <div className="look-grid">
+        {HATS.map(([id, label]) => (
+          <button key={id} className={`look-tile ${settings.buddyHat === id ? "on" : ""}`} onClick={() => set({ buddyHat: id })}>
+            <Buddy size={30} still tint={settings.buddyColor} wear={id} />
+            <span>{label}</span>
+          </button>
+        ))}
       </div>
 
       <div className="set-group">ИИ</div>
