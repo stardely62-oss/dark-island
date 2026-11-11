@@ -30,7 +30,26 @@ type Events = {
   away: boolean;
   /** Loudness of 6 frequency bands (low → high), 0..1, ~30 times a second. */
   audio: number[];
+  clips: Clip[];
+  keys: { caps: boolean; layout: string; what: "caps" | "layout" };
+  hotkey: "toggle" | "clipboard";
+  outside_click: null;
+  /** Files dragged over the island from another window. */
+  drag: { type: "enter" | "leave" | "drop"; paths: string[] };
 };
+
+export type Clip = {
+  id: number;
+  kind: "text" | "image";
+  preview: string;
+  chars: number;
+  thumb: string | null;
+  w: number;
+  h: number;
+  pinned: boolean;
+  at: number;
+};
+export type ShelfItem = { path: string; name: string; dir: boolean; size: number };
 
 export interface Bridge {
   getState(): Promise<Snapshot>;
@@ -39,13 +58,17 @@ export interface Bridge {
   volumeSet(level: number): void;
   volumeStep(delta: number): void;
   muteToggle(): void;
+  /** Any other backend command. */
+  call<T = unknown>(cmd: string, args?: Record<string, unknown>): Promise<T>;
+  /** Drags files out of the island into another window. */
+  dragOut(paths: string[], icon: string): void;
   on<K extends keyof Events>(event: K, cb: (payload: Events[K]) => void): () => void;
 }
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 async function tauriBridge(): Promise<Bridge> {
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { invoke, Channel } = await import("@tauri-apps/api/core");
   const { listen } = await import("@tauri-apps/api/event");
   const fire = (cmd: string, args?: Record<string, unknown>) => {
     invoke(cmd, args).catch(() => {});
@@ -57,7 +80,20 @@ async function tauriBridge(): Promise<Bridge> {
     volumeSet: (level) => fire("volume_set", { level }),
     volumeStep: (delta) => fire("volume_step", { delta }),
     muteToggle: () => fire("volume_mute_toggle"),
+    call: (cmd, args) => invoke(cmd, args),
+    dragOut(paths, icon) {
+      const onEvent = new Channel<unknown>();
+      invoke("plugin:drag|start_drag", { item: paths, image: icon, options: { mode: "copy" }, onEvent }).catch(() => {});
+    },
     on(event, cb) {
+      if (event === "drag") {
+        const offs = (["enter", "leave", "drop"] as const).map((type) =>
+          listen<{ paths?: string[] }>(`tauri://drag-${type}`, (e) =>
+            cb({ type, paths: e.payload?.paths ?? [] } as never),
+          ),
+        );
+        return () => offs.forEach((p) => p.then((un) => un()));
+      }
       const p = listen(event, (e) => cb(e.payload as never));
       return () => {
         p.then((un) => un());
@@ -146,7 +182,55 @@ function mockBridge(): Bridge {
   // Lets screenshots and tests drive the mock: window.__island.emit("volume", ...)
   (window as unknown as { __island: unknown }).__island = { emit, state };
 
+  const now = Date.now();
+  let clips: Clip[] = [
+    { id: 5, kind: "text", preview: "https://github.com/stardely62-oss/dark-island", chars: 45, thumb: null, w: 0, h: 0, pinned: true, at: now - 3_600_000 },
+    { id: 4, kind: "text", preview: "Купить молоко, хлеб и батарейки для мышки", chars: 41, thumb: null, w: 0, h: 0, pinned: false, at: now - 40_000 },
+    { id: 3, kind: "image", preview: "", chars: 0, thumb: mockCover(), w: 1280, h: 720, pinned: false, at: now - 300_000 },
+    { id: 2, kind: "text", preview: "const island = new Liquid({ w: 236, h: 34 });\nisland.step(1 / 60, drive);", chars: 70, thumb: null, w: 0, h: 0, pinned: false, at: now - 900_000 },
+    { id: 1, kind: "text", preview: "Встреча в четверг в 15:00, ссылка в календаре", chars: 44, thumb: null, w: 0, h: 0, pinned: false, at: now - 7_200_000 },
+  ];
+  let shelf: ShelfItem[] = [
+    { path: "C:\\Users\\me\\Desktop\\отчёт.pdf", name: "отчёт.pdf", dir: false, size: 1_284_000 },
+    { path: "C:\\Users\\me\\Pictures\\wallpaper.png", name: "wallpaper.png", dir: false, size: 3_400_000 },
+    { path: "C:\\Users\\me\\Projects", name: "Projects", dir: true, size: 0 },
+  ];
+  if (params.has("empty")) {
+    clips = [];
+    shelf = [];
+  }
+  let note = "Идеи:\n— остров под музыку ✓\n— Клодик ✓\n— буфер обмена";
+  const calls: Record<string, (a: Record<string, unknown>) => unknown> = {
+    clip_list: () => clips,
+    clip_use: () => true,
+    clip_delete: (a) => {
+      clips = clips.filter((c) => c.id !== a.id);
+      emit("clips", clips);
+    },
+    clip_pin: (a) => {
+      clips = clips.map((c) => (c.id === a.id ? { ...c, pinned: !c.pinned } : c));
+      emit("clips", clips);
+    },
+    clip_clear: () => {
+      clips = clips.filter((c) => c.pinned);
+      emit("clips", clips);
+    },
+    shelf_list: () => shelf,
+    shelf_add: (a) => {
+      for (const p of a.paths as string[]) shelf.push({ path: p, name: p.split(/[\\/]/).pop()!, dir: false, size: 1000 });
+      return shelf;
+    },
+    shelf_remove: (a) => (shelf = shelf.filter((i) => i.path !== a.path)),
+    shelf_clear: () => (shelf = []),
+    note_get: () => note,
+    note_set: (a) => {
+      note = a.text as string;
+    },
+  };
+
   return {
+    call: async (cmd, args) => structuredClone(calls[cmd]?.(args ?? {})) as never,
+    dragOut: () => {},
     getState: async () => structuredClone(state),
     setHitRect: (r) => {
       rect = r;

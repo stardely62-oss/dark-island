@@ -8,9 +8,14 @@ mod windows;
 #[cfg(windows)]
 pub use self::meter::spawn as spawn_meter;
 #[cfg(windows)]
-pub use self::windows::{cursor_pos, prepare_window, spawn};
+pub use self::windows::{
+    cursor_pos, mouse_down, prepare_window, release_focus, send_paste, spawn, spawn_clipboard, take_focus,
+};
 
 #[cfg(not(windows))]
 mod stub;
 #[cfg(not(windows))]
-pub use self::stub::{cursor_pos, prepare_window, spawn, spawn_meter};
+pub use self::stub::{
+    cursor_pos, mouse_down, prepare_window, release_focus, send_paste, spawn, spawn_clipboard, spawn_meter,
+    take_focus,
+};

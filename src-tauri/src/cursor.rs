@@ -25,6 +25,7 @@ fn run(app: AppHandle, shared: Arc<Shared>) {
     let mut inside_before = false;
     let mut near_before = false;
     let mut last_place = Instant::now();
+    let mut down_before = false;
 
     loop {
         // Monitors can be plugged in or rescaled: re-centre now and then.
@@ -48,6 +49,13 @@ fn run(app: AppHandle, shared: Arc<Shared>) {
             inside_before = inside;
         }
 
+        // A click anywhere but the island closes it when it was opened on purpose.
+        let down = sys::mouse_down();
+        if down && !down_before && !inside {
+            let _ = app.emit_to("island", "outside_click", ());
+        }
+        down_before = down;
+
         let near = r.w > 0.0 && x > r.x - NEAR && x < r.x + r.w + NEAR && y < r.y + r.h + NEAR;
         if near || near_before {
             let _ = app.emit_to("island", "cursor", CursorEvent { x, y, near, inside });
@@ -55,6 +63,6 @@ fn run(app: AppHandle, shared: Arc<Shared>) {
         }
 
         // Poll fast only while the cursor is close; idle polling is cheap.
-        thread::sleep(Duration::from_millis(if near { 16 } else { 60 }));
+        thread::sleep(Duration::from_millis(if near { 16 } else { 40 }));
     }
 }

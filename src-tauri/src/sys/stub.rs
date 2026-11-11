@@ -19,3 +19,13 @@ pub fn cursor_pos() -> Option<(f64, f64)> {
 }
 
 pub fn spawn_meter(_app: AppHandle) {}
+
+pub fn spawn_clipboard(_app: AppHandle, _clips: Arc<std::sync::Mutex<crate::clip::Clips>>) {}
+pub fn send_paste() {}
+pub fn take_focus(win: &WebviewWindow) {
+    let _ = win.set_focus();
+}
+pub fn release_focus(_win: &WebviewWindow) {}
+pub fn mouse_down() -> bool {
+    false
+}

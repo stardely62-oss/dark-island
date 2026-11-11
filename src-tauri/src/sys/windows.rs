@@ -25,18 +25,25 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    AttachThreadInput, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetTickCount;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+use windows::core::w;
+use windows::Win32::System::DataExchange::{GetClipboardSequenceNumber, IsClipboardFormatAvailable, RegisterClipboardFormatW};
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, GetKeyState, GetKeyboardLayout, GetLastInputInfo, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD,
+    KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, LASTINPUTINFO, VIRTUAL_KEY, VK_CAPITAL, VK_CONTROL, VK_LBUTTON,
+    VK_MENU, VK_RBUTTON, VK_SHIFT, VK_V,
+};
 use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
-    IsIconic, IsWindowVisible, IsZoomed, SetWindowLongPtrW, GWL_EXSTYLE, GWL_STYLE, WS_CAPTION, WS_EX_NOACTIVATE,
+    IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, GWL_STYLE, WS_CAPTION, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -93,6 +100,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
     let mut games = GameCache::default();
     let mut last_away = Instant::now();
     let mut away = false;
+    let mut last_keys = keys();
 
     loop {
         let mut media_dirty = false;
@@ -154,6 +162,15 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
             }
         }
 
+        // Caps Lock and keyboard layout: shown as a short card when they change.
+        let k = keys();
+        if k != last_keys {
+            let what = if k.0 != last_keys.0 { "caps" } else { "layout" };
+            // A layout change while switching windows is not news.
+            let _ = app.emit_to("island", "keys", KeysEvent { caps: k.0, layout: k.1.clone(), what });
+            last_keys = k;
+        }
+
         if last_away.elapsed() >= AWAY_EVERY {
             last_away = Instant::now();
             let now = idle_ms() >= AWAY_AFTER_MS;
@@ -188,6 +205,13 @@ fn run(app: AppHandle, shared: Arc<Shared>, rx: Receiver<Cmd>) {
             }
         }
     }
+}
+
+#[derive(Clone, serde::Serialize)]
+struct KeysEvent {
+    caps: bool,
+    layout: String,
+    what: &'static str,
 }
 
 // ---------------------------------------------------------------- media ----
@@ -511,4 +535,178 @@ fn process_path(pid: u32) -> String {
             String::new()
         }
     }
+}
+
+// ------------------------------------------------------------ clipboard ----
+
+/// Watches the clipboard and records what is copied. Content marked private
+/// (password managers set "ExcludeClipboardContentFromMonitorProcessing") is
+/// never recorded.
+pub fn spawn_clipboard(app: AppHandle, clips: Arc<std::sync::Mutex<crate::clip::Clips>>) {
+    thread::Builder::new()
+        .name("island-clipboard".into())
+        .spawn(move || {
+            let private = [
+                w!("ExcludeClipboardContentFromMonitorProcessing"),
+                w!("Clipboard Viewer Ignore"),
+            ]
+            .map(|f| unsafe { RegisterClipboardFormatW(f) });
+            let mut seq = unsafe { GetClipboardSequenceNumber() };
+            loop {
+                thread::sleep(Duration::from_millis(300));
+                let now = unsafe { GetClipboardSequenceNumber() };
+                if now == seq {
+                    continue;
+                }
+                seq = now;
+                if private.iter().any(|&f| f != 0 && unsafe { IsClipboardFormatAvailable(f) }.is_ok()) {
+                    continue;
+                }
+                // The owner may still be writing: give it a moment.
+                thread::sleep(Duration::from_millis(60));
+                let Ok(mut cb) = arboard::Clipboard::new() else { continue };
+                let changed = if let Ok(text) = cb.get_text() {
+                    clips.lock().unwrap().add_text(text)
+                } else if let Ok(img) = cb.get_image() {
+                    clips.lock().unwrap().add_image(img.width as u32, img.height as u32, &img.bytes)
+                } else {
+                    false
+                };
+                if changed {
+                    let view = clips.lock().unwrap().view();
+                    let _ = app.emit_to("island", "clips", view);
+                }
+            }
+        })
+        .expect("spawn clipboard thread");
+}
+
+/// Presses Ctrl+V in whatever window has the keyboard focus.
+pub fn send_paste() {
+    let key = |vk: VIRTUAL_KEY, up: bool| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    // Release modifiers the user may still hold from a hotkey first.
+    let inputs = [
+        key(VK_MENU, true),
+        key(VK_SHIFT, true),
+        key(VK_CONTROL, false),
+        key(VK_V, false),
+        key(VK_V, true),
+        key(VK_CONTROL, true),
+    ];
+    unsafe {
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+// ---------------------------------------------------------------- focus ----
+
+static PREVIOUS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Brings a window to the front even from the background, by briefly
+/// attaching to the input of the window that is in front now.
+unsafe fn force_foreground(hwnd: HWND) {
+    let fg = GetForegroundWindow();
+    let fg_thread = GetWindowThreadProcessId(fg, None);
+    let me = GetCurrentThreadId();
+    let attached = fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, true).as_bool();
+    let _ = SetForegroundWindow(hwnd);
+    if attached {
+        let _ = AttachThreadInput(me, fg_thread, false);
+    }
+}
+
+/// The island takes the keyboard (to type a note); the window that had it is
+/// remembered and gets it back in `release_focus`.
+pub fn take_focus(win: &WebviewWindow) {
+    let Ok(h) = win.hwnd() else { return };
+    let hwnd = HWND(h.0 as _);
+    unsafe {
+        let fg = GetForegroundWindow();
+        if fg != hwnd {
+            PREVIOUS.store(fg.0 as isize, std::sync::atomic::Ordering::Relaxed);
+        }
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !(WS_EX_NOACTIVATE.0 as isize));
+        force_foreground(hwnd);
+    }
+    let _ = win.set_focus();
+}
+
+pub fn release_focus(win: &WebviewWindow) {
+    let Ok(h) = win.hwnd() else { return };
+    let hwnd = HWND(h.0 as _);
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE.0 as isize);
+        let prev = PREVIOUS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        if prev != 0 && GetForegroundWindow() == hwnd {
+            force_foreground(HWND(prev as _));
+        }
+    }
+}
+
+// ------------------------------------------------------------- keyboard ----
+
+/// Caps Lock state and the keyboard layout of the window in front.
+pub fn keys() -> (bool, String) {
+    unsafe {
+        let fg = GetForegroundWindow();
+        let fg_thread = GetWindowThreadProcessId(fg, None);
+        let me = GetCurrentThreadId();
+        // Toggle state is per input queue: read it from the one in front.
+        let attached = fg_thread != 0 && fg_thread != me && AttachThreadInput(me, fg_thread, true).as_bool();
+        let caps = GetKeyState(VK_CAPITAL.0 as i32) & 1 == 1;
+        if attached {
+            let _ = AttachThreadInput(me, fg_thread, false);
+        }
+        let hkl = GetKeyboardLayout(fg_thread);
+        let lang = (hkl.0 as usize & 0xffff) as u16;
+        (caps, layout_name(lang))
+    }
+}
+
+fn layout_name(langid: u16) -> String {
+    let code = match langid & 0x3ff {
+        0x19 => "RU",
+        0x09 => "EN",
+        0x22 => "UK",
+        0x23 => "BE",
+        0x3f => "KK",
+        0x07 => "DE",
+        0x0c => "FR",
+        0x0a => "ES",
+        0x10 => "IT",
+        0x15 => "PL",
+        0x05 => "CS",
+        0x1f => "TR",
+        0x16 => "PT",
+        0x11 => "JA",
+        0x04 => "ZH",
+        0x12 => "KO",
+        0x37 => "KA",
+        0x2b => "HY",
+        0x2c => "AZ",
+        0x43 => "UZ",
+        _ => "",
+    };
+    if code.is_empty() {
+        format!("{:04X}", langid)
+    } else {
+        code.to_string()
+    }
+}
+
+pub fn mouse_down() -> bool {
+    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0 }
 }

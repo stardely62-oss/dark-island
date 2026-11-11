@@ -1,12 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { bridge, type Battery, type Bridge, type Cursor, type Media, type Presence, type Volume } from "./ipc";
+import { bridge, type Battery, type Bridge, type Clip, type Cursor, type Media, type Presence, type ShelfItem, type Volume } from "./ipc";
 import { Liquid, type Shape } from "./liquid";
-import { BatteryIcon, Next, Note, Pause, Play, Prev, Speaker } from "./components/Icons";
+import {
+  BatteryIcon,
+  CapsIcon,
+  GlobeIcon,
+  Next,
+  Note,
+  Pause,
+  Play,
+  Prev,
+  Ring,
+  Speaker,
+  TabClip,
+  TabHome,
+  TabNote,
+  TabShelf,
+  TimerIcon,
+} from "./components/Icons";
+import { ClipboardTab } from "./panels/Clipboard";
+import { ShelfTab } from "./panels/Shelf";
+import { NoteTab } from "./panels/Note";
+import { fmtClock, remaining, useTimer } from "./timer";
+import { chime } from "./chime";
 import { Bars } from "./components/Bars";
 import { Buddy, animateBuddies } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer";
+type Tab = "home" | "clip" | "shelf" | "note";
+type Card = { key: number; kind: "caps" | "layout" | "timer" | "info"; title: string; sub?: string; sticky?: boolean };
 
 const EXPAND_DELAY = 110;
 // From the strip the cursor has to rest a bit longer: it is often just
@@ -14,19 +37,26 @@ const EXPAND_DELAY = 110;
 const EXPAND_DELAY_STRIP = 260;
 const COLLAPSE_DELAY = 380;
 const HUD_MS = 1500;
+const CARD_MS = 1400;
 const DEFAULT_ACCENT = "rgb(142 162 255)";
+const PANEL_W = 460;
 
-function sizeOf(mode: Mode, hasMedia: boolean, hasBattery: boolean): Shape {
+function sizeOf(mode: Mode, opts: { media?: boolean; battery?: boolean; tab?: Tab } = {}): Shape {
   switch (mode) {
     case "expanded":
-      return hasMedia ? { w: 420, h: 232 } : { w: 380, h: 138 };
+      if (opts.tab && opts.tab !== "home") return { w: PANEL_W, h: 286 };
+      return opts.media ? { w: PANEL_W, h: 246 } : { w: PANEL_W, h: 168 };
     case "strip":
       return { w: 150, h: 5 };
+    case "card":
+      return { w: 250, h: 34 };
+    case "timer":
+      return { w: 172, h: 32 };
     case "media":
     case "hud":
       return { w: 236, h: 34 };
     default:
-      return hasBattery ? { w: 214, h: 32 } : { w: 140, h: 32 };
+      return opts.battery ? { w: 214, h: 32 } : { w: 140, h: 32 };
   }
 }
 
@@ -36,26 +66,58 @@ export function App() {
   const [volume, setVolume] = useState<Volume | null>(null);
   const [battery, setBattery] = useState<Battery | null>(null);
   const [hovered, setHovered] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [hoverOpen, setHoverOpen] = useState(false);
+  // Opened on purpose (click, hotkey, files dragged in): stays open until a
+  // click elsewhere or the hotkey again.
+  const [pinned, setPinned] = useState(false);
+  // After pasting from the clipboard tab the island folds even though the
+  // cursor is still on it; hovering works again once the cursor has left.
+  const [suppressed, setSuppressed] = useState(false);
+  const [tab, setTab] = useState<Tab>("home");
   const [hud, setHud] = useState(false);
+  const [card, setCard] = useState<Card | null>(null);
   // True while real audio levels arrive; otherwise the bars use a CSS loop.
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>("normal");
   const [away, setAway] = useState(false);
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [shelf, setShelf] = useState<ShelfItem[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const sleeping = away && !media?.playing;
   const accent = useAccent(media?.cover ?? null) ?? DEFAULT_ACCENT;
   const accent2 = useMemo(() => shiftHue(accent, 45), [accent]);
 
+  const cardTimer = useRef<number>(0);
+  const showCard = useCallback((c: Omit<Card, "key">) => {
+    clearTimeout(cardTimer.current);
+    setCard({ ...c, key: Date.now() });
+    if (!c.sticky) cardTimer.current = window.setTimeout(() => setCard(null), CARD_MS);
+  }, []);
+
+  const timer = useTimer((total) => {
+    chime();
+    showCard({ kind: "timer", title: "Таймер", sub: `${fmtClock(total)} — готово`, sticky: true });
+    window.setTimeout(chime, 2500);
+  });
+
+  const expanded = (hoverOpen && !suppressed) || pinned;
   const mode: Mode = expanded
     ? "expanded"
-    : hud
-      ? "hud"
-      : presence === "strip"
-        ? "strip"
-        : media?.playing
-          ? "media"
-          : "idle";
-  const target = useMemo(() => sizeOf(mode, !!media, !!battery), [mode, media, battery]);
+    : card
+      ? "card"
+      : hud
+        ? "hud"
+        : presence === "strip"
+          ? "strip"
+          : timer.active
+            ? "timer"
+            : media?.playing
+              ? "media"
+              : "idle";
+  const target = useMemo(
+    () => sizeOf(mode, { media: !!media, battery: !!battery, tab }),
+    [mode, media, battery, tab],
+  );
 
   // ---- data from the system --------------------------------------------
   const cursorRef = useRef<Cursor | null>(null);
@@ -64,6 +126,8 @@ export function App() {
   const knownVolume = useRef<Volume | null>(null);
   const bandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0]);
   const liveTimer = useRef<number>(0);
+  const expandedRef = useRef(false);
+  expandedRef.current = expanded;
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +140,7 @@ export function App() {
         b.on("battery", setBattery),
         b.on("presence", setPresence),
         b.on("away", setAway),
+        b.on("clips", setClips),
         b.on("volume", (v) => {
           const before = knownVolume.current;
           knownVolume.current = v;
@@ -100,30 +165,87 @@ export function App() {
           setHovered(c.inside);
           kickRef.current();
         }),
+        b.on("keys", (k) => {
+          if (expandedRef.current) return;
+          if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? "включён" : "выключен" });
+          else if (k.layout) showCard({ kind: "layout", title: "Раскладка", sub: k.layout });
+        }),
+        b.on("hotkey", (h) => {
+          setSuppressed(false);
+          if (h === "clipboard") {
+            setTab("clip");
+            setPinned(true);
+          } else {
+            setTab("home");
+            setPinned((p) => !(p || expandedRef.current));
+          }
+        }),
+        b.on("outside_click", () => setPinned(false)),
+        b.on("drag", (d) => {
+          if (d.type === "enter") {
+            setSuppressed(false);
+            setTab("shelf");
+            setPinned(true);
+            setDragOver(true);
+          } else {
+            setDragOver(false);
+            if (d.type === "drop" && d.paths.length) b.call<ShelfItem[]>("shelf_add", { paths: d.paths }).then(setShelf);
+          }
+        }),
       );
-      const s = await b.getState();
+      const [s, c, sh] = await Promise.all([
+        b.getState(),
+        b.call<Clip[]>("clip_list"),
+        b.call<ShelfItem[]>("shelf_list"),
+      ]);
       if (!alive) return;
       setMedia(s.media);
       setVolume(s.volume);
       setBattery(s.battery);
       setPresence(s.presence);
+      setClips(c ?? []);
+      setShelf(sh ?? []);
       knownVolume.current = s.volume;
     });
     return () => {
       alive = false;
       offs.forEach((off) => off());
     };
-  }, []);
+  }, [showCard]);
 
   // ---- hover -> expand ----------------------------------------------------
   useEffect(() => {
+    if (!hovered) setSuppressed(false);
     const delay = !hovered ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : EXPAND_DELAY;
-    const t = window.setTimeout(() => setExpanded(hovered), delay);
+    const t = window.setTimeout(() => setHoverOpen(hovered), delay);
     return () => clearTimeout(t);
   }, [hovered, presence]);
   useEffect(() => {
     if (expanded) setHud(false);
   }, [expanded]);
+
+  // The note and the search box need the keyboard: the island takes it while
+  // open and gives it back to the previous window when it folds.
+  const focusTaken = useRef(false);
+  const takeFocus = useCallback(() => {
+    setPinned(true);
+    if (!focusTaken.current) {
+      focusTaken.current = true;
+      api?.call("take_focus");
+    }
+  }, [api]);
+  useEffect(() => {
+    if (!expanded && focusTaken.current) {
+      focusTaken.current = false;
+      (document.activeElement as HTMLElement | null)?.blur();
+      api?.call("release_focus");
+    }
+  }, [expanded, api]);
+  const dismiss = useCallback(() => {
+    focusTaken.current = false;
+    setPinned(false);
+    setSuppressed(true);
+  }, []);
 
   // ---- the animation loop ------------------------------------------------
   const pathRef = useRef<SVGPathElement>(null);
@@ -222,12 +344,22 @@ export function App() {
   // ---- input -------------------------------------------------------------
   const onWheel = useCallback(
     (e: React.WheelEvent) => {
-      if (!api || !volume) return;
+      // Lists scroll in the other tabs; the wheel is volume only on the pill and Home.
+      if (!api || !volume || (expanded && tab !== "home")) return;
       const step = e.deltaY > 0 ? -0.02 : 0.02;
       api.volumeStep(step);
       setVolume({ ...volume, level: Math.min(1, Math.max(0, volume.level + step)) });
     },
-    [api, volume],
+    [api, volume, expanded, tab],
+  );
+
+  const frame = (t: Tab, body: React.ReactNode) => (
+    <View key={t} on={mode === "expanded" && tab === t} shape={sizeOf("expanded", { media: !!media, tab: t })}>
+      <div className="expanded">
+        <Header battery={battery} tab={tab} setTab={setTab} />
+        {body}
+      </div>
+    </View>
   );
 
   return (
@@ -261,29 +393,106 @@ export function App() {
         ref={boxRef}
         className={`box mode-${mode}`}
         onWheel={onWheel}
-        onClick={() => !expanded && setExpanded(true)}
+        onClick={() => {
+          if (card?.sticky) setCard(null);
+          else if (!expanded) {
+            setSuppressed(false);
+            setPinned(true);
+          }
+        }}
       >
-        <View on={mode === "idle"} shape={sizeOf("idle", false, !!battery)}>
+        <View on={mode === "idle"} shape={sizeOf("idle", { battery: !!battery })}>
           <Idle battery={battery} sleeping={sleeping} />
         </View>
-        <View on={mode === "media"} shape={sizeOf("media", true, false)}>
+        <View on={mode === "media"} shape={sizeOf("media")}>
           {media && <CompactMedia media={media} accent={accent} live={live} />}
         </View>
-        <View on={mode === "hud"} shape={sizeOf("hud", false, false)}>
+        <View on={mode === "hud"} shape={sizeOf("hud")}>
           {volume && <VolumeHud volume={volume} />}
         </View>
-        <View on={mode === "expanded"} shape={sizeOf("expanded", !!media, !!battery)}>
-          <Expanded
-            api={api}
-            media={media}
-            volume={volume}
-            battery={battery}
-            accent={accent}
-            live={live}
-            setVolume={setVolume}
-          />
+        <View on={mode === "timer"} shape={sizeOf("timer")}>
+          <TimerPill timer={timer} />
         </View>
+        <View on={mode === "card"} shape={sizeOf("card")}>
+          {card && <CardView card={card} />}
+        </View>
+        {frame(
+          "home",
+          <HomeTab api={api} media={media} volume={volume} accent={accent} live={live} setVolume={setVolume} sleeping={sleeping} />,
+        )}
+        {frame("clip", <ClipboardTab api={api} clips={clips} onUsed={dismiss} onTypeStart={takeFocus} />)}
+        {frame("shelf", <ShelfTab api={api} items={shelf} setItems={setShelf} dragOver={dragOver} />)}
+        {frame("note", <NoteTab api={api} timer={timer} onTypeStart={takeFocus} />)}
       </div>
+    </div>
+  );
+}
+
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: "home", label: "Главная", icon: <TabHome /> },
+  { id: "clip", label: "Буфер", icon: <TabClip /> },
+  { id: "shelf", label: "Полка", icon: <TabShelf /> },
+  { id: "note", label: "Заметка и таймер", icon: <TabNote /> },
+];
+
+function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; setTab: (t: Tab) => void }) {
+  const now = useClock();
+  return (
+    <header>
+      <span className="clock">{timeFmt.format(now)}</span>
+      <span className="date">{dateFmt.format(now)}</span>
+      <span className="grow" />
+      {battery && (
+        <span className="battery">
+          <span className="pct">{battery.percent}%</span>
+          <BatteryIcon {...battery} />
+        </span>
+      )}
+      <nav className="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={tab === t.id ? "on" : ""}
+            aria-label={t.label}
+            title={t.label}
+            onClick={(e) => {
+              e.stopPropagation();
+              setTab(t.id);
+            }}
+          >
+            {t.icon}
+          </button>
+        ))}
+      </nav>
+    </header>
+  );
+}
+
+function TimerPill({ timer }: { timer: ReturnType<typeof useTimer> }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!timer.running) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, [timer.running]);
+  const left = remaining(timer.state);
+  return (
+    <div className="compact timer-pill">
+      <Ring size={18} progress={timer.state.total ? left / timer.state.total : 0} color="#ff9f43" />
+      <Buddy size={22} />
+      <span className={`time ${timer.running ? "" : "paused"}`}>{fmtClock(left)}</span>
+    </div>
+  );
+}
+
+function CardView({ card }: { card: Card }) {
+  const icon =
+    card.kind === "caps" ? <CapsIcon /> : card.kind === "layout" ? <GlobeIcon /> : card.kind === "timer" ? <TimerIcon /> : null;
+  return (
+    <div className={`compact card card-${card.kind}`} key={card.key}>
+      <span className="card-icon">{icon}</span>
+      <span className="card-title">{card.title}</span>
+      <span className="card-sub">{card.sub}</span>
     </div>
   );
 }
@@ -406,22 +615,22 @@ function fmtTime(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function Expanded({
+function HomeTab({
   api,
   media,
   volume,
-  battery,
   accent,
   live,
   setVolume,
+  sleeping,
 }: {
   api: Bridge | null;
   media: Media | null;
   volume: Volume | null;
-  battery: Battery | null;
   accent: string;
   live: boolean;
   setVolume: (v: Volume) => void;
+  sleeping: boolean;
 }) {
   const now = useClock(500);
   const pos = media
@@ -430,19 +639,7 @@ function Expanded({
   const progress = media && media.durationMs > 0 ? pos / media.durationMs : 0;
 
   return (
-    <div className="expanded">
-      <header>
-        <span className="clock">{timeFmt.format(now)}</span>
-        <span className="date">{dateFmt.format(now)}</span>
-        <span className="grow" />
-        {battery && (
-          <span className="battery">
-            <span className="pct">{battery.percent}%</span>
-            <BatteryIcon {...battery} />
-          </span>
-        )}
-      </header>
-
+    <>
       {media ? (
         <>
           <div className="track-info">
@@ -478,7 +675,7 @@ function Expanded({
         </>
       ) : (
         <div className="empty">
-          <Note size={18} />
+          <Buddy size={34} sleeping={sleeping} />
           <span>Ничего не играет</span>
         </div>
       )}
@@ -504,7 +701,7 @@ function Expanded({
           <span className="num">{Math.round((volume.muted ? 0 : volume.level) * 100)}</span>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
