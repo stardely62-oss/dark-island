@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { bridge, type AgentEvent, type Battery, type Bridge, type Clip, type Cursor, type Media, type Presence, type ShelfItem, type Volume } from "./ipc";
 import { Liquid, type Shape } from "./liquid";
 import {
@@ -40,7 +40,7 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { Buddy, animateBuddies, type Mood } from "./components/Buddy";
+import { Buddy, animateBuddies, buddy, climbOut, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording";
@@ -137,6 +137,8 @@ export function App() {
   const [battery, setBattery] = useState<Battery | null>(null);
   const [hovered, setHovered] = useState(false);
   const [hoverOpen, setHoverOpen] = useState(false);
+  const hoverOpenRef = useRef(false);
+  hoverOpenRef.current = hoverOpen;
   // Opened on purpose (click, hotkey, files dragged in): stays open until a
   // click elsewhere or the hotkey again.
   const [pinned, setPinned] = useState(false);
@@ -198,6 +200,7 @@ export function App() {
   const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
   const timer = useTimer((total) => {
     chime();
+    buddy.react("excited", 3000);
     showCard({ kind: "timer", title: "Таймер", sub: `${fmtClock(total)} — готово`, sticky: true });
     window.setTimeout(chime, 2500);
   });
@@ -254,6 +257,7 @@ export function App() {
 
   // ---- data from the system --------------------------------------------
   const cursorRef = useRef<Cursor | null>(null);
+  const lastVisit = useRef(Date.now());
   const kickRef = useRef<() => void>(() => {});
   const hudTimer = useRef<number>(0);
   const knownVolume = useRef<Volume | null>(null);
@@ -278,6 +282,8 @@ export function App() {
           const before = knownVolume.current;
           knownVolume.current = v;
           setVolume(v);
+          // Turned all the way up: he covers his ears.
+          if (before && v && v.level >= 0.99 && before.level < 0.99 && !v.muted) buddy.react("ears", 1600);
           if (before && v && (before.level !== v.level || before.muted !== v.muted)) {
             setHud(true);
             clearTimeout(hudTimer.current);
@@ -295,6 +301,7 @@ export function App() {
         }),
         b.on("cursor", (c) => {
           cursorRef.current = c.near || c.inside ? c : null;
+          if (c.near || c.inside) lastVisit.current = Date.now();
           setHovered(c.inside);
           kickRef.current();
         }),
@@ -310,7 +317,10 @@ export function App() {
           else {
             setDictation(null);
             if (d.state === "done") showCard({ kind: "capture", title: "Текст вставлен", sub: d.text, ms: 3500 });
-            else showCard({ kind: "info", title: "Диктовка", sub: d.text ?? "ошибка", ms: 3500 });
+            else {
+              buddy.react("angry", 1800);
+              showCard({ kind: "info", title: "Диктовка", sub: d.text ?? "ошибка", ms: 3500 });
+            }
           }
         }),
         b.on("recording", (r) => {
@@ -335,7 +345,7 @@ export function App() {
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
         b.on("download_done", (d) =>
-          showCard({ kind: "capture", title: "Загружено", sub: d.name, open: { reveal: d.path }, ms: 5000 }),
+          (buddy.react("happy", 1300), showCard)({ kind: "capture", title: "Загружено", sub: d.name, open: { reveal: d.path }, ms: 5000 }),
         ),
         b.on("mic_muted", (m) => {
           setPrivacy((p) => ({ ...p, micMuted: m }));
@@ -350,7 +360,7 @@ export function App() {
           }),
         ),
         b.on("notification", (n) =>
-          showCard({
+          (buddy.react("surprised", 1200), showCard)({
             kind: "notify",
             title: n.title ? `${n.app} · ${n.title}` : n.app,
             sub: n.body || n.title,
@@ -397,7 +407,10 @@ export function App() {
           else if (r.kind === "link")
             showCard({ kind: "capture", title: "Ссылка скопирована", sub: r.text, open: { url: r.text }, ms: 5000 });
           else if (r.kind === "color") showCard({ kind: "capture", title: "Цвет скопирован", sub: r.text, swatch: r.text, ms: 3000 });
-          else showCard({ kind: "info", title: "Снимок", sub: r.text });
+          else {
+            buddy.react("angry", 1800);
+            showCard({ kind: "info", title: "Снимок", sub: r.text });
+          }
         }),
         b.on("outside_click", () => {
           setPinned(false);
@@ -474,6 +487,7 @@ export function App() {
         .filter((r): r is Reminder => r !== null);
       setSetting({ reminders: rest });
       chime();
+      buddy.react("excited", 3000);
       showCard({ kind: "reminder", title: "Напоминание", sub: due.text, sticky: true, reminder: due });
     };
     check();
@@ -501,6 +515,19 @@ export function App() {
     return () => clearInterval(id);
   }, [weather, settings.rainWarning, showCard]);
 
+  // Клодик's lasting states: tired on a low battery, bored when nobody has
+  // come by for a while and nothing is going on.
+  useEffect(() => {
+    const check = () => {
+      const tired = !!battery && !battery.charging && battery.percent <= 15;
+      const bored = Date.now() - lastVisit.current > 150_000 && !media?.playing && !agentBusy && !away;
+      buddy.setState(tired ? "tired" : bored ? "bored" : null);
+    };
+    check();
+    const id = window.setInterval(check, 10_000);
+    return () => clearInterval(id);
+  }, [battery, media?.playing, agentBusy, away]);
+
   // ---- agents ----------------------------------------------------------------
   const onAgentRef = useRef<(e: AgentEvent) => void>(() => {});
   onAgentRef.current = (e: AgentEvent) => {
@@ -519,6 +546,7 @@ export function App() {
         break;
       case "ask":
         setAsk(e);
+        buddy.react("surprised", 1200);
         chime();
         break;
       case "waiting":
@@ -529,6 +557,7 @@ export function App() {
       case "done":
         clearAsk();
         stopWorking();
+        buddy.react("excited", 2200);
         showCard({ kind: "agent", title: `${name} закончил${where}`, sub: e.detail || "Готово", mood: "done", ms: 5000 });
         break;
       case "info":
@@ -559,14 +588,28 @@ export function App() {
   };
 
   // ---- hover -> expand ----------------------------------------------------
+  // Petting Клодик on the pill shouldn't open the island under him.
+  const [overBuddy, setOverBuddy] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setOverBuddy((e as CustomEvent<boolean>).detail);
+    window.addEventListener("buddy-hover", on);
+    return () => window.removeEventListener("buddy-hover", on);
+  }, []);
   useEffect(() => {
     if (!hovered) setSuppressed(false);
-    const delay = !hovered ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : EXPAND_DELAY;
-    const t = window.setTimeout(() => setHoverOpen(hovered), delay);
+    const want = hovered && !(overBuddy && !hoverOpenRef.current);
+    const delay = !want ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : overBuddy ? 600 : EXPAND_DELAY;
+    const t = window.setTimeout(() => setHoverOpen(want), delay);
     return () => clearTimeout(t);
-  }, [hovered, presence]);
+  }, [hovered, presence, overBuddy]);
   useEffect(() => {
     if (expanded) setHud(false);
+  }, [expanded]);
+  // Folding: Клодик climbs up and out over the top edge of the screen.
+  const wasExpanded = useRef(false);
+  useEffect(() => {
+    if (wasExpanded.current && !expanded) climbOut(document.querySelector(".tab-buddy .buddy"));
+    wasExpanded.current = expanded;
   }, [expanded]);
 
   // The note and the search box need the keyboard: the island takes it while
@@ -852,6 +895,7 @@ export function App() {
         <View on={mode === "card"} shape={sizeOf("card", { card })}>
           {card && <CardView card={card} onDone={() => setCard(null)} onSnooze={snooze} />}
         </View>
+        <TabBuddy tab={tab} shown={mode === "expanded"} sleeping={sleeping} />
         {frame(
           "home",
           <HomeTab
@@ -1511,6 +1555,64 @@ function RecordingPill({ since }: { since: number }) {
         {Math.floor(s / 60)}:{String(s % 60).padStart(2, "0")}
       </span>
       <span className="muted">стоп</span>
+    </div>
+  );
+}
+
+/** Offset of an element inside one of its ancestors, ignoring transforms. */
+function offsetWithin(el: HTMLElement, ancestor: HTMLElement) {
+  let x = 0;
+  let y = 0;
+  let cur: HTMLElement | null = el;
+  while (cur && cur !== ancestor) {
+    x += cur.offsetLeft;
+    y += cur.offsetTop;
+    cur = cur.offsetParent as HTMLElement | null;
+  }
+  return { x, y };
+}
+
+/**
+ * Клодик on the tab bar: he stands under the open tab and hops over when
+ * another one is chosen; he drops in from the top when the island opens.
+ */
+function TabBuddy({ tab, shown, sleeping }: { tab: Tab; shown: boolean; sleeping: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [cls, setCls] = useState("");
+  const prevTab = useRef(tab);
+  const SIZE = 20;
+  useLayoutEffect(() => {
+    if (!shown) {
+      setCls("");
+      return;
+    }
+    const measure = () => {
+      const view = document.querySelector<HTMLElement>(".view.on .expanded")?.parentElement;
+      const btn = view?.querySelector<HTMLElement>(`nav.tabs button.on`);
+      if (!view || !btn) return null;
+      const o = offsetWithin(btn, view);
+      // In box coordinates: the view is centred in the box.
+      return { x: o.x + btn.offsetWidth / 2 - SIZE / 2 - view.offsetWidth / 2, y: o.y + btn.offsetHeight - 2 };
+    };
+    const p = measure();
+    if (!p) return;
+    const hop = prevTab.current !== tab && pos !== null;
+    prevTab.current = tab;
+    setPos(p);
+    setCls(hop ? "hopping" : pos === null || cls === "" ? "drop-in" : cls);
+    const t = window.setTimeout(() => setCls(""), 720);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, shown]);
+  if (!pos) return null;
+  return (
+    <div
+      ref={ref}
+      className={`tab-buddy ${cls} ${shown ? "" : "gone"}`}
+      style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}
+    >
+      <Buddy size={SIZE} sleeping={sleeping} />
     </div>
   );
 }

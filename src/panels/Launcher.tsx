@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Bridge } from "../ipc";
 import type { Shortcut } from "../settings";
 import { AppIcon } from "../components/AppIcon";
+import { hopTo } from "../components/Buddy";
 
 type App = { Name: string; AppID: string };
 
@@ -96,7 +97,11 @@ export function Launcher({
           key={s.target}
           className="launch-item"
           title={`${s.name}\nПравый клик — убрать`}
-          onClick={() => launch(s)}
+          onClick={(e) => {
+            // Клодик jumps onto the shortcut, then the app starts.
+            hopTo(document.querySelector(".tab-buddy .buddy"), e.currentTarget.querySelector(".app-icon"));
+            window.setTimeout(() => launch(s), 380);
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             setItems(items.filter((i) => i !== s));

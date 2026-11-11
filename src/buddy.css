@@ -1,0 +1,489 @@
+/* ---- Клодик ----
+   Layers, so animations never fight over one property:
+   .bd-sway  music: shuffle and beat hop (translate from JS)
+   .bd-jump  whims and emotions: hops, shakes, turns (transform)
+   .bd-body  breathing (translate) and beat squash (scale)
+   .bd-look  looking around (transform)
+   eyes      one face at a time: eyes, big, half, mad, hearts, happy, closed */
+
+.buddy {
+  flex: none;
+  overflow: visible;
+  cursor: default;
+  --gx: 0;
+  --gy: 0;
+  --hop: 0;
+  --sx: 0;
+  --squash: 1;
+}
+.buddy rect {
+  transition: fill 0.25s ease;
+}
+.buddy .bd-sway {
+  transform-box: view-box;
+  transform-origin: 7.5px 10px;
+  translate: calc(var(--sx) * 1px) calc(var(--hop) * 1px);
+}
+.buddy .bd-jump,
+.buddy .bd-look,
+.buddy .bd-arm-l,
+.buddy .bd-arm-r,
+.buddy .bd-legs {
+  transform-box: view-box;
+  transform-origin: 7.5px 10px;
+}
+.buddy .bd-body {
+  transform-box: view-box;
+  transform-origin: 7.5px 8px;
+  scale: var(--squash) calc(2 - var(--squash));
+  animation: bd-breathe 3.2s ease-in-out infinite;
+}
+.buddy .bd-gaze {
+  translate: calc(var(--gx) * 1px) calc(var(--gy) * 1px);
+  transition: translate 0.12s ease-out;
+}
+.buddy .bd-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bd-blink 5.3s infinite;
+}
+
+/* faces: only .bd-eyes by default */
+.buddy .bd-big,
+.buddy .bd-half,
+.buddy .bd-mad,
+.buddy .bd-hearts-eyes,
+.buddy .bd-happy,
+.buddy .bd-closed,
+.buddy .bd-mouth,
+.buddy .bd-mark,
+.buddy .bd-bang,
+.buddy .bd-zz,
+.buddy .bd-love,
+.buddy .bd-steam,
+.buddy .bd-vein,
+.buddy .bd-sweat,
+.buddy .bd-sigh {
+  opacity: 0;
+}
+.buddy .bd-eyes,
+.buddy .bd-happy,
+.buddy .bd-big,
+.buddy .bd-half,
+.buddy .bd-mad,
+.buddy .bd-hearts-eyes {
+  transition: opacity 0.09s ease;
+}
+
+/* ---- music ---- */
+.buddy.happy .bd-eyes {
+  opacity: 0;
+}
+.buddy.happy .bd-happy {
+  opacity: 1;
+}
+.buddy.dance .bd-leg-a {
+  animation: bd-step 0.5s steps(1) infinite;
+}
+.buddy.dance .bd-leg-b {
+  animation: bd-step 0.5s steps(1) infinite -0.25s;
+}
+
+/* ---- sleep ---- */
+.buddy.sleep .bd-body {
+  animation-duration: 5.5s;
+}
+.buddy.sleep .bd-eyes,
+.buddy.sleep .bd-happy {
+  opacity: 0;
+}
+.buddy.sleep .bd-closed,
+.buddy.sleep .bd-zz {
+  opacity: 1;
+}
+.buddy.sleep .bd-zz text {
+  animation: bd-z 3s ease-in-out infinite;
+}
+.buddy.sleep .bd-zz text + text {
+  animation-delay: 1.5s;
+}
+
+/* ---- agents ---- */
+.buddy.mood-work .bd-arm-l {
+  animation: bd-tap 0.36s steps(1) infinite;
+}
+.buddy.mood-work .bd-arm-r {
+  animation: bd-tap 0.36s steps(1) infinite -0.18s;
+}
+.buddy.mood-work .bd-gaze {
+  translate: 0 0.6px;
+}
+.buddy.mood-ask .bd-mark {
+  opacity: 1;
+  animation: bd-z 1.4s ease-in-out infinite;
+}
+.buddy.mood-ask .bd-arm-r {
+  translate: 0 -2px;
+}
+.buddy.mood-done .bd-eyes {
+  opacity: 0;
+}
+.buddy.mood-done .bd-happy {
+  opacity: 1;
+}
+.buddy.mood-done .bd-jump {
+  animation: bd-hop 0.5s ease-out 2;
+}
+
+/* ---- whims (now and then, on his own) ---- */
+.buddy.act-look .bd-look {
+  animation: bd-look 2.2s ease-in-out;
+}
+.buddy.act-hop .bd-jump {
+  animation: bd-hop 0.7s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.buddy.act-wave .bd-arm-r {
+  animation: bd-wave 0.4s ease-in-out 4 alternate;
+}
+.buddy.act-stretch .bd-jump {
+  animation: bd-stretch 1.4s ease-in-out;
+}
+.buddy.act-stretch .bd-arm-l,
+.buddy.act-stretch .bd-arm-r {
+  animation: bd-arms-up 1.4s ease-in-out;
+}
+.buddy.act-yawn .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-yawn .bd-closed,
+.buddy.act-yawn .bd-mouth {
+  opacity: 1;
+}
+.buddy.act-yawn .bd-jump {
+  animation: bd-stretch 1.8s ease-in-out;
+}
+.buddy.act-turn .bd-jump {
+  animation: bd-turn 1.8s steps(1);
+}
+.buddy.act-shuffle .bd-jump {
+  animation: bd-shuffle 2s ease-in-out;
+}
+.buddy.act-shuffle .bd-leg-a {
+  animation: bd-step 0.4s steps(1) 5;
+}
+.buddy.act-shuffle .bd-leg-b {
+  animation: bd-step 0.4s steps(1) 5 -0.2s;
+}
+.buddy.act-sit .bd-jump {
+  animation: bd-sit 2.4s ease-in-out;
+}
+.buddy.act-scratch .bd-arm-r {
+  animation: bd-scratch 0.2s steps(1) 7;
+}
+.buddy.act-scratch .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-scratch .bd-happy {
+  opacity: 1;
+}
+.buddy.act-sigh .bd-sigh {
+  animation: bd-puff 2.6s ease-out;
+}
+.buddy.act-sigh .bd-jump {
+  animation: bd-sit 2.6s ease-in-out;
+}
+
+/* ---- lasting states ---- */
+.buddy.st-bored .bd-eyes,
+.buddy.st-tired .bd-eyes {
+  opacity: 0;
+}
+.buddy.st-bored .bd-half,
+.buddy.st-tired .bd-half {
+  opacity: 1;
+}
+.buddy.st-bored .bd-jump {
+  animation: bd-bored 4s ease-in-out infinite;
+}
+.buddy.st-bored .bd-leg-a {
+  animation: bd-step 1.2s steps(1) infinite;
+}
+.buddy.st-tired .bd-sweat {
+  opacity: 1;
+  animation: bd-drip 2.4s ease-in infinite;
+}
+.buddy.st-tired .bd-body {
+  animation-duration: 5s;
+}
+
+/* ---- emotions (when something happens) ---- */
+.buddy.re-hop .bd-jump {
+  animation: bd-hop 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.buddy.re-surprised .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-surprised .bd-big,
+.buddy.re-surprised .bd-bang,
+.buddy.re-surprised .bd-mouth {
+  opacity: 1;
+}
+.buddy.re-surprised .bd-jump {
+  animation: bd-startle 0.5s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.buddy.re-happy .bd-eyes,
+.buddy.re-excited .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-happy .bd-happy,
+.buddy.re-excited .bd-happy {
+  opacity: 1;
+}
+.buddy.re-happy .bd-jump {
+  animation: bd-hop 0.55s ease-out 2;
+}
+.buddy.re-excited .bd-jump {
+  animation: bd-hop 0.42s ease-out infinite;
+}
+.buddy.re-excited .bd-arm-l,
+.buddy.re-excited .bd-arm-r {
+  animation: bd-arms-wave 0.21s steps(1) infinite;
+}
+.buddy.re-love .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-love .bd-hearts-eyes,
+.buddy.re-love .bd-love {
+  opacity: 1;
+}
+.buddy.re-love .bd-love path {
+  animation: bd-float 1.3s ease-out infinite;
+}
+.buddy.re-love .bd-love path + path {
+  animation-delay: 0.65s;
+}
+.buddy.re-love .bd-jump {
+  animation: bd-wiggle 0.5s ease-in-out infinite;
+}
+.buddy.re-angry .bd-eyes,
+.buddy.re-furious .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-angry .bd-mad,
+.buddy.re-angry .bd-vein,
+.buddy.re-furious .bd-mad,
+.buddy.re-furious .bd-vein,
+.buddy.re-furious .bd-steam,
+.buddy.re-furious .bd-mouth {
+  opacity: 1;
+}
+.buddy.re-angry rect[fill="#d97757"] {
+  fill: #e0623f;
+}
+.buddy.re-furious rect[fill="#d97757"] {
+  fill: #ef4a35;
+}
+.buddy.re-angry .bd-jump {
+  animation: bd-shake 0.18s linear 6;
+}
+.buddy.re-angry .bd-vein {
+  animation: bd-pulse 0.4s ease-in-out infinite;
+}
+.buddy.re-furious .bd-jump {
+  animation: bd-rage 0.36s ease-in-out infinite;
+}
+.buddy.re-furious .bd-arm-l,
+.buddy.re-furious .bd-arm-r {
+  animation: bd-arms-wave 0.12s steps(1) infinite;
+}
+.buddy.re-furious .bd-steam rect {
+  animation: bd-steam 0.7s ease-out infinite;
+}
+.buddy.re-furious .bd-steam rect:nth-child(even) {
+  animation-delay: 0.35s;
+}
+.buddy.re-ears .bd-arm-l {
+  transform: translate(1px, -2px);
+}
+.buddy.re-ears .bd-arm-r {
+  transform: translate(-1px, -2px);
+}
+.buddy.re-ears .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-ears .bd-closed {
+  opacity: 1;
+}
+.buddy.re-ears .bd-jump {
+  animation: bd-shake 0.25s linear 5;
+}
+
+/* ---- keyframes ---- */
+@keyframes bd-breathe {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 0.5px; }
+}
+@keyframes bd-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94% { transform: scaleY(0.15); }
+  96% { transform: scaleY(1); }
+}
+@keyframes bd-step {
+  0% { translate: 0 0; }
+  50% { translate: 0 -1px; }
+}
+@keyframes bd-z {
+  0% { opacity: 0; translate: 0 1.5px; }
+  30% { opacity: 1; }
+  100% { opacity: 0; translate: 1px -2px; }
+}
+@keyframes bd-tap {
+  0% { translate: 0 0; }
+  50% { translate: 0 1px; }
+}
+@keyframes bd-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(0.5px) scale(1.12, 0.85); }
+  45% { transform: translateY(-3px) scale(0.92, 1.1); }
+  80% { transform: translateY(0) scale(1.1, 0.9); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bd-look {
+  0%, 100% { transform: translateX(0); }
+  20%, 40% { transform: translateX(-1px); }
+  60%, 80% { transform: translateX(1px); }
+}
+@keyframes bd-wave {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+@keyframes bd-arms-up {
+  0%, 100% { transform: translateY(0); }
+  35%, 70% { transform: translateY(-3px); }
+}
+@keyframes bd-arms-wave {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes bd-stretch {
+  0%, 100% { transform: scale(1, 1); }
+  40%, 65% { transform: scale(0.94, 1.12); }
+}
+@keyframes bd-turn {
+  0%, 100% { transform: scaleX(1); }
+  30%, 70% { transform: scaleX(-1); }
+}
+@keyframes bd-shuffle {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1.5px); }
+  75% { transform: translateX(1.5px); }
+}
+@keyframes bd-sit {
+  0%, 100% { transform: scale(1, 1); }
+  20%, 80% { transform: scale(1.06, 0.88); }
+}
+@keyframes bd-scratch {
+  0% { transform: translate(-2px, -3px); }
+  50% { transform: translate(-2px, -2px); }
+}
+@keyframes bd-puff {
+  0% { opacity: 0; transform: translate(0, 0); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translate(3px, -2px); }
+}
+@keyframes bd-bored {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+@keyframes bd-drip {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(4px); opacity: 0; }
+}
+@keyframes bd-startle {
+  0% { transform: translateY(0) scale(1, 1); }
+  30% { transform: translateY(-2.5px) scale(0.9, 1.15); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bd-float {
+  0% { opacity: 0; transform: translateY(1px); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3px); }
+}
+@keyframes bd-wiggle {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+@keyframes bd-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-0.8px); }
+  75% { transform: translateX(0.8px); }
+}
+@keyframes bd-rage {
+  0%, 100% { transform: translate(0, 0) scale(1, 1); }
+  25% { transform: translate(-1px, -2px) scale(0.95, 1.08); }
+  50% { transform: translate(0, 0) scale(1.1, 0.9); }
+  75% { transform: translate(1px, -2px) scale(0.95, 1.08); }
+}
+@keyframes bd-pulse {
+  50% { transform: scale(1.3); }
+}
+@keyframes bd-steam {
+  0% { opacity: 0; transform: translateY(1px); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3px); }
+}
+
+/* ---- flying copies (hops between places, climbing out) ---- */
+.buddy-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  transform-origin: 50% 0;
+}
+.buddy-ghost svg {
+  display: block;
+  overflow: visible;
+}
+.buddy-ghost.climbing .bd-leg-a {
+  animation: bd-step 0.18s steps(1) infinite;
+}
+.buddy-ghost.climbing .bd-leg-b {
+  animation: bd-step 0.18s steps(1) infinite -0.09s;
+}
+.buddy-ghost.climbing .bd-arm-l {
+  animation: bd-arms-wave 0.18s steps(1) infinite;
+}
+.buddy-ghost.climbing .bd-arm-r {
+  animation: bd-arms-wave 0.18s steps(1) infinite -0.09s;
+}
+
+/* ---- on the tab bar ---- */
+.tab-buddy {
+  position: absolute;
+  z-index: 3;
+  transition: left 0.42s cubic-bezier(0.45, 0, 0.3, 1);
+}
+.tab-buddy.gone {
+  visibility: hidden;
+  transition: none;
+}
+.tab-buddy.hopping .buddy {
+  animation: tab-hop 0.42s cubic-bezier(0.45, 0, 0.3, 1);
+}
+.tab-buddy.drop-in .buddy {
+  animation: drop-in 0.7s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+@keyframes tab-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  12% { transform: translateY(1px) scale(1.15, 0.8); }
+  50% { transform: translateY(-9px) scale(0.92, 1.1); }
+  85% { transform: translateY(0) scale(1.15, 0.82); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes drop-in {
+  0% { transform: translateY(-34px); }
+  55% { transform: translateY(0) scale(1.18, 0.78); }
+  75% { transform: translateY(-3px) scale(0.95, 1.06); }
+  100% { transform: translateY(0) scale(1, 1); }
+}

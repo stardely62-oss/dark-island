@@ -233,6 +233,8 @@ body.preview {
   overflow: clip;
 }
 .expanded header {
+  /* room under the tab bar for Клодик */
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -389,96 +391,7 @@ button:active {
   font-size: 13px;
 }
 
-/* ---- Клодик ---- */
-
-.buddy {
-  flex: none;
-  overflow: visible;
-  --gx: 0;
-  --gy: 0;
-  --hop: 0;
-  --sx: 0;
-  --squash: 1;
-}
-.buddy .bd-sway {
-  transform-box: view-box;
-  transform-origin: 7.5px 10px;
-  translate: calc(var(--sx) * 1px) calc(var(--hop) * 1px);
-}
-.buddy .bd-body {
-  transform-box: view-box;
-  transform-origin: 7.5px 8px;
-  scale: var(--squash) calc(2 - var(--squash));
-  animation: bd-breathe 3.2s ease-in-out infinite;
-}
-.buddy .bd-gaze {
-  translate: calc(var(--gx) * 1px) calc(var(--gy) * 1px);
-  transition: translate 0.12s ease-out;
-}
-.buddy .bd-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: bd-blink 5.3s infinite;
-}
-.buddy .bd-eyes,
-.buddy .bd-happy {
-  transition: opacity 0.09s ease;
-}
-.buddy.happy .bd-eyes {
-  opacity: 0;
-}
-.buddy .bd-happy,
-.buddy .bd-closed,
-.buddy .bd-zz {
-  opacity: 0;
-}
-.buddy.happy .bd-happy {
-  opacity: 1;
-}
-/* Steps from one pair of legs to the other while the music plays. */
-.buddy.dance .bd-leg-a {
-  animation: bd-step 0.5s steps(1) infinite;
-}
-.buddy.dance .bd-leg-b {
-  animation: bd-step 0.5s steps(1) infinite -0.25s;
-}
-
-.buddy.sleep .bd-body {
-  animation-duration: 5.5s;
-}
-.buddy.sleep .bd-eyes,
-.buddy.sleep .bd-happy {
-  opacity: 0;
-}
-.buddy.sleep .bd-closed,
-.buddy.sleep .bd-zz {
-  opacity: 1;
-}
-.buddy.sleep .bd-zz text {
-  animation: bd-z 3s ease-in-out infinite;
-}
-.buddy.sleep .bd-zz text + text {
-  animation-delay: 1.5s;
-}
-
-@keyframes bd-breathe {
-  0%, 100% { translate: 0 0; }
-  50% { translate: 0 0.5px; }
-}
-@keyframes bd-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  94% { transform: scaleY(0.15); }
-  96% { transform: scaleY(1); }
-}
-@keyframes bd-step {
-  0% { translate: 0 0; }
-  50% { translate: 0 -1px; }
-}
-@keyframes bd-z {
-  0% { opacity: 0; translate: 0 1.5px; }
-  30% { opacity: 1; }
-  100% { opacity: 0; translate: 1px -2px; }
-}
+/* Клодик lives in its own file: buddy.css */
 
 /* ---- panel tabs ---- */
 
@@ -848,43 +761,6 @@ textarea.note::placeholder {
 
 .expanded .empty .buddy {
   margin-right: 4px;
-}
-
-/* Клодик at work for an agent: arms tapping, eyes on the keys. */
-.buddy .bd-mark {
-  opacity: 0;
-}
-.buddy.mood-work .bd-arm-l {
-  animation: bd-tap 0.36s steps(1) infinite;
-}
-.buddy.mood-work .bd-arm-r {
-  animation: bd-tap 0.36s steps(1) infinite -0.18s;
-}
-.buddy.mood-work .bd-gaze {
-  translate: 0 0.6px;
-}
-.buddy.mood-ask .bd-mark {
-  opacity: 1;
-  animation: bd-z 1.4s ease-in-out infinite;
-}
-.buddy.mood-ask .bd-arm-r {
-  translate: 0 -2px;
-}
-.buddy.mood-done .bd-eyes {
-  opacity: 0;
-}
-.buddy.mood-done .bd-happy {
-  opacity: 1;
-}
-.buddy.mood-done .bd-sway {
-  animation: bd-jump 0.5s ease-out 2;
-}
-@keyframes bd-tap {
-  0% { translate: 0 0; }
-  50% { translate: 0 1px; }
-}
-@keyframes bd-jump {
-  50% { translate: 0 -2px; }
 }
 
 /* ---- settings ---- */
