@@ -27,7 +27,6 @@ import { ClipboardTab } from "./panels/Clipboard";
 import { ShelfTab } from "./panels/Shelf";
 import { NoteTab } from "./panels/Note";
 import { ControlsTab } from "./panels/Controls";
-import { SettingsTab } from "./panels/Settings";
 import { CommandBar, commandHeight } from "./panels/CommandBar";
 import { applyTheme, useSettings, type Shortcut } from "./settings";
 import { WeatherTab } from "./panels/Weather";
@@ -458,6 +457,7 @@ export function App() {
         }),
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
+        b.on("tour", () => window.dispatchEvent(new Event("island-tour"))),
         b.on("vpn_error", (e) => showCard({ kind: "info", title: "VPN", sub: e, ms: 3500 })),
         b.on("obs", (o) => {
           const live = o.recording || o.streaming;
@@ -919,8 +919,12 @@ export function App() {
     () => ({
       startTimer: (ms: number) => timerRef.current.start(ms),
       system: (id: string) => {
-        if (id === "settings" || id === "clipboard") {
-          setTab(id === "settings" ? "settings" : "clip");
+        if (id === "settings") {
+          api?.call("settings_open");
+          return;
+        }
+        if (id === "clipboard") {
+          setTab("clip");
           setPinned(true);
           return;
         }
@@ -1088,7 +1092,7 @@ export function App() {
       onMeasure={FIT.includes(t) ? measure(t) : undefined}
     >
       <div className={`expanded ${FIT.includes(t) ? "fit" : ""}`}>
-        <Header battery={battery} tab={tab} setTab={setTab} />
+        <Header battery={battery} tab={tab} setTab={(t) => (t === "settings" ? api?.call("settings_open") : setTab(t))} />
         {body}
       </div>
     </View>
@@ -1233,10 +1237,7 @@ export function App() {
             onAsked={() => setAiAsk(null)}
             tool={aiTool}
             onTool={() => setAiTool(null)}
-            openSettings={() => {
-              setTab("settings");
-              window.setTimeout(() => window.dispatchEvent(new CustomEvent("settings-section", { detail: "ИИ" })), 50);
-            }}
+            openSettings={() => api?.call("settings_open", { section: "ИИ" })}
           />,
         )}
         {frame(
@@ -1276,16 +1277,6 @@ export function App() {
               navigator.clipboard?.writeText(c).catch(() => {});
               showCard({ kind: "capture", title: "Цвет скопирован", sub: c, swatch: c, ms: 2500 });
             }}
-          />,
-        )}
-        {frame(
-          "settings",
-          <SettingsTab
-            api={api}
-            settings={settings}
-            set={setSetting}
-            visible={mode === "expanded" && tab === "settings"}
-            onTypeStart={takeFocus}
           />,
         )}
         <View on={mode === "agent"} shape={sizeOf("agent")}>

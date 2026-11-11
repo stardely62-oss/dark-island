@@ -41,6 +41,8 @@ type Events = {
   vpn: { on: boolean; name: string | null; country?: string; ip?: string };
   downloads: { name: string; size: number; speed: number; total: number }[];
   vpn_error: string;
+  settings_section: string;
+  tour: null;
   obs: { connected: boolean; recording: boolean; streaming: boolean; paused: boolean };
   download_done: { name: string; path: string; size: number };
   notification: { app: string; aumid: string; title: string; body: string };

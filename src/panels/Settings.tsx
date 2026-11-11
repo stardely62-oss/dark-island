@@ -244,10 +244,10 @@ export function SettingsTab({
         Проверить
       </button>
     ) : null;
-  const connect = (which: "claude" | "codex" | "opencode", on: boolean) => {
+  const connect = (which: "claude" | "codex" | "opencode", on: boolean, replace = false) => {
     setErr(null);
     api
-      ?.call<Conn>("agents_connect", { which, on })
+      ?.call<Conn>("agents_connect", { which, on, replace })
       .then(setConn)
       .catch((e) => setErr(String(e)));
   };
@@ -828,13 +828,13 @@ export function SettingsTab({
           (conn?.codex
             ? `Подключён: Codex сообщает только когда закончил ответ — тогда приходит карточка; ${seenText(conn, "codex")}. Перезапусти Codex после подключения`
             : conn?.codex_busy
-              ? "У Codex уже есть свой notify в config.toml"
+              ? "У Codex уже стоит другая программа уведомлений (notify), а он умеет только одну. «Заменить» — остров встанет вместо неё; старая строка останется в config.toml и вернётся при отключении"
               : "Остров добавит notify в ~/.codex/config.toml")
         }
       >
         {testBtn("codex", conn?.codex)}
-        <button className="text-btn solid" disabled={!conn?.codex && conn?.codex_busy} onClick={() => connect("codex", !conn?.codex)}>
-          {conn?.codex ? "Отключить" : "Подключить"}
+        <button className="text-btn solid" onClick={() => connect("codex", !conn?.codex, !conn?.codex && conn?.codex_busy)}>
+          {conn?.codex ? "Отключить" : conn?.codex_busy ? "Заменить" : "Подключить"}
         </button>
       </Row>
       <Row
@@ -965,7 +965,7 @@ export function SettingsTab({
       </Row>
 
       <Row title="Знакомство" sub="Короткий тур по острову, как при первом запуске">
-        <button className="text-btn solid" onClick={() => window.dispatchEvent(new Event("island-tour"))}>
+        <button className="text-btn solid" onClick={() => api?.call("tour_start")}>
           Показать снова
         </button>
       </Row>

@@ -2600,3 +2600,91 @@ textarea.note,
 .set-jump::-webkit-scrollbar {
   display: none;
 }
+
+/* ---- the settings window ---- */
+body.settings-page,
+body.settings-page.preview {
+  background: #141416;
+  user-select: none;
+}
+.theme-light body.settings-page {
+  background: #f2f2f4;
+}
+.settings-window {
+  height: 100vh;
+  --island: #141416;
+}
+.theme-light .settings-window {
+  --island: #f2f2f4;
+}
+.settings-window .tab-settings {
+  height: 100%;
+  margin: 0;
+  padding: 0 28px 28px 260px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+/* the left column: search and the sections, always in view */
+.settings-window .tab-settings > .set-tools {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 230px;
+  box-sizing: border-box;
+  padding: 22px 14px;
+  gap: 14px;
+  background: rgb(255 255 255 / 0.03);
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+}
+.settings-window .set-tools input.search {
+  height: 34px;
+  min-height: 34px;
+  font-size: 13px;
+}
+.settings-window .set-jump {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.settings-window .set-jump .chip {
+  justify-content: flex-start;
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  background: transparent;
+  color: var(--fg-2);
+}
+.settings-window .set-jump .chip:hover {
+  background: rgb(255 255 255 / 0.06);
+  color: var(--fg);
+}
+.settings-window .set-jump .chip.on {
+  background: rgb(217 119 87 / 0.18);
+  color: #f0a47f;
+}
+.settings-window .tab-settings > .set-group {
+  margin: 26px 0 8px;
+  font-size: 20px;
+}
+.settings-window .set-row {
+  min-height: 48px;
+  padding: 8px 14px;
+}
+.settings-window .set-title {
+  font-size: 14px;
+}
+.settings-window .set-sub {
+  font-size: 12px;
+}
+.settings-window .set-row > .set-input,
+.settings-window .set-row > select.select {
+  width: 230px;
+  flex-basis: 230px;
+}

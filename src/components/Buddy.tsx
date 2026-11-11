@@ -135,6 +135,20 @@ let pet: Pet = (() => {
     return fresh();
   }
 })();
+// The settings window is another page: when it changes the pet, the island
+// reads it again (and the other way round).
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== PET_KEY || !e.newValue) return;
+    try {
+      pet = { ...fresh(), ...JSON.parse(e.newValue) };
+      notify();
+    } catch {
+      /* ignore a broken value */
+    }
+  });
+}
+
 function savePet() {
   try {
     localStorage.setItem(PET_KEY, JSON.stringify(pet));

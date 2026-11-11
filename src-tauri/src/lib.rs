@@ -339,6 +339,42 @@ fn settings_set(
     all
 }
 
+/// Settings in a window of their own: there are too many for the island.
+/// `section` opens a tab by its name (e.g. "ИИ").
+#[tauri::command]
+fn settings_open(app: AppHandle, section: Option<String>) {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        if let Some(sec) = section {
+            let _ = app.emit_to("settings", "settings_section", sec);
+        }
+        return;
+    }
+    let mut url = String::from("index.html?view=settings");
+    if let Some(sec) = section {
+        url.push_str("&section=");
+        url.push_str(&sec.bytes().map(|b| format!("%{b:02X}")).collect::<String>());
+    }
+    let built = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App(url.into()))
+        .title("Dark Island — настройки")
+        .inner_size(860.0, 640.0)
+        .min_inner_size(680.0, 460.0)
+        .theme(Some(tauri::Theme::Dark))
+        .center()
+        .build();
+    if let Ok(w) = built {
+        let _ = w.set_focus();
+    }
+}
+
+/// The first-run tour again, on the island.
+#[tauri::command]
+fn tour_start(app: AppHandle) {
+    let _ = app.emit_to("island", "tour", ());
+}
+
 /// Keys that belong to this computer, never exported, imported or reset.
 const LOCAL_KEYS: &[&str] = &["agentToken", "agentPort", "vpnProxy"];
 
@@ -448,10 +484,10 @@ async fn agents_test(app: AppHandle, which: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool) -> Result<agents::Connections, String> {
+fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool, replace: Option<bool>) -> Result<agents::Connections, String> {
     match which.as_str() {
         "claude" => agents::connect_claude(&ctl.agents, on)?,
-        "codex" => agents::connect_codex(&ctl.agents, on)?,
+        "codex" => agents::connect_codex(&ctl.agents, on, replace.unwrap_or(false))?,
         "opencode" => agents::connect_opencode(&ctl.agents, on)?,
         _ => return Err("неизвестный агент".into()),
     }
@@ -1230,8 +1266,9 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         autostart_on,
         None::<&str>,
     )?;
+    let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&autostart, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = Menu::with_items(app, &[&settings, &autostart, &PredefinedMenuItem::separator(app)?, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Dark Island")
@@ -1239,6 +1276,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
+            "settings" => settings_open(app.clone(), None),
             "autostart" => {
                 let mgr = app.autolaunch();
                 let enabled = mgr.is_enabled().unwrap_or(false);
@@ -1310,6 +1348,8 @@ pub fn run() {
             notifications_access,
             open_windows_settings,
             ai_key_set,
+            settings_open,
+            tour_start,
             agents_test,
             settings_export,
             settings_import,

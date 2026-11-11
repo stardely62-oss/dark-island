@@ -461,7 +461,8 @@ pub fn connections() -> Connections {
         .is_some_and(|s| s.contains(MARK));
     let toml = codex_config().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
     let codex = toml.contains(MARK);
-    let codex_busy = !codex && toml.lines().any(|l| l.trim_start().starts_with("notify"));
+    let lines: Vec<String> = toml.lines().map(str::to_string).collect();
+    let codex_busy = !codex && notify_span(&lines).is_some();
     let opencode = opencode_plugin().is_some_and(|p| p.exists());
     let now = now_secs();
     let seen = LAST.lock().unwrap().clone().unwrap_or_default().into_iter().map(|(k, t)| (k, now.saturating_sub(t))).collect();
@@ -516,13 +517,42 @@ pub fn connect_claude(agents: &Agents, on: bool) -> Result<(), String> {
 }
 
 /// Adds or removes the island's `notify` line in Codex's config.toml.
-pub fn connect_codex(agents: &Agents, on: bool) -> Result<(), String> {
+/// Marks a `notify` of the user's own that the island set aside; it comes
+/// back when the island is disconnected.
+const SAVED: &str = "# dark-island saved: ";
+
+/// The lines of a top-level `notify = [...]` (it may span lines).
+fn notify_span(lines: &[String]) -> Option<(usize, usize)> {
+    let table = lines.iter().position(|l| l.trim_start().starts_with('[')).unwrap_or(lines.len());
+    let start = lines[..table].iter().position(|l| {
+        let t = l.trim_start();
+        t.starts_with("notify") && t["notify".len()..].trim_start().starts_with('=')
+    })?;
+    let mut depth = 0i32;
+    for (i, l) in lines.iter().enumerate().skip(start) {
+        depth += l.matches('[').count() as i32 - l.matches(']').count() as i32;
+        if depth <= 0 {
+            return Some((start, i));
+        }
+    }
+    Some((start, start))
+}
+
+/// Adds or removes the island's `notify` line in Codex's config.toml. Codex
+/// takes one notify program: with `replace`, one already there is commented
+/// out (and restored on disconnect).
+pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), String> {
     let path = codex_config().ok_or("нет папки пользователя")?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let mut lines: Vec<String> = text.lines().filter(|l| !l.contains(MARK)).map(str::to_string).collect();
     if on {
-        if lines.iter().any(|l| l.trim_start().starts_with("notify")) {
-            return Err("у Codex уже есть свой notify".into());
+        if let Some((a, b)) = notify_span(&lines) {
+            if !replace {
+                return Err("у Codex уже есть свой notify".into());
+            }
+            for l in &mut lines[a..=b] {
+                *l = format!("{SAVED}{l}");
+            }
         }
         // Codex appends the event JSON as the last argument: it becomes curl's body.
         let line = format!(
@@ -532,6 +562,13 @@ pub fn connect_codex(agents: &Agents, on: bool) -> Result<(), String> {
         // Top-level keys must come before the first [table].
         let at = lines.iter().position(|l| l.trim_start().starts_with('[')).unwrap_or(lines.len());
         lines.insert(at, line);
+    } else {
+        // The user's own notify comes back.
+        for l in &mut lines {
+            if let Some(orig) = l.strip_prefix(SAVED) {
+                *l = orig.to_string();
+            }
+        }
     }
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
