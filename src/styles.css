@@ -2552,3 +2552,51 @@ header .buddy-home {
 .tile-more {
   right: 2px;
 }
+.set-jump {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+/* scrollbars: a thin rounded thumb, no arrows, no track */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.16) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.3) padding-box;
+}
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.2) padding-box;
+}
+/* the AI key note stays one line, so the text tools keep their room */
+.ai-nokey .grow {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* WebView2 ignores the styled scrollbar above where the standard properties
+   are set, so they are reset; hidden ones stay hidden. */
+.list,
+.shelf,
+textarea.note,
+.bt-list {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.w-hours::-webkit-scrollbar,
+.set-jump::-webkit-scrollbar {
+  display: none;
+}

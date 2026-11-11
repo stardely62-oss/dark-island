@@ -442,6 +442,12 @@ fn agents_connections() -> agents::Connections {
 }
 
 #[tauri::command]
+async fn agents_test(app: AppHandle, which: String) -> Result<(), String> {
+    let agents = app.state::<Ctl>().agents.clone();
+    agents::test(&agents, &which)
+}
+
+#[tauri::command]
 fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool) -> Result<agents::Connections, String> {
     match which.as_str() {
         "claude" => agents::connect_claude(&ctl.agents, on)?,
@@ -893,31 +899,83 @@ fn dictate(app: &AppHandle, target: String) {
             let service = get("sttService", "windows");
             let lang = get("sttLang", "ru");
             emit("rec", serde_json::json!({ "level": 0 }));
+            // The microphone is always recorded: it gives the level, and the
+            // sound for Whisper (the chosen service, or the fallback when
+            // Windows can't).
+            let (stop2, app2) = (stop.clone(), app.clone());
+            let target2 = target.clone();
+            let mic = std::thread::spawn(move || {
+                sys::record::record_mic(stop2, |l| {
+                    let _ = app2.emit_to("island", "dictation", serde_json::json!({ "state": "rec", "level": l, "target": target2 }));
+                })
+            });
+            let whisper_key = ["groq", "openai"].into_iter().find(|k| ctl.keys.has(k));
+            let whisper = |samples: Vec<i16>, svc: &str| -> Result<String, (String, bool)> {
+                if samples.len() <= 16_000 / 3 {
+                    return Err(("Слишком коротко".into(), false));
+                }
+                emit("busy", serde_json::json!({}));
+                let (base, model) = match svc {
+                    "openai" => ("https://api.openai.com/v1".to_string(), "whisper-1".to_string()),
+                    _ => ("https://api.groq.com/openai/v1".to_string(), "whisper-large-v3-turbo".to_string()),
+                };
+                ai::transcribe(&ctl.keys, svc, &base, &model, ai::wav(&samples, 16_000), &lang).map_err(|e| (e, false))
+            };
             let result: Result<String, (String, bool)> = if service == "windows" {
-                // Windows listens itself; the microphone is read alongside only for the level.
-                let (stop2, app2) = (stop.clone(), app.clone());
-                let meter = std::thread::spawn(move || {
-                    let _ = sys::record::record_mic(stop2, |l| {
-                        let _ = app2.emit_to("island", "dictation", serde_json::json!({ "state": "rec", "level": l }));
-                    });
+                // Windows listens on its own thread: if it hangs, stopping still works.
+                let (tx, rx) = std::sync::mpsc::channel();
+                let (stop3, lang3) = (stop.clone(), lang.clone());
+                std::thread::spawn(move || {
+                    let _ = tx.send(sys::speech::dictate(&lang3, stop3, || {}).map_err(|e| (e.text, e.privacy)));
                 });
-                let r = sys::speech::dictate(&lang, stop.clone(), || {}).map_err(|e| (e.text, e.privacy));
-                stop.store(true, std::sync::atomic::Ordering::Relaxed);
-                let _ = meter.join();
-                r
-            } else {
-                let samples = sys::record::record_mic(stop.clone(), |l| emit("rec", serde_json::json!({ "level": l })));
-                match samples {
-                    Ok(s) if s.len() > 16_000 / 3 => {
-                        emit("busy", serde_json::json!({}));
-                        let (base, model) = match service.as_str() {
-                            "openai" => ("https://api.openai.com/v1".to_string(), "whisper-1".to_string()),
-                            _ => ("https://api.groq.com/openai/v1".to_string(), "whisper-large-v3-turbo".to_string()),
-                        };
-                        ai::transcribe(&ctl.keys, &service, &base, &model, ai::wav(&s, 16_000), &lang).map_err(|e| (e, false))
+                // Early failure (before you speak): stop now unless Whisper can take over.
+                let mut early = None;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Ok(r) = rx.recv_timeout(std::time::Duration::from_millis(150)) {
+                        early = Some(r);
+                        break;
                     }
-                    Ok(_) => Err(("Слишком коротко".into(), false)),
-                    Err(e) => Err((e, false)),
+                }
+                let win = match early {
+                    Some(Err(e)) if whisper_key.is_none() || e.1 => {
+                        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                        Err(e)
+                    }
+                    Some(r) => {
+                        // Failed with a fallback at hand: keep recording until you stop.
+                        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                        }
+                        r
+                    }
+                    None => {
+                        emit("busy", serde_json::json!({}));
+                        rx.recv_timeout(std::time::Duration::from_secs(6))
+                            .unwrap_or_else(|_| Err(("Распознавание Windows не ответило".into(), false)))
+                    }
+                };
+                let samples = mic.join().ok().and_then(|r| r.ok()).unwrap_or_default();
+                match (win, whisper_key) {
+                    (Ok(t), _) if !t.trim().is_empty() => Ok(t),
+                    (Err(e), _) if e.1 => Err(e),
+                    (r, Some(k)) => {
+                        if let Err(e) = &r {
+                            diag::log(&app, &format!("dictation: windows failed ({}), using {k}", e.0));
+                        }
+                        whisper(samples, k)
+                    }
+                    (r, None) => {
+                        if let Err(e) = &r {
+                            diag::log(&app, &format!("dictation: {}", e.0));
+                        }
+                        r
+                    }
+                }
+            } else {
+                let samples = mic.join().map_err(|_| ("Микрофон".to_string(), false)).and_then(|r| r.map_err(|e| (e, false)));
+                match samples {
+                    Ok(s) => whisper(s, &service),
+                    Err(e) => Err(e),
                 }
             };
             *ctl.dictation.lock().unwrap() = None;
@@ -1252,6 +1310,7 @@ pub fn run() {
             notifications_access,
             open_windows_settings,
             ai_key_set,
+            agents_test,
             settings_export,
             settings_import,
             settings_reset,

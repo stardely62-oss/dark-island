@@ -22,6 +22,13 @@ use tauri::{AppHandle, Emitter};
 use crate::settings::Settings;
 
 const FIRST_PORT: u16 = 47326;
+
+/// When each agent last reached the island (unix seconds), for the settings.
+static LAST: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 const MARK: &str = "/dark-island/";
 
 #[derive(Clone, Serialize)]
@@ -145,6 +152,13 @@ fn handle(stream: TcpStream, app: &AppHandle, agents: &Agents, settings: &Settin
         return reply(stream, 403, "{}");
     }
     let input: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    LAST.lock().unwrap().get_or_insert_with(HashMap::new).insert(agent.to_string(), now_secs());
+    let what = input
+        .get("hook_event_name")
+        .or_else(|| input.get("type"))
+        .and_then(Value::as_str)
+        .unwrap_or("?");
+    crate::diag::log(app, &format!("agent {agent}: {what}"));
     let out = if !settings.bool("agents", true) {
         "{}".to_string()
     } else if agent == "claude" {
@@ -325,6 +339,34 @@ fn opencode(app: &AppHandle, input: &Value) {
     );
 }
 
+/// Sends a test signal exactly the way the agent would: Codex through curl
+/// (as its `notify` line does), the others over HTTP. A card should appear.
+pub fn test(agents: &Agents, which: &str) -> Result<(), String> {
+    let url = agents.url(which);
+    match which {
+        "codex" => {
+            let body = json!({ "type": "agent-turn-complete", "thread-id": "test", "cwd": "проверка", "last-assistant-message": "Связь с Codex работает" }).to_string();
+            let mut cmd = std::process::Command::new("curl");
+            cmd.args(["-s", "-m", "3", "-H", "Content-Type: application/json", &url, "--data-binary", &body]);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000);
+            }
+            let out = cmd.output().map_err(|_| "curl не найден: Codex не сможет сообщать острову".to_string())?;
+            if out.status.success() { Ok(()) } else { Err(format!("curl: {}", String::from_utf8_lossy(&out.stderr).trim())) }
+        }
+        _ => {
+            let body = if which == "claude" {
+                json!({ "hook_event_name": "Stop", "session_id": "test", "cwd": "проверка", "last_assistant_message": "Связь с Claude Code работает" })
+            } else {
+                json!({ "type": "done", "session": "test", "cwd": "проверка", "detail": "Связь с opencode работает" })
+            };
+            ureq::post(&url).send_json(body).map(|_| ()).map_err(|e| e.to_string())
+        }
+    }
+}
+
 // --------------------------------------------------- connect / disconnect ----
 
 fn home() -> Option<PathBuf> {
@@ -409,6 +451,8 @@ pub struct Connections {
     pub opencode: bool,
     /// Codex already has a `notify` program of its own.
     pub codex_busy: bool,
+    /// Seconds since each agent last reached the island (none yet: absent).
+    pub seen: HashMap<String, u64>,
 }
 
 pub fn connections() -> Connections {
@@ -419,7 +463,9 @@ pub fn connections() -> Connections {
     let codex = toml.contains(MARK);
     let codex_busy = !codex && toml.lines().any(|l| l.trim_start().starts_with("notify"));
     let opencode = opencode_plugin().is_some_and(|p| p.exists());
-    Connections { claude, codex, codex_busy, opencode }
+    let now = now_secs();
+    let seen = LAST.lock().unwrap().clone().unwrap_or_default().into_iter().map(|(k, t)| (k, now.saturating_sub(t))).collect();
+    Connections { claude, codex, codex_busy, opencode, seen }
 }
 
 fn backup(path: &PathBuf) {

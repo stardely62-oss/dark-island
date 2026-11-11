@@ -69,8 +69,9 @@ export function AiTab({
     if (!api) return;
     return api.on("dictation", (d) => {
       if (!mine.current) return;
-      if (d.state === "rec" || d.state === "busy") setListening(d.state);
+      if (d.state === "rec" || d.state === "busy") setListening((l) => (l === "busy" ? "busy" : d.state === "busy" ? "busy" : "rec"));
       else {
+        clearTimeout(resetTimer.current);
         setListening("");
         mine.current = false;
       }
@@ -84,9 +85,20 @@ export function AiTab({
     window.addEventListener("chat-dictation", on);
     return () => window.removeEventListener("chat-dictation", on);
   }, []);
+  const resetTimer = useRef(0);
   const dictate = () => {
+    clearTimeout(resetTimer.current);
+    if (listening === "busy") return;
     mine.current = true;
     if (!listening) setListening("rec");
+    else {
+      // Stopping: show it at once; if nothing comes back, the button frees itself.
+      setListening("busy");
+      resetTimer.current = window.setTimeout(() => {
+        setListening("");
+        mine.current = false;
+      }, 12_000);
+    }
     api?.call("dictate_toggle", { target: "chat" });
   };
   const [docErr, setDocErr] = useState<string | null>(null);

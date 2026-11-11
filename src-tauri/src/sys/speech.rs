@@ -43,16 +43,24 @@ pub fn dictate(lang: &str, stop: Arc<AtomicBool>, mut on_hint: impl FnMut()) -> 
         _ => SpeechRecognizer::new(),
     }
     .map_err(|_| err("Нет распознавания речи для этого языка: Параметры → Время и язык → Речь"))?;
+    // The dictation topic first; some installations only take the built-in
+    // grammar (no constraints at all), so that is the second try.
     let topic = SpeechRecognitionTopicConstraint::Create(SpeechRecognitionScenario::Dictation, &HSTRING::from("dictation")).map_err(from_hr)?;
     rec.Constraints().map_err(from_hr)?.Append(&topic).map_err(from_hr)?;
-    let compiled = rec.CompileConstraintsAsync().map_err(from_hr)?.join().map_err(from_hr)?;
-    match compiled.Status().map_err(from_hr)? {
-        s if s == SpeechRecognitionResultStatus::Success => {}
-        s if s == SpeechRecognitionResultStatus::TopicLanguageNotSupported => {
-            return Err(err("Windows не умеет диктовку на этом языке: поставь языковой пакет речи"));
-        }
-        s if s == SpeechRecognitionResultStatus::NetworkFailure => return Err(err("Распознаванию Windows нужен интернет")),
-        _ => return Err(err("Распознавание Windows не запустилось")),
+    let mut status = rec.CompileConstraintsAsync().map_err(from_hr)?.join().map_err(from_hr)?.Status().map_err(from_hr)?;
+    if status != SpeechRecognitionResultStatus::Success {
+        rec.Constraints().map_err(from_hr)?.Clear().map_err(from_hr)?;
+        status = rec.CompileConstraintsAsync().map_err(from_hr)?.join().map_err(from_hr)?.Status().map_err(from_hr)?;
+    }
+    if status != SpeechRecognitionResultStatus::Success {
+        let why = match status {
+            s if s == SpeechRecognitionResultStatus::TopicLanguageNotSupported => "нет диктовки на этом языке — поставь пакет речи (Параметры → Время и язык → Речь)",
+            s if s == SpeechRecognitionResultStatus::NetworkFailure => "нужен интернет",
+            s if s == SpeechRecognitionResultStatus::MicrophoneUnavailable => "микрофон недоступен",
+            s if s == SpeechRecognitionResultStatus::GrammarCompilationFailure => "Windows не подготовила распознавание",
+            _ => "Windows не запустила распознавание",
+        };
+        return Err(err(&format!("Распознавание Windows: {why} (код {})", status.0)));
     }
     let session: SpeechContinuousRecognitionSession = rec.ContinuousRecognitionSession().map_err(from_hr)?;
     let _ = session.SetAutoStopSilenceTimeout(windows::Foundation::TimeSpan { Duration: 600_000_000 });

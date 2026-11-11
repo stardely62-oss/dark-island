@@ -4,7 +4,16 @@ import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
 import { Buddy, COLORS, HATS, STICKERS, buddy, usePet } from "../components/Buddy";
 
-type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean };
+type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean; seen?: Record<string, number> };
+
+/** "сигнал 3 мин назад" / "сигналов ещё не было". */
+function seenText(conn: Conn | null, id: string) {
+  const s = conn?.seen?.[id];
+  if (s === undefined) return "сигналов с запуска острова ещё не было";
+  if (s < 60) return "последний сигнал только что";
+  if (s < 3600) return `последний сигнал ${Math.round(s / 60)} мин назад`;
+  return `последний сигнал ${Math.round(s / 3600)} ч назад`;
+}
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -103,12 +112,7 @@ export function SettingsTab({
   const [q, setQ] = useState("");
   /** The open section (by its place in the list); a search looks through all of them. */
   const [section, setSection] = useState(0);
-  const [groups, setGroups] = useState<string[]>([]);
-  useEffect(() => {
-    const root = listRef.current;
-    if (!root) return;
-    setGroups([...root.querySelectorAll<HTMLElement>(":scope > .set-group")].map((g) => g.textContent ?? ""));
-  }, [visible, settings.buddyName]);
+  const groups = ["Остров", settings.buddyName || "Клодик", "ИИ и голос", "Экран", "Звук", "Разное", "Сеть", "О программе"];
   // One section at a time; a search shows matching rows from all of them
   // (a section without matches hides its title).
   useEffect(() => {
@@ -118,13 +122,14 @@ export function SettingsTab({
     let group: HTMLElement | null = null;
     let gi = -1;
     let any = false;
+    // gi: the tab this group belongs to.
     const close = () => group && (group.style.display = (f && !any) || (!f && gi !== section) ? "none" : "");
     for (const el of root.querySelectorAll<HTMLElement>(":scope > *")) {
       if (el.classList.contains("set-tools")) continue;
       if (el.classList.contains("set-group")) {
         close();
         group = el;
-        gi++;
+        gi = Number(el.dataset.tab ?? 0);
         any = !f || (el.textContent ?? "").toLowerCase().includes(f);
         el.dataset.match = any ? "1" : "";
         continue;
@@ -144,8 +149,8 @@ export function SettingsTab({
   useEffect(() => {
     const on = (e: Event) => {
       const name = (e as CustomEvent<string>).detail;
-      const i = [...(listRef.current?.querySelectorAll<HTMLElement>(":scope > .set-group") ?? [])].findIndex((g) => g.textContent?.startsWith(name));
-      if (i >= 0) jump(i);
+      const g = [...(listRef.current?.querySelectorAll<HTMLElement>(":scope > .set-group") ?? [])].find((x) => x.textContent?.startsWith(name));
+      if (g) jump(Number(g.dataset.tab ?? 0));
     };
     window.addEventListener("settings-section", on);
     return () => window.removeEventListener("settings-section", on);
@@ -222,6 +227,23 @@ export function SettingsTab({
   }, [api, visible]);
   useEffect(() => setSkip(settings.clipSkipApps.join(", ")), [settings.clipSkipApps]);
 
+  const [testMsg, setTestMsg] = useState<Record<string, string>>({});
+  const test = (which: string) => {
+    setTestMsg((m) => ({ ...m, [which]: "проверяю…" }));
+    api
+      ?.call("agents_test", { which })
+      .then(() => {
+        setTestMsg((m) => ({ ...m, [which]: "связь есть — на острове должна была появиться карточка" }));
+        api?.call<Conn>("agents_connections").then(setConn);
+      })
+      .catch((e) => setTestMsg((m) => ({ ...m, [which]: String(e) })));
+  };
+  const testBtn = (which: string, on?: boolean) =>
+    on ? (
+      <button className="text-btn" onClick={() => test(which)}>
+        Проверить
+      </button>
+    ) : null;
   const connect = (which: "claude" | "codex" | "opencode", on: boolean) => {
     setErr(null);
     api
@@ -244,7 +266,7 @@ export function SettingsTab({
           </div>
         )}
       </div>
-      <div className="set-group">Остров</div>
+      <div className="set-group" data-tab="0">Остров</div>
       <Row title="Линия над окнами" sub="Если окно заходит под остров (вкладки браузера), он становится тонкой линией">
         <Toggle on={settings.stripOverWindows} onChange={(v) => set({ stripOverWindows: v })} />
       </Row>
@@ -273,7 +295,7 @@ export function SettingsTab({
         <Toggle on={!!settings.through} onChange={(v) => set({ through: v })} />
       </Row>
 
-      <div className="set-group">Вид</div>
+      <div className="set-group" data-tab="0">Вид</div>
       <Row title="Тема острова">
         <Segmented
           value={(settings.islandTheme as string) ?? "dark"}
@@ -319,7 +341,7 @@ export function SettingsTab({
         onCommit={(v) => set({ islandOffset: v })}
       />
 
-      <div className="set-group">{settings.buddyName || "Клодик"}</div>
+      <div className="set-group" data-tab="1">{settings.buddyName || "Клодик"}</div>
       <div className="set-row buddy-card">
         <div className="buddy-stage" title="Наведи, погладь, покрути колесо, кликни дважды">
           <Buddy size={64} />
@@ -472,7 +494,7 @@ export function SettingsTab({
         ))}
       </div>
 
-      <div className="set-group">ИИ</div>
+      <div className="set-group" data-tab="2">ИИ</div>
       <Row title="Сервис" sub={preset.note}>
         <select className="search set-input select" value={provider.id} onChange={(e) => set({ aiProvider: e.target.value })}>
           {PROVIDERS.map((p) => (
@@ -516,7 +538,7 @@ export function SettingsTab({
         </button>
       </Row>
 
-      <div className="set-group">Голос в текст</div>
+      <div className="set-group" data-tab="2">Голос в текст</div>
       <Row
         title="Чем распознавать"
         sub={
@@ -564,7 +586,7 @@ export function SettingsTab({
         <Toggle on={settings.dictationPaste !== false} onChange={(v) => set({ dictationPaste: v })} />
       </Row>
 
-      <div className="set-group">Запись экрана (Ctrl+Alt+R)</div>
+      <div className="set-group" data-tab="3">Запись экрана (Ctrl+Alt+R)</div>
       <Row title="Формат" sub="Файлы в «Видео → Dark Island»; GIF — 12 кадров в секунду, без звука">
         <Segmented
           value={settings.recordFormat}
@@ -609,7 +631,7 @@ export function SettingsTab({
         />
       </Row>
 
-      <div className="set-group">Ссылка на скриншот</div>
+      <div className="set-group" data-tab="3">Ссылка на скриншот</div>
       <Row title="Сервис" sub="Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается">
         <Segmented
           value={(settings.uploadService as string) ?? "imgbb"}
@@ -625,7 +647,7 @@ export function SettingsTab({
         url: (settings.uploadService as string) === "imgur" ? "https://api.imgur.com/oauth2/addclient" : "https://api.imgbb.com/",
       })}
 
-      <div className="set-group">Звук</div>
+      <div className="set-group" data-tab="4">Звук</div>
       <Row title="Громкость острова" sub="Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается">
         <select className="search set-input select" value={(settings.volumeDevice as string) ?? ""} onChange={(e) => set({ volumeDevice: e.target.value })}>
           <option value="">Как в Windows</option>
@@ -647,7 +669,7 @@ export function SettingsTab({
         </select>
       </Row>
 
-      <div className="set-group">Музыка</div>
+      <div className="set-group" data-tab="4">Музыка</div>
       <Row title="Пилюля во время музыки" sub="«Текст» и «Только слова» — когда включён текст песни и он нашёлся">
         <Segmented
           value={settings.musicPill as string}
@@ -665,7 +687,7 @@ export function SettingsTab({
         <Toggle on={!!settings.lyrics} onChange={(v) => set({ lyrics: v })} />
       </Row>
 
-      <div className="set-group">Погода</div>
+      <div className="set-group" data-tab="5">Погода</div>
       <Row title="Температура на острове" sub="Город выбирается на вкладке «Погода»">
         <Toggle on={!!settings.weatherOnPill} onChange={(v) => set({ weatherOnPill: v })} />
       </Row>
@@ -673,7 +695,7 @@ export function SettingsTab({
         <Toggle on={!!settings.rainWarning} onChange={(v) => set({ rainWarning: v })} />
       </Row>
 
-      <div className="set-group">Уведомления Windows</div>
+      <div className="set-group" data-tab="5">Уведомления Windows</div>
       <Row
         title="Показывать на острове"
         sub={
@@ -703,7 +725,7 @@ export function SettingsTab({
         <input className="search set-input" value={muted} onFocus={onTypeStart} onChange={(e) => setMuted(e.target.value)} onBlur={() => set({ notifyMuted: list(muted).map((x) => x.toLowerCase()) })} />
       </Row>
 
-      <div className="set-group">Сеть</div>
+      <div className="set-group" data-tab="6">Сеть</div>
       <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, только когда VPN включается">
         <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
@@ -776,7 +798,7 @@ export function SettingsTab({
         </>
       )}
 
-      <div className="set-group">OBS Studio</div>
+      <div className="set-group" data-tab="3">OBS Studio</div>
       <Row title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">
         <Toggle on={!!settings.obsEnabled} onChange={(v) => set({ obsEnabled: v })} />
       </Row>
@@ -789,18 +811,37 @@ export function SettingsTab({
         </>
       )}
 
-      <div className="set-group">ИИ-агенты в терминале</div>
-      <Row title="Claude Code" sub={conn?.claude ? "Подключён: остров видит, что он делает" : "Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом"}>
+      <div className="set-group" data-tab="2">ИИ-агенты в терминале</div>
+      <Row
+        title="Claude Code"
+        sub={testMsg.claude ?? (conn?.claude ? `Подключён: работа, вопросы и конец ответа; ${seenText(conn, "claude")}. Новые сессии подхватят сразу` : "Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом")}
+      >
+        {testBtn("claude", conn?.claude)}
         <button className="text-btn solid" onClick={() => connect("claude", !conn?.claude)}>
           {conn?.claude ? "Отключить" : "Подключить"}
         </button>
       </Row>
-      <Row title="Codex" sub={conn?.codex ? "Подключён: остров узнаёт, когда он закончил" : conn?.codex_busy ? "У Codex уже есть свой notify в config.toml" : "Остров добавит notify в ~/.codex/config.toml"}>
+      <Row
+        title="Codex"
+        sub={
+          testMsg.codex ??
+          (conn?.codex
+            ? `Подключён: Codex сообщает только когда закончил ответ — тогда приходит карточка; ${seenText(conn, "codex")}. Перезапусти Codex после подключения`
+            : conn?.codex_busy
+              ? "У Codex уже есть свой notify в config.toml"
+              : "Остров добавит notify в ~/.codex/config.toml")
+        }
+      >
+        {testBtn("codex", conn?.codex)}
         <button className="text-btn solid" disabled={!conn?.codex && conn?.codex_busy} onClick={() => connect("codex", !conn?.codex)}>
           {conn?.codex ? "Отключить" : "Подключить"}
         </button>
       </Row>
-      <Row title="opencode" sub={conn?.opencode ? "Подключён: работа, вопросы и конец ответа видны на острове" : "Остров положит свой плагин в ~/.config/opencode — перезапусти opencode после подключения"}>
+      <Row
+        title="opencode"
+        sub={testMsg.opencode ?? (conn?.opencode ? `Подключён: работа, вопросы и конец ответа; ${seenText(conn, "opencode")}` : "Остров положит свой плагин в ~/.config/opencode — перезапусти opencode после подключения")}
+      >
+        {testBtn("opencode", conn?.opencode)}
         <button className="text-btn solid" onClick={() => connect("opencode", !conn?.opencode)}>
           {conn?.opencode ? "Отключить" : "Подключить"}
         </button>
@@ -813,7 +854,7 @@ export function SettingsTab({
         <Toggle on={settings.agentsAnswer} onChange={(v) => set({ agentsAnswer: v })} />
       </Row>
 
-      <div className="set-group">Буфер обмена</div>
+      <div className="set-group" data-tab="5">Буфер обмена</div>
       <Row title="Записывать историю">
         <Toggle on={settings.clipboardHistory} onChange={(v) => set({ clipboardHistory: v })} />
       </Row>
@@ -834,7 +875,7 @@ export function SettingsTab({
         />
       </Row>
 
-      <div className="set-group">Скриншоты</div>
+      <div className="set-group" data-tab="3">Скриншоты</div>
       <Row title="Сохранять в папку" sub="Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда">
         <Toggle on={settings.screenshotSave !== false} onChange={(v) => set({ screenshotSave: v })} />
       </Row>
@@ -842,7 +883,7 @@ export function SettingsTab({
         <Toggle on={settings.showInCaptures === true} onChange={(v) => set({ showInCaptures: v })} />
       </Row>
 
-      <div className="set-group">Поиск в командной строке</div>
+      <div className="set-group" data-tab="5">Поиск в командной строке</div>
       <Row title="Поисковик">
         <Segmented
           value={settings.searchEngine}
@@ -851,7 +892,7 @@ export function SettingsTab({
         />
       </Row>
 
-      <div className="set-group">Данные и версия</div>
+      <div className="set-group" data-tab="7">Данные и версия</div>
       <Row title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
         <button
           className="text-btn solid"
@@ -929,14 +970,14 @@ export function SettingsTab({
         </button>
       </Row>
 
-      <div className="set-group">Если что-то не работает</div>
+      <div className="set-group" data-tab="7">Если что-то не работает</div>
       <Row title="Журнал" sub="Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось">
         <button className="text-btn solid" onClick={() => api?.call("diag_open")}>
           Открыть
         </button>
       </Row>
 
-      <div className="set-group">Горячие клавиши</div>
+      <div className="set-group" data-tab="7">Горячие клавиши</div>
       <div className="keys">
         <span>Ctrl+Alt+I</span> открыть или закрыть остров
         <span>Alt+Space</span> командная строка
