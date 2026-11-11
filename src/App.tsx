@@ -1663,15 +1663,79 @@ function offsetWithin(el: HTMLElement, ancestor: HTMLElement) {
 }
 
 /**
+ * How he flies on a hop between tabs: a different trick each time. The
+ * frames squash him on take-off and landing; in between, the trick.
+ */
+function hopStyle(dir: number): Keyframe[] {
+  const styles: Keyframe[][] = [
+    // a somersault
+    [
+      { transform: "scale(1.2, 0.75)", offset: 0 },
+      { transform: "scale(0.9, 1.1) rotate(0deg)", offset: 0.15 },
+      { transform: `rotate(${dir * 360}deg)`, offset: 0.82 },
+      { transform: `scale(1.25, 0.72) rotate(${dir * 360}deg)`, offset: 0.92 },
+      { transform: `scale(1, 1) rotate(${dir * 360}deg)`, offset: 1 },
+    ],
+    // turns round in the air
+    [
+      { transform: "scale(1.2, 0.75)", offset: 0 },
+      { transform: "scale(0.9, 1.1)", offset: 0.15 },
+      { transform: "scale(-1, 1)", offset: 0.5 },
+      { transform: "scale(1, 1.05)", offset: 0.82 },
+      { transform: "scale(1.25, 0.72)", offset: 0.92 },
+      { transform: "scale(1, 1)", offset: 1 },
+    ],
+    // tucks into a ball and rolls through the air
+    [
+      { transform: "scale(1.2, 0.75)", offset: 0 },
+      { transform: "scale(0.7) rotate(0deg)", offset: 0.2 },
+      { transform: `scale(0.7) rotate(${dir * 720}deg)`, offset: 0.78 },
+      { transform: `scale(1.3, 0.7) rotate(${dir * 720}deg)`, offset: 0.9 },
+      { transform: `scale(1) rotate(${dir * 720}deg)`, offset: 1 },
+    ],
+    // stretches out like a superhero
+    [
+      { transform: "scale(1.25, 0.7)", offset: 0 },
+      { transform: `scale(0.75, 1.35) rotate(${dir * 12}deg)`, offset: 0.25 },
+      { transform: `scale(1.3, 0.8) rotate(${dir * 25}deg)`, offset: 0.55 },
+      { transform: "scale(1.35, 0.65) rotate(0deg)", offset: 0.9 },
+      { transform: "scale(1)", offset: 1 },
+    ],
+    // flaps like a bird
+    [
+      { transform: "scale(1.2, 0.75)", offset: 0 },
+      { transform: "rotate(-14deg)", offset: 0.25 },
+      { transform: "rotate(14deg)", offset: 0.45 },
+      { transform: "rotate(-14deg)", offset: 0.65 },
+      { transform: "rotate(0deg) scale(1.25, 0.72)", offset: 0.9 },
+      { transform: "scale(1)", offset: 1 },
+    ],
+    // lands and bounces once more
+    [
+      { transform: "scale(1.2, 0.75)", offset: 0 },
+      { transform: "scale(0.9, 1.12)", offset: 0.2 },
+      { transform: "scale(1.3, 0.7)", offset: 0.7 },
+      { transform: "translateY(-6px) scale(0.92, 1.1)", offset: 0.82 },
+      { transform: "translateY(0) scale(1.15, 0.85)", offset: 0.93 },
+      { transform: "scale(1)", offset: 1 },
+    ],
+  ];
+  return styles[Math.floor(Math.random() * styles.length)];
+}
+
+/**
  * Клодик in the open island: on Home he sits on his own place by the clock,
  * on other tabs he stands under the open tab, and he hops between them. Now
  * and then he goes for a walk to another tab and comes back.
  */
 function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: boolean; sleeping: boolean; scale: number; life: boolean }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const [cls, setCls] = useState("");
   const [visit, setVisit] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  /** Where he was on screen when the next hop was asked for (mid-air included). */
+  const from = useRef<DOMRect | null>(null);
   useEffect(() => {
     if (!shown) setMenu(false);
   }, [shown]);
@@ -1704,22 +1768,67 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
 
   // Without his own life he keeps to his place and only watches the cursor.
   const spot = !life ? "home" : (visit ?? (tab === "home" ? "home" : tab));
+  // On the tab bar he is smaller: the tabs are his playground, the clock is his home.
+  const k = spot === "home" ? 1 : 0.66;
   useLayoutEffect(() => {
     if (!shown) {
       placed.current = false;
       setVisit(null);
-      setCls("");
       return;
     }
     const p = measure(spot);
     if (!p) return;
-    const first = !placed.current;
-    placed.current = true;
+    from.current = placed.current && ref.current ? ref.current.getBoundingClientRect() : null;
     setPos(p);
-    setCls(first ? "drop-in" : "hopping");
-    const t = window.setTimeout(() => setCls(""), 720);
-    return () => clearTimeout(t);
   }, [spot, shown, measure, SIZE]);
+
+  // Each hop is its own flight along an arc, started from wherever he is now,
+  // so quick clicks make him jump again in mid-air instead of sliding.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const body = inner.current;
+    if (!el || !body || !pos || !shown) return;
+    const old = from.current;
+    from.current = null;
+    el.getAnimations().forEach((a) => a.cancel());
+    body.getAnimations().forEach((a) => a.cancel());
+    el.style.transform = `scale(${k})`;
+    if (!placed.current) {
+      placed.current = true;
+      el.animate(
+        [
+          { transform: `translateY(-40px) scale(${k})` },
+          { transform: `translateY(0) scale(${k * 1.15}, ${k * 0.78})`, offset: 0.55 },
+          { transform: `translateY(-3px) scale(${k * 0.95}, ${k * 1.06})`, offset: 0.75 },
+          { transform: `translateY(0) scale(${k})` },
+        ],
+        { duration: 700, easing: "cubic-bezier(.3,.7,.4,1)" },
+      );
+      return;
+    }
+    if (!old) return;
+    const now = el.getBoundingClientRect();
+    const k0 = old.width / Math.max(1, now.width / k);
+    const dx = old.left + old.width / 2 - (now.left + now.width / 2);
+    const dy = old.top - now.top;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1 && Math.abs(k0 - k) < 0.01) return;
+    // A low arc: high ones would fly off the top of the screen.
+    const peak = Math.min(18, 8 + dist * 0.08);
+    const duration = Math.min(680, 360 + dist * 1.3);
+    const frames: Keyframe[] = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      const x = dx * (1 - t);
+      const y = dy * (1 - t) - 4 * peak * t * (1 - t);
+      const sc = k0 + (k - k0) * t;
+      frames.push({ transform: `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${sc.toFixed(3)})` });
+    }
+    el.animate(frames, { duration, easing: "linear" });
+    body.animate(hopStyle(Math.sign(dx) || 1), { duration, easing: "ease-in-out" });
+    // k changes a render before pos does: the flight waits for the new place.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pos, shown]);
 
   // A walk now and then: to a random tab, a look around, and back.
   useEffect(() => {
@@ -1747,7 +1856,8 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
   return (
     <>
       <div
-        className={`tab-buddy ${cls} ${shown ? "" : "gone"} ${spot === "home" ? "mirror" : ""}`}
+        ref={ref}
+        className={`tab-buddy ${shown ? "" : "gone"} ${spot === "home" ? "mirror" : ""}`}
         style={{ left: `calc(50% + ${pos.x}px)`, top: pos.y }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -1755,7 +1865,9 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
           setMenu((m) => !m);
         }}
       >
-        <Buddy size={SIZE} sleeping={sleeping} />
+        <div ref={inner} className="tb-inner">
+          <Buddy size={SIZE} sleeping={sleeping} />
+        </div>
       </div>
       {menu && shown && (
         <div className="buddy-menu" style={{ left: `calc(50% + ${Math.min(Math.max(pos.x - 160, -220), -110)}px)`, top: pos.y + (SIZE * 11) / 15 + 6 }} onClick={(e) => e.stopPropagation()}>

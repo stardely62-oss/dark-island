@@ -1121,3 +1121,15 @@
 .buddy-menu button:hover {
   background: rgb(255 255 255 / 0.1);
 }
+/* Hops are flown by script now: no sliding transitions. */
+.tab-buddy,
+.tab-buddy.gone {
+  transition: none;
+  transform-origin: 50% 0;
+}
+.tb-inner {
+  transform-origin: 50% 60%;
+}
+.tb-inner .buddy {
+  display: block;
+}
