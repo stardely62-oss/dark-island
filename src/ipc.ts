@@ -47,7 +47,7 @@ type Events = {
   foreground: string;
   ai_delta: { id: string; text: string };
   ai_done: { id: string; error: string | null };
-  dictation: { state: "rec" | "busy" | "done" | "error"; level?: number; text?: string };
+  dictation: { state: "rec" | "busy" | "done" | "error"; level?: number; text?: string; target?: string; privacy?: boolean };
   recording: { on: boolean; path?: string; error?: string };
   capture: { kind: "shot" | "text" | "qr" | "link" | "color" | "error"; text: string; thumb: string | null; path: string | null };
   outside_click: null;

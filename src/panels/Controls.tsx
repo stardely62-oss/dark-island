@@ -27,6 +27,8 @@ const TOOLS: [string, string, React.ReactNode][] = [
   ["ocr", "Текст с экрана", line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
   ["qr", "QR-код", line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
   ["color", "Пипетка", line(<><path d="m14.5 6.5 3 3M16 5l3 3-9.5 9.5H6.5v-3Z" /><path d="M6.5 17.5 4 20" /></>)],
+  ["voice", "Голос в текст", line(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /><path d="M2.5 9v3M21.5 9v3" /></>)],
+  ["pomodoro", "Помодоро", line(<><circle cx="12" cy="13.5" r="7" /><path d="M12 10v3.5l2.5 1.5M9.5 3.5h5M12 3.5v3" /></>)],
 ];
 
 export function ControlsTab({

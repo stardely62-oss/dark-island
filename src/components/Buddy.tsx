@@ -280,7 +280,8 @@ function startLife() {
     checkStickers();
     notify();
   }, 60_000);
-  window.setTimeout(checkStickers, 2500);
+  // Not at the very start: the first-run tour comes first.
+  window.setTimeout(checkStickers, 9000);
   const next = () => {
     const wait = 4000 + Math.random() * 9000;
     window.setTimeout(() => {

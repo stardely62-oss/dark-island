@@ -56,7 +56,7 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string };
+  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -221,7 +221,14 @@ export function App() {
   const accent2 = useMemo(() => shiftHue(accent, 45), [accent]);
 
   const cardTimer = useRef<number>(0);
+  // While the tour is on screen, other cards wait their turn instead of pushing it away.
+  const touring = useRef(false);
+  const waiting = useRef<Omit<Card, "key">[]>([]);
   const showCard = useCallback((c: Omit<Card, "key">) => {
+    if (touring.current && c.kind !== "tour") {
+      waiting.current.push(c);
+      return;
+    }
     clearTimeout(cardTimer.current);
     setCard({ ...c, key: Date.now() });
     if (!c.sticky)
@@ -418,8 +425,13 @@ export function App() {
           if (d.state === "rec" || d.state === "busy") setDictation({ state: d.state, level: d.level ?? 0 });
           else {
             setDictation(null);
-            if (d.state === "done") showCard({ kind: "capture", title: "Текст вставлен", sub: d.text, ms: 3500 });
-            else {
+            if (d.state === "done") {
+              // Into the chat box, or it was pasted where the cursor was.
+              if (d.target === "chat") window.dispatchEvent(new CustomEvent("chat-dictation", { detail: d.text ?? "" }));
+              else showCard({ kind: "capture", title: "Текст вставлен", sub: d.text, ms: 3500 });
+            } else if (d.privacy) {
+              showCard({ kind: "capture", title: "Диктовка Windows выключена", sub: "Открыть параметры конфиденциальности речи", open: { settings: "speech" }, ms: 8000 });
+            } else {
               buddy.react("angry", 1800);
               showCard({ kind: "info", title: "Диктовка", sub: d.text ?? "ошибка", ms: 3500 });
             }
@@ -611,7 +623,16 @@ export function App() {
   const tourStep = useCallback(
     (next: number | null) => {
       if (next === null || next >= TOUR.length) {
+        touring.current = false;
         setCard(null);
+        // What came in during the tour, one after another.
+        const flush = () => {
+          const c = waiting.current.shift();
+          if (!c) return;
+          showCard(c);
+          window.setTimeout(flush, (c.ms ?? CARD_MS) * cardScaleRef.current + 300);
+        };
+        window.setTimeout(flush, 600);
         try {
           localStorage.setItem("island.tour", "done");
         } catch {
@@ -620,6 +641,7 @@ export function App() {
         if (next !== null) buddy.react("happy", 1500);
         return;
       }
+      touring.current = true;
       buddy.act(next === 0 ? "wave" : next === 3 ? "juggle" : "think", 2600);
       showCard({ kind: "tour", title: "", step: next, sticky: true });
     },
@@ -634,7 +656,7 @@ export function App() {
     } catch {
       /* no storage */
     }
-    const t = done ? 0 : window.setTimeout(start, 2500);
+    const t = done ? 0 : window.setTimeout(start, 1200);
     return () => {
       clearTimeout(t);
       window.removeEventListener("island-tour", start);
@@ -1129,6 +1151,7 @@ export function App() {
             if (card.open.url) api?.call("open_url", { url: card.open.url });
             if (card.open.app) api?.call("app_launch", { id: card.open.app });
             if (card.open.reveal) api?.call("reveal_path", { path: card.open.reveal });
+            if (card.open.settings) api?.call("open_windows_settings", { page: card.open.settings });
             if (card.open.translate) {
               setAiTool({ text: card.open.translate, action: "translate" });
               setTab("ai");
@@ -1210,7 +1233,10 @@ export function App() {
             onAsked={() => setAiAsk(null)}
             tool={aiTool}
             onTool={() => setAiTool(null)}
-            openSettings={() => setTab("settings")}
+            openSettings={() => {
+              setTab("settings");
+              window.setTimeout(() => window.dispatchEvent(new CustomEvent("settings-section", { detail: "ИИ" })), 50);
+            }}
           />,
         )}
         {frame(
@@ -1229,7 +1255,10 @@ export function App() {
             visible={mode === "expanded" && tab === "controls"}
             lastColor={((settings.colorHistory as string[] | undefined) ?? [])[0] ?? null}
             onTool={(m) => {
+              if (m === "pomodoro") return pomodoro(!pomoRef.current);
               dismiss();
+              // The island folds first, so the text goes to the window you were in.
+              if (m === "voice") return void window.setTimeout(() => api?.call("dictate_toggle"), 250);
               if (m === "record") api?.call("record_toggle_cmd");
               else api?.call("capture_start", { mode: m });
             }}

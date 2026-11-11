@@ -12,6 +12,8 @@ mod meter;
 #[cfg(windows)]
 pub mod record;
 #[cfg(windows)]
+pub mod speech;
+#[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub use self::meter::spawn as spawn_meter;

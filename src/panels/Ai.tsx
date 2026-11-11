@@ -62,6 +62,33 @@ export function AiTab({
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [docs, setDocs] = useState<AiDoc[]>([]);
+  // ---- dictation into the box ----
+  const [listening, setListening] = useState<"" | "rec" | "busy">("");
+  const mine = useRef(false);
+  useEffect(() => {
+    if (!api) return;
+    return api.on("dictation", (d) => {
+      if (!mine.current) return;
+      if (d.state === "rec" || d.state === "busy") setListening(d.state);
+      else {
+        setListening("");
+        mine.current = false;
+      }
+    });
+  }, [api]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail.trim();
+      if (t) setInput((v) => (v.trim() ? `${v.trimEnd()} ${t}` : t));
+    };
+    window.addEventListener("chat-dictation", on);
+    return () => window.removeEventListener("chat-dictation", on);
+  }, []);
+  const dictate = () => {
+    mine.current = true;
+    if (!listening) setListening("rec");
+    api?.call("dictate_toggle", { target: "chat" });
+  };
   const [docErr, setDocErr] = useState<string | null>(null);
   const attach = () =>
     api?.call<{ name: string; text: string | null; error: string | null }[]>("doc_pick").then((list) => {
@@ -256,6 +283,17 @@ export function AiTab({
                 }
               }}
             />
+            <button
+              className={`mic-btn ${listening}`}
+              aria-label={listening ? "Закончить диктовку" : "Сказать голосом"}
+              title={listening === "busy" ? "Распознаю…" : listening ? "Нажми, когда закончишь" : "Сказать голосом"}
+              onClick={dictate}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+              </svg>
+            </button>
             {busy ? (
               <button className="send" aria-label="Остановить" onClick={() => (stopRef.current?.(), setBusy(false))}>
                 <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>

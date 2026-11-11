@@ -41,6 +41,7 @@ windows = { version = "0.62", features = [
   "Foundation",
   "Foundation_Collections",
   "Globalization",
+  "Media_SpeechRecognition",
   "Graphics_Imaging",
   "Media_Ocr",
   "UI_Notifications",

@@ -101,40 +101,55 @@ export function SettingsTab({
   // ---- search and sections ----
   const listRef = useRef<HTMLDivElement>(null);
   const [q, setQ] = useState("");
+  /** The open section (by its place in the list); a search looks through all of them. */
+  const [section, setSection] = useState(0);
   const [groups, setGroups] = useState<string[]>([]);
   useEffect(() => {
     const root = listRef.current;
     if (!root) return;
     setGroups([...root.querySelectorAll<HTMLElement>(":scope > .set-group")].map((g) => g.textContent ?? ""));
   }, [visible, settings.buddyName]);
-  // Rows that don't match hide; a section without matches hides its title.
+  // One section at a time; a search shows matching rows from all of them
+  // (a section without matches hides its title).
   useEffect(() => {
     const root = listRef.current;
     if (!root) return;
     const f = q.trim().toLowerCase();
     let group: HTMLElement | null = null;
+    let gi = -1;
     let any = false;
-    const close = () => group && (group.style.display = f && !any ? "none" : "");
+    const close = () => group && (group.style.display = (f && !any) || (!f && gi !== section) ? "none" : "");
     for (const el of root.querySelectorAll<HTMLElement>(":scope > *")) {
       if (el.classList.contains("set-tools")) continue;
       if (el.classList.contains("set-group")) {
         close();
         group = el;
+        gi++;
         any = !f || (el.textContent ?? "").toLowerCase().includes(f);
         el.dataset.match = any ? "1" : "";
         continue;
       }
-      const hit = !f || group?.dataset.match === "1" || (el.textContent ?? "").toLowerCase().includes(f);
+      const hit = f ? group?.dataset.match === "1" || (el.textContent ?? "").toLowerCase().includes(f) : gi === section;
       el.style.display = hit ? "" : "none";
       if (hit) any = true;
     }
     close();
-  }, [q, settings]);
-  const jump = (name: string) => {
+  }, [q, settings, section, visible]);
+  const jump = (i: number) => {
     setQ("");
-    const g = [...(listRef.current?.querySelectorAll<HTMLElement>(":scope > .set-group") ?? [])].find((x) => x.textContent === name);
-    g?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setSection(i);
+    listRef.current?.scrollTo({ top: 0 });
   };
+  // Other tabs can open a section by its name (e.g. "ИИ" to add a key).
+  useEffect(() => {
+    const on = (e: Event) => {
+      const name = (e as CustomEvent<string>).detail;
+      const i = [...(listRef.current?.querySelectorAll<HTMLElement>(":scope > .set-group") ?? [])].findIndex((g) => g.textContent?.startsWith(name));
+      if (i >= 0) jump(i);
+    };
+    window.addEventListener("settings-section", on);
+    return () => window.removeEventListener("settings-section", on);
+  }, []);
   // ---- data and version ----
   const [dataMsg, setDataMsg] = useState<string | null>(null);
   const [resetArmed, setResetArmed] = useState(false);
@@ -221,8 +236,8 @@ export function SettingsTab({
         <input className="search" placeholder="Поиск по настройкам" value={q} onFocus={onTypeStart} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} />
         {!q && (
           <div className="set-jump">
-            {groups.map((g) => (
-              <button key={g} className="chip" onClick={() => jump(g)}>
+            {groups.map((g, i) => (
+              <button key={g} className={`chip ${i === section ? "on" : ""}`} onClick={() => jump(i)}>
                 {g.replace(/\s*\(.*\)$/, "")}
               </button>
             ))}
@@ -501,22 +516,38 @@ export function SettingsTab({
         </button>
       </Row>
 
-      <div className="set-group">Голос в текст (Ctrl+Alt+D)</div>
-      <Row title="Сервис распознавания" sub="Whisper; ключ тот же, что для ИИ этого сервиса">
+      <div className="set-group">Голос в текст</div>
+      <Row
+        title="Чем распознавать"
+        sub={
+          settings.sttService === "windows"
+            ? "Распознавание Windows: без ключа и регистрации. Нужно включить «Распознавание речи в сети» и языковой пакет речи"
+            : "Whisper — точнее, особенно на длинных фразах; ключ тот же, что для ИИ этого сервиса"
+        }
+      >
         <Segmented
-          value={(settings.sttService as string) ?? "groq"}
+          value={settings.sttService}
           options={[
+            ["windows", "Windows"],
             ["groq", "Groq"],
             ["openai", "OpenAI"],
           ]}
           onChange={(v) => set({ sttService: v })}
         />
       </Row>
-      {!keyStatus[(settings.sttService as string) ?? "groq"] &&
+      {settings.sttService === "windows" && (
+        <Row title="Параметры речи Windows" sub="Если диктовка пишет, что выключена, — включи там распознавание в сети">
+          <button className="text-btn solid" onClick={() => api?.call("open_windows_settings", { page: "speech" })}>
+            Открыть
+          </button>
+        </Row>
+      )}
+      {settings.sttService !== "windows" &&
+        !keyStatus[settings.sttService] &&
         keyRow({
-          id: (settings.sttService as string) ?? "groq",
+          id: settings.sttService,
           title: "Ключ для диктовки",
-          url: PROVIDERS.find((p) => p.id === ((settings.sttService as string) ?? "groq"))?.keyUrl,
+          url: PROVIDERS.find((p) => p.id === settings.sttService)?.keyUrl,
         })}
       <Row title="Язык">
         <Segmented

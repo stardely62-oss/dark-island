@@ -801,6 +801,7 @@ fn open_windows_settings(app: AppHandle, page: String) {
     let uri = match page.as_str() {
         "notifications" => "ms-settings:privacy-notifications",
         "microphone" => "ms-settings:privacy-microphone",
+        "speech" => "ms-settings:privacy-speech",
         "vpn" => "ms-settings:network-vpn",
         "bluetooth" => "ms-settings:bluetooth",
         "sound" => "ms-settings:sound",
@@ -860,12 +861,14 @@ async fn paste_text(app: AppHandle, text: String, paste: bool) {
 
 // ---- dictation -------------------------------------------------------------------
 
+/// Starts or stops dictation. `target` "chat" puts the text in the AI chat
+/// box; otherwise it goes to the clipboard and (if allowed) into the window.
 #[tauri::command]
-fn dictate_toggle(app: AppHandle) {
-    dictate(&app);
+fn dictate_toggle(app: AppHandle, target: Option<String>) {
+    dictate(&app, target.unwrap_or_default());
 }
 
-fn dictate(app: &AppHandle) {
+fn dictate(app: &AppHandle, target: String) {
     let ctl = app.state::<Ctl>();
     if let Some(stop) = ctl.dictation.lock().unwrap().take() {
         stop.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -878,40 +881,59 @@ fn dictate(app: &AppHandle) {
         let app = app.clone();
         std::thread::spawn(move || {
             let emit = |state: &str, extra: serde_json::Value| {
-                let mut v = serde_json::json!({ "state": state });
+                let mut v = serde_json::json!({ "state": state, "target": target });
                 if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
                     o.extend(e.clone());
                 }
                 let _ = app.emit_to("island", "dictation", v);
             };
-            emit("rec", serde_json::json!({ "level": 0 }));
-            let samples = sys::record::record_mic(stop, |l| emit("rec", serde_json::json!({ "level": l })));
             let ctl = app.state::<Ctl>();
-            *ctl.dictation.lock().unwrap() = None;
-            let samples = match samples {
-                Ok(s) if s.len() > 16_000 / 3 => s,
-                Ok(_) => return emit("error", serde_json::json!({ "text": "Слишком коротко" })),
-                Err(e) => return emit("error", serde_json::json!({ "text": e })),
-            };
-            emit("busy", serde_json::json!({}));
             let s = ctl.settings.all();
             let get = |k: &str, d: &str| s.get(k).and_then(|v| v.as_str()).unwrap_or(d).to_string();
-            let service = get("sttService", "groq");
-            let (base, model) = match service.as_str() {
-                "openai" => ("https://api.openai.com/v1".to_string(), "whisper-1".to_string()),
-                _ => ("https://api.groq.com/openai/v1".to_string(), "whisper-large-v3-turbo".to_string()),
+            let service = get("sttService", "windows");
+            let lang = get("sttLang", "ru");
+            emit("rec", serde_json::json!({ "level": 0 }));
+            let result: Result<String, (String, bool)> = if service == "windows" {
+                // Windows listens itself; the microphone is read alongside only for the level.
+                let (stop2, app2) = (stop.clone(), app.clone());
+                let meter = std::thread::spawn(move || {
+                    let _ = sys::record::record_mic(stop2, |l| {
+                        let _ = app2.emit_to("island", "dictation", serde_json::json!({ "state": "rec", "level": l }));
+                    });
+                });
+                let r = sys::speech::dictate(&lang, stop.clone(), || {}).map_err(|e| (e.text, e.privacy));
+                stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = meter.join();
+                r
+            } else {
+                let samples = sys::record::record_mic(stop.clone(), |l| emit("rec", serde_json::json!({ "level": l })));
+                match samples {
+                    Ok(s) if s.len() > 16_000 / 3 => {
+                        emit("busy", serde_json::json!({}));
+                        let (base, model) = match service.as_str() {
+                            "openai" => ("https://api.openai.com/v1".to_string(), "whisper-1".to_string()),
+                            _ => ("https://api.groq.com/openai/v1".to_string(), "whisper-large-v3-turbo".to_string()),
+                        };
+                        ai::transcribe(&ctl.keys, &service, &base, &model, ai::wav(&s, 16_000), &lang).map_err(|e| (e, false))
+                    }
+                    Ok(_) => Err(("Слишком коротко".into(), false)),
+                    Err(e) => Err((e, false)),
+                }
             };
-            match ai::transcribe(&ctl.keys, &service, &base, &model, ai::wav(&samples, 16_000), &get("sttLang", "ru")) {
-                Ok(text) if !text.is_empty() => {
-                    let paste = ctl.settings.bool("dictationPaste", true);
-                    if put_on_clipboard(ClipData::Text(text.clone())) && paste {
-                        std::thread::sleep(std::time::Duration::from_millis(80));
-                        sys::send_paste();
+            *ctl.dictation.lock().unwrap() = None;
+            match result {
+                Ok(text) if !text.trim().is_empty() => {
+                    if target != "chat" {
+                        let paste = ctl.settings.bool("dictationPaste", true);
+                        if put_on_clipboard(ClipData::Text(text.clone())) && paste {
+                            std::thread::sleep(std::time::Duration::from_millis(80));
+                            sys::send_paste();
+                        }
                     }
                     emit("done", serde_json::json!({ "text": text }));
                 }
                 Ok(_) => emit("error", serde_json::json!({ "text": "Речь не распознана" })),
-                Err(e) => emit("error", serde_json::json!({ "text": e })),
+                Err((e, privacy)) => emit("error", serde_json::json!({ "text": e, "privacy": privacy })),
             }
         });
     }
@@ -1067,7 +1089,7 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
                 } else if *sc == chat {
                     "chat"
                 } else if *sc == dictation {
-                    dictate(app);
+                    dictate(app, String::new());
                     return;
                 } else if *sc == record {
                     record_toggle(app);

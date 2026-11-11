@@ -33,6 +33,7 @@ export const DEFAULTS = {
   recordSound: "none" as "none" | "system" | "mic",
   buddyLife: true,
   buddySounds: false,
+  sttService: "windows" as "windows" | "groq" | "openai",
   userBirthday: "",
   breakReminder: true,
   breakMinutes: 50,

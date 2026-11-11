@@ -1154,7 +1154,7 @@ textarea.note::placeholder {
 
 .tools-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 .tool-btn {
@@ -2484,4 +2484,71 @@ header .buddy-home {
   height: 38px;
   min-height: 0;
   flex: none;
+}
+.chat-input .mic-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--fg-2);
+}
+.chat-input .mic-btn:hover {
+  color: var(--fg);
+  background: rgb(255 255 255 / 0.1);
+}
+.chat-input .mic-btn.rec {
+  color: #fff;
+  background: #ff453a;
+  animation: rec 1.2s ease-in-out infinite;
+}
+.chat-input .mic-btn.busy {
+  color: #fff;
+  background: rgb(255 255 255 / 0.2);
+}
+
+/* settings: one section at a time */
+.set-jump .chip {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.set-jump .chip.on {
+  background: #d97757;
+  color: #1a0d08;
+  font-weight: 600;
+}
+.tab-settings > .set-group {
+  margin: 8px 2px 6px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+}
+.tools-row .tool-btn {
+  padding: 0 2px;
+  font-size: 11px;
+}
+.tile-wrap .ctl-tile {
+  padding-right: 26px;
+}
+.tile-more {
+  width: 22px;
+  height: 22px;
+  right: 4px;
+}
+.ctl-grid .ctl-tile {
+  gap: 7px;
+  padding-left: 8px;
+}
+.ctl-grid .ctl-icon {
+  width: 30px;
+  height: 30px;
+}
+.tile-wrap .ctl-tile {
+  padding-right: 22px;
+}
+.tile-more {
+  right: 2px;
 }
