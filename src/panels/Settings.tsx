@@ -880,7 +880,7 @@ export function SettingsTab({
       {settings.vpnClient === "app" && (
         <Row
           title="VPN-программа"
-          sub="Happ, Incy, v2rayN, Hiddify… С системным прокси остров переключает сам, в режиме TUN — открывает программу"
+          sub="Happ и Incy включаются и выключаются сами (по ссылкам happ://connect, incy://disconnect), в любом режиме. Остальные (v2rayN, Hiddify…): системный прокси остров переключает сам, в режиме TUN — открывает программу"
         >
           <input
             className="search set-input"

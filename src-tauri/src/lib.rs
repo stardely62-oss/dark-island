@@ -738,6 +738,12 @@ async fn vpn_set(app: AppHandle, on: bool) -> Result<(), String> {
     r
 }
 
+/// The link scheme of a VPN program that can be switched by link, if it is installed.
+fn vpn_scheme(id: &str) -> Option<&'static str> {
+    let low = id.to_lowercase();
+    ["happ", "incy"].into_iter().find(|s| low.contains(s) && sys::scheme_registered(s))
+}
+
 fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), String> {
     let id = s.string("vpnApp");
     if id.is_empty() {
@@ -749,6 +755,14 @@ fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), Stri
         .next()
         .filter(|n| n.to_lowercase().ends_with(".exe"))
         .map(|n| n[..n.len() - 4].to_lowercase());
+    // Happ and Incy take commands by link: happ://connect, incy://disconnect.
+    if let Some(scheme) = vpn_scheme(&format!("{id} {}", s.string("vpnAppName"))) {
+        let url = format!("{scheme}://{}", if on { "connect" } else { "disconnect" });
+        if sys::open_scheme(&url) {
+            diag::log(app, &format!("vpn app: {url}"));
+            return Ok(());
+        }
+    }
     let running = exe.as_ref().is_some_and(|e| sys::running_exes().contains(e));
     let remember = |server: &str| {
         let mut m = serde_json::Map::new();

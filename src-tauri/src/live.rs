@@ -318,6 +318,9 @@ impl Steam {
 
 const PARTIAL: &[&str] = &["crdownload", "part", "partial", "download", "opdownload"];
 
+/// How long a partial file may sit unchanged before it no longer counts as downloading.
+const STALE: Duration = Duration::from_secs(40);
+
 /// Chromium browsers (Chrome, Edge, Yandex, Opera) write to
 /// "Unconfirmed 241032.crdownload" until they know the real name.
 const UNCONFIRMED: &[&str] = &["Unconfirmed", "Не подтвержден", "Не підтверджено", "Nicht bestätigt", "Non confirmé", "No confirmado", "Niepotwierdzony"];
@@ -355,14 +358,26 @@ pub fn spawn_downloads(app: AppHandle) {
         let mut last = Instant::now();
         let mut active_before = false;
         let mut steam = Steam::default();
+        let mut grew: HashMap<String, Instant> = HashMap::new();
         loop {
             thread::sleep(Duration::from_secs(2));
             let now = list(&dir);
             let secs = last.elapsed().as_secs_f64().max(0.5);
             last = Instant::now();
+            // A partial file that stopped growing (a paused, failed or abandoned
+            // download the browser left behind) leaves the pill after a while.
+            for (n, &size) in now.iter().filter(|(n, _)| partial(n)) {
+                if before.get(n) != Some(&size) {
+                    grew.insert(n.clone(), Instant::now());
+                } else if !grew.contains_key(n) {
+                    // Already there and not growing when the island started: leftovers.
+                    grew.insert(n.clone(), Instant::now().checked_sub(STALE).unwrap_or_else(Instant::now));
+                }
+            }
+            grew.retain(|n, _| now.contains_key(n));
             let active: Vec<Download> = now
                 .iter()
-                .filter(|(n, _)| partial(n))
+                .filter(|(n, _)| partial(n) && grew.get(*n).is_some_and(|t| t.elapsed() < STALE))
                 .map(|(n, &size)| {
                     let prev = before.get(n).copied().unwrap_or(size);
                     let name = partial_name(n);

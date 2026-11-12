@@ -64,7 +64,7 @@ use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
 use windows::Win32::Foundation::{FILETIME, LPARAM, WPARAM};
 use windows::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
 use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
-use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
+use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
 use windows::Win32::System::Power::SetSuspendState;
 use windows::Win32::System::Shutdown::LockWorkStation;
 use windows::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE};
@@ -1643,6 +1643,19 @@ pub fn running_exes() -> std::collections::HashSet<String> {
         let _ = CloseHandle(snap);
     }
     out
+}
+
+/// Whether a URL scheme such as `happ://` is registered on this computer.
+pub fn scheme_registered(scheme: &str) -> bool {
+    unsafe { reg_string(HKEY_CLASSES_ROOT, &format!("{scheme}\\shell\\open\\command"), "").is_some() }
+}
+
+/// Opens a URL with whatever program its scheme belongs to (`happ://connect`).
+pub fn open_scheme(url: &str) -> bool {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let r = unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(url), None, None, SW_SHOWNORMAL) };
+    r.0 as isize > 32
 }
 
 /// Runs a command line hidden, asking for administrator rights (UAC).
