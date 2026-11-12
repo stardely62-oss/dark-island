@@ -38,6 +38,7 @@ export function ControlsTab({
   onTool,
   onCopyColor,
   micMuted,
+  micUsers = [],
   onMic,
   through,
   onThrough,
@@ -49,6 +50,8 @@ export function ControlsTab({
   onTool: (mode: string) => void;
   onCopyColor: (c: string) => void;
   micMuted: boolean;
+  /** Programs listening to the microphone right now. */
+  micUsers?: string[];
   onMic: () => void;
   through: boolean;
   onThrough: (v: boolean) => void;
@@ -183,7 +186,13 @@ export function ControlsTab({
             </div>
             {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, vpnErr ? "не вышло" : vpn ? vpn : vpnClient === "warp" ? "WARP выключен" : "выключен")}
             {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
-            {tile("mic", MIC, "Микрофон", !micMuted, micMuted ? "выключен" : "включён")}
+            {tile(
+              "mic",
+              MIC,
+              "Микрофон",
+              !micMuted,
+              micMuted ? "выключен" : micUsers.length ? `слушает ${micUsers.map((a) => a.replace(/\.exe$/i, "")).join(", ")}` : "включён",
+            )}
             {tile("through", THROUGH, "Сквозной", through, through ? "клики насквозь" : "выключен")}
           </div>
           {btOpen ? (

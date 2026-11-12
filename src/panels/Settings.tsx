@@ -157,6 +157,15 @@ export function SettingsTab({
   }, []);
   // ---- data and version ----
   const [dataMsg, setDataMsg] = useState<string | null>(null);
+  const [checks, setChecks] = useState<{ group: string; title: string; status: "ok" | "warn" | "fail"; detail: string }[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const runCheck = () => {
+    setChecking(true);
+    api
+      ?.call<typeof checks>("self_check")
+      .then((c) => setChecks(c ?? []))
+      .finally(() => setChecking(false));
+  };
   const [resetArmed, setResetArmed] = useState(false);
   const [updateErr, setUpdateErr] = useState<string | null>(null);
   const [update, setUpdate] = useState<{ current: string; latest: string; url: string; newer: boolean } | null>(null);
@@ -892,6 +901,28 @@ export function SettingsTab({
         />
       </Row>
 
+      <div className="set-group" data-tab="7">Проверка</div>
+      <div className="set-row check-run">
+        <div className="set-text">
+          <div className="set-title">Проверить всё на этом компьютере</div>
+          <div className="set-sub">Горячие клавиши, звук и микрофон, распознавание текста и речи, ключи, Wi-Fi и Bluetooth, уведомления, сеть, агенты, OBS, Steam</div>
+        </div>
+        <button className="text-btn solid accent" disabled={checking} onClick={runCheck}>
+          {checking ? "Проверяю…" : checks ? "Ещё раз" : "Проверить"}
+        </button>
+      </div>
+      {checks && (
+        <div className="check-list">
+          {checks.map((c, i) => (
+            <div key={i} className={`check-item ${c.status}`}>
+              <i>{c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✕"}</i>
+              <span className="check-group">{c.group}</span>
+              <b>{c.title}</b>
+              <span className="check-detail">{c.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="set-group" data-tab="7">Данные и версия</div>
       <Row title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
         <button

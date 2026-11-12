@@ -2752,3 +2752,45 @@ body.settings-page.preview {
   font-weight: 700;
   color: var(--fg-2);
 }
+
+/* self-check */
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.check-item {
+  display: grid;
+  grid-template-columns: 22px 100px 160px 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.03);
+  font-size: 12.5px;
+}
+.check-item i {
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
+}
+.check-item.ok i {
+  color: #7cbf5a;
+}
+.check-item.warn i {
+  color: #f5c451;
+}
+.check-item.fail i {
+  color: #ff6b5b;
+}
+.check-item.fail {
+  background: rgb(255 80 60 / 0.08);
+}
+.check-group {
+  color: var(--fg-3);
+  font-size: 11.5px;
+}
+.check-detail {
+  color: var(--fg-2);
+  min-width: 0;
+}

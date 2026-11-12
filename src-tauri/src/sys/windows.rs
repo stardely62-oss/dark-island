@@ -1241,6 +1241,21 @@ unsafe fn reg_string(root: HKEY, path: &str, name: &str) -> Option<String> {
     Some(String::from_utf16_lossy(&buf[..len]))
 }
 
+/// A string or a number from HKEY_CURRENT_USER, for the self-check.
+pub fn reg_hkcu(path: &str, name: &str) -> Option<String> {
+    unsafe {
+        if let Some(s) = reg_string(HKEY_CURRENT_USER, path, name) {
+            return Some(s);
+        }
+        let mut v = 0u32;
+        let mut size = 4u32;
+        RegGetValueW(HKEY_CURRENT_USER, &HSTRING::from(path), &HSTRING::from(name), RRF_RT_REG_DWORD, None, Some(&mut v as *mut u32 as *mut _), Some(&mut size))
+            .ok()
+            .ok()?;
+        Some(v.to_string())
+    }
+}
+
 /// Where Steam is installed, if it is.
 pub fn steam_path() -> Option<String> {
     unsafe { reg_string(HKEY_CURRENT_USER, "Software\\Valve\\Steam", "SteamPath") }

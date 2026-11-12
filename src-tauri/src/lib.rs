@@ -5,6 +5,7 @@ mod clip;
 mod docs;
 mod diag;
 mod live;
+mod check;
 mod obs;
 mod settings;
 mod cursor;
@@ -489,6 +490,11 @@ fn agents_answer(ctl: State<'_, Ctl>, id: u64, allow: bool) {
 #[tauri::command]
 fn agents_connections() -> agents::Connections {
     agents::connections()
+}
+
+#[tauri::command]
+async fn self_check(app: AppHandle) -> Vec<check::Check> {
+    check::run(&app)
 }
 
 #[tauri::command]
@@ -1234,9 +1240,17 @@ fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
             })
             .build(),
     )?;
-    // Another program may already own a combination: the rest still work.
-    for sc in [toggle, clipboard, command, mic, through, dictation, record, chat, plain, vpn].into_iter().chain(screen_keys) {
-        let _ = app.global_shortcut().register(sc);
+    // Another program may already own a combination: the rest still work,
+    // and the self-check names the ones that were taken.
+    let names = [
+        "Ctrl+Alt+I", "Ctrl+Alt+V", "Alt+Space", "Ctrl+Alt+M", "Ctrl+Alt+T", "Ctrl+Alt+D", "Ctrl+Alt+R", "Ctrl+Alt+A", "Ctrl+Alt+Shift+V",
+        "Ctrl+Alt+P", "Ctrl+Alt+S", "Ctrl+Alt+Shift+S", "Ctrl+Alt+O", "Ctrl+Alt+Q", "Ctrl+Alt+C",
+    ];
+    let keys = [toggle, clipboard, command, mic, through, dictation, record, chat, plain, vpn].into_iter().chain(screen_keys);
+    for (sc, name) in keys.zip(names) {
+        if app.global_shortcut().register(sc).is_err() {
+            check::HOTKEYS_TAKEN.lock().unwrap().push(name.to_string());
+        }
     }
     Ok(())
 }
@@ -1370,6 +1384,7 @@ pub fn run() {
             settings_open,
             tour_start,
             agents_test,
+            self_check,
             settings_export,
             settings_import,
             settings_reset,

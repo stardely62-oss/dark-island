@@ -342,6 +342,12 @@ function mockBridge(): Bridge {
       mockVpn = a.on ? "Офис" : null;
     },
     launcher_hotkeys: () => [],
+    self_check: () => [
+      { group: "Остров", title: "Горячие клавиши", status: "warn", detail: "заняты другой программой: Alt+Space" },
+      { group: "Звук", title: "Микрофон сейчас", status: "warn", detail: "слушает: Discord.exe (это и есть оранжевая точка)" },
+      { group: "Распознавание", title: "Речь в сети", status: "fail", detail: "выключено — диктовка Windows не запустится" },
+      { group: "Сеть", title: "Погода", status: "ok", detail: "MET Norway отвечает" },
+    ],
     doc_pick: () => [{ name: "Отчёт.pdf", text: "Выручка за ноябрь выросла на 12%…", error: null }],
     ai_key_status: (a) => Object.fromEntries((a.ids as string[]).map((i) => [i, i === "anthropic"])),
     ai_key_set: () => null,

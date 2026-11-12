@@ -163,6 +163,7 @@ export function App() {
   // True while real audio levels arrive; otherwise the bars use a CSS loop.
   const [live, setLive] = useState(false);
   const [presence, setPresence] = useState<Presence>("normal");
+  const presenceRef = useRef<Presence>("normal");
   const [away, setAway] = useState(false);
   const [clips, setClips] = useState<Clip[]>([]);
   const [shelf, setShelf] = useState<ShelfItem[]>([]);
@@ -186,6 +187,7 @@ export function App() {
   const launcherFailed = useLauncherHotkeys(api, settings.launcher as Shortcut[]);
   const [weather, setWeather] = useState<Weather | null>(null);
   const [privacy, setPrivacy] = useState<{ mic: string[]; cam: string[]; micMuted: boolean }>({ mic: [], cam: [], micMuted: false });
+  const privacyRef = useRef<{ mic: string[]; cam: string[]; micMuted: boolean }>({ mic: [], cam: [], micMuted: false });
   const [downloads, setDownloads] = useState<{ name: string; size: number; speed: number; total: number }[]>([]);
   const obsLive = useRef(false);
   const [obs, setObs] = useState<{ recording: boolean; streaming: boolean; paused: boolean; since: number } | null>(null);
@@ -371,15 +373,14 @@ export function App() {
         b.on("media", setMedia),
         b.on("battery", setBattery),
         b.on("presence", (p) => {
-          setPresence((before) => {
-            // Into a game: he waves good luck before the island goes away.
-            if (p === "hidden" && before !== "hidden") {
-              buddy.act("wave", 1500);
-              buddy.count("game");
-              showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1500 });
-            }
-            return p;
-          });
+          // Into a game: he waves good luck before the island goes away.
+          if (p === "hidden" && presenceRef.current !== "hidden") {
+            buddy.act("wave", 1500);
+            buddy.count("game");
+            showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1500 });
+          }
+          presenceRef.current = p;
+          setPresence(p);
         }),
         b.on("away", setAway),
         b.on("clips", (c) => {
@@ -446,14 +447,15 @@ export function App() {
         }),
         b.on("privacy", (p) => {
           // A card when a program starts using the microphone or the camera.
-          setPrivacy((before) => {
-            const fresh = [
-              ...p.cam.filter((a) => !before.cam.includes(a)).map((a) => ["Камера", a]),
-              ...p.mic.filter((a) => !before.mic.includes(a)).map((a) => ["Микрофон", a]),
-            ];
-            if (fresh.length) showCard({ kind: "info", title: fresh[0][0], sub: fresh[0][1], ms: 2500 });
-            return p;
-          });
+          const before = privacyRef.current;
+          const pretty = (a: string) => (/dark-island/i.test(a) ? "сам остров" : a.replace(/\.exe$/i, ""));
+          const fresh = [
+            ...p.cam.filter((a) => !before.cam.includes(a)).map((a) => ["Камеру включил", pretty(a)]),
+            ...p.mic.filter((a) => !before.mic.includes(a)).map((a) => ["Микрофон слушает", pretty(a)]),
+          ];
+          if (fresh.length) showCard({ kind: "info", title: fresh[0][0], sub: fresh[0][1], ms: 3500 });
+          privacyRef.current = p;
+          setPrivacy(p);
         }),
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
@@ -565,6 +567,7 @@ export function App() {
       setVolume(s.volume);
       setBattery(s.battery);
       setPresence(s.presence);
+      presenceRef.current = s.presence;
       setClips(c ?? []);
       setShelf(sh ?? []);
       knownVolume.current = s.volume;
@@ -1278,6 +1281,7 @@ export function App() {
               else api?.call("capture_start", { mode: m });
             }}
             micMuted={privacy.micMuted}
+            micUsers={privacy.mic}
             through={!!settings.through}
             onThrough={(v) => setSetting({ through: v })}
             vpnClient={settings.vpnClient}

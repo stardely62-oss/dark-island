@@ -89,6 +89,8 @@ pub fn dictate(lang: &str, stop: Arc<AtomicBool>, mut on_hint: impl FnMut()) -> 
     // Stopping lets the last phrase finish and arrive.
     let _ = session.StopAsync().and_then(|op| op.join());
     std::thread::sleep(Duration::from_millis(150));
+    // Let go of the microphone for sure (else the orange dot stays on).
+    let _ = rec.Close();
     let text = said.lock().unwrap().join(" ");
     Ok(text)
 }
