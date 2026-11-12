@@ -1507,10 +1507,16 @@ function paintLight(
   });
   if (glow) {
     const e = L.energy;
+    // The halo hangs below the island; the window ends not far below an open
+    // panel, so it shrinks to the room there is instead of being cut off.
+    const room = window.innerHeight - L.h;
+    const height = Math.max(0, Math.min(60, room + 4));
+    const fit = Math.min(1, height / 36);
     glow.style.width = `${L.w * 0.86}px`;
+    glow.style.height = `${height}px`;
     glow.style.top = `${L.h - 26}px`;
     glow.style.left = `${cx}px`;
-    glow.style.opacity = Math.min(1, m * (0.18 + 0.6 * e + 0.35 * L.beat)).toFixed(3);
+    glow.style.opacity = Math.min(1, fit * m * (0.18 + 0.6 * e + 0.35 * L.beat)).toFixed(3);
     glow.style.transform = `translateX(-50%) scale(${(1 + 0.08 * e + 0.12 * L.beat).toFixed(3)})`;
   }
 }

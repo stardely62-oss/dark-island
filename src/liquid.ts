@@ -24,23 +24,23 @@ export type Drive = {
 
 // Music: band levels follow the sound quickly on the way up and slowly on
 // the way down (like a VU meter), then the edge springs filter them again.
-const ATTACK = 0.07; // s
-const RELEASE = 0.3; // s
-const BASS_SAG = 9; // px the middle of the edge drops on a kick
-const MID_WAVE = 3.6; // px
-const HIGH_WAVE = 2; // px
-const SWAY = 0.8; // px, always there while music plays
-const BASS_GROW = 4; // px the body widens on a kick
+const ATTACK = 0.045; // s
+const RELEASE = 0.22; // s
+const BASS_SAG = 13; // px the edge drops on a kick (where: drifts along the edge)
+const MID_WAVE = 5.5; // px
+const HIGH_WAVE = 3.2; // px
+const SWAY = 1.4; // px, always there while music plays
+const BASS_GROW = 7; // px the body widens on a kick
 
 // Beats: a kick that clearly stands out from the recent bass level.
-const BEAT_MIN_GAP = 0.3; // s
-const BEAT_BODY = 55; // px/s: the body gets a soft push down
-const BEAT_EDGE = 32; // px/s: and a ripple runs along the edge
+const BEAT_MIN_GAP = 0.26; // s
+const BEAT_BODY = 80; // px/s: the body gets a soft push down
+const BEAT_EDGE = 48; // px/s: and a ripple runs along the edge
 
 // Drops: now and then, on a strong beat, a drop swells on the edge,
 // breaks off and melts away as it falls.
 const DROPS = true;
-const DROP_GAP = 1.6; // s, at least
+const DROP_GAP = 1.2; // s, at least
 const DROP_SWELL = 0.3; // s to swell before it breaks off
 const DROP_R = 4.2; // px
 const DROP_LIFE = 0.65; // s
@@ -58,11 +58,11 @@ const SHRINK_K = 150;
 const SHRINK_C = 24;
 
 // Edge chain.
-const EDGE_K = 70; // pull towards the target shape
+const EDGE_K = 85; // pull towards the target shape
 const EDGE_T = 2600; // tension between neighbours: the smoothing force
 const EDGE_D = 10; // damping
 const INERTIA = 0.028; // how much the edge lags behind the body's motion
-const EDGE_MAX = 18; // px, hard safety limit
+const EDGE_MAX = 22; // px, hard safety limit
 
 // Cursor attraction.
 const REACH = 120; // px: distance at which the edge starts to reach
@@ -84,6 +84,8 @@ export class Liquid {
   private v = new Float32Array(N);
   private goal = new Float32Array(N);
   private _music = 0;
+  private phMid = 0;
+  private phHigh = 0;
   /** Smoothed band levels, 0..1. */
   readonly levels = new Float32Array(6);
   t = 0;
@@ -143,8 +145,8 @@ export class Liquid {
     let hit = 0;
     if (
       d.music > 0.5 &&
-      rawBass > 0.32 &&
-      rawBass > this.bassAvg * 1.18 + 0.06 &&
+      rawBass > 0.28 &&
+      rawBass > this.bassAvg * 1.15 + 0.05 &&
       this.t - this.lastBeat > BEAT_MIN_GAP
     ) {
       hit = Math.min(1, 0.3 + (rawBass - this.bassAvg) * 3);
@@ -184,6 +186,11 @@ export class Liquid {
       }
     }
     const m = this._music;
+    // The waves run faster when the music is busier; phases add up, so a
+    // change of speed never makes the edge jump.
+    this.phMid += dt * (0.3 + 0.55 * mid + 0.3 * this.beat);
+    this.phHigh += dt * (0.45 + 0.8 * high);
+    const sagAt = 0.5 + 0.22 * Math.sin(this.t * 0.37);
     if (hit && DROPS && hit > 0.55 && !this.swell && this.t - this.lastDrop > DROP_GAP && Math.random() < 0.7) {
       this.swell = { x: (Math.random() - 0.5) * span * 0.6, t: 0 };
     }
@@ -199,9 +206,9 @@ export class Liquid {
         // Bass: the whole edge sags, most in the middle. Mids and highs: long,
         // slow waves travelling in opposite directions — never short ripples.
         g +=
-          BASS_SAG * bass * (0.55 + 0.45 * Math.sin(Math.PI * u)) +
-          MID_WAVE * mid * Math.sin(2 * Math.PI * (1.0 * u - 0.3 * this.t)) +
-          HIGH_WAVE * high * Math.sin(2 * Math.PI * (1.9 * u + 0.45 * this.t) + 1.3) +
+          BASS_SAG * bass * (0.4 + 0.6 * Math.exp(-((u - sagAt) ** 2) / (2 * 0.22 * 0.22))) +
+          MID_WAVE * mid * Math.sin(2 * Math.PI * (1.0 * u - this.phMid)) +
+          HIGH_WAVE * high * Math.sin(2 * Math.PI * (1.9 * u + this.phHigh) + 1.3) +
           SWAY * m * Math.sin(2 * Math.PI * (1.1 * u - 0.4 * this.t));
       }
       this.goal[i] = g * env[i];
