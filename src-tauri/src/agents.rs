@@ -94,6 +94,15 @@ pub fn start(app: AppHandle, settings: Arc<Settings>) -> Arc<Agents> {
         settings.merge(m);
     }
     let agents = Arc::new(Agents { port, token, pending: Mutex::new(HashMap::new()), next: AtomicU64::new(1) });
+    // Connections made by an older island are brought up to date.
+    if let Some(p) = opencode_plugin() {
+        if p.exists() {
+            let _ = connect_opencode(&agents, true);
+        }
+    }
+    if connections().codex {
+        let _ = codex_hooks(&agents, true);
+    }
     if let Some((l, _)) = listener {
         let a = agents.clone();
         thread::Builder::new()
@@ -162,7 +171,13 @@ fn handle(stream: TcpStream, app: &AppHandle, agents: &Agents, settings: &Settin
     let out = if !settings.bool("agents", true) {
         "{}".to_string()
     } else if agent == "claude" {
-        claude(app, agents, settings, &input)
+        claude(app, agents, settings, &input, "claude")
+    } else if agent == "opencode" && input.get("hook_event_name").is_some() {
+        // opencode's plugin asks in the Claude Code format: answered here.
+        claude(app, agents, settings, &input, "opencode")
+    } else if agent == "codex" && input.get("hook_event_name").is_some() {
+        // Codex hooks (hooks.json): permission requests, answered on the island.
+        claude(app, agents, settings, &input, "codex")
     } else if agent == "opencode" {
         opencode(app, &input);
         "{}".to_string()
@@ -221,11 +236,13 @@ fn emit(app: &AppHandle, e: AgentEvent) {
     let _ = app.emit_to("island", "agent", e);
 }
 
-fn claude(app: &AppHandle, agents: &Agents, settings: &Settings, input: &Value) -> String {
+/// Hooks in the Claude Code format: Claude Code itself, and Codex's
+/// hooks.json (the same shape), told apart by `who`.
+fn claude(app: &AppHandle, agents: &Agents, settings: &Settings, input: &Value, who: &'static str) -> String {
     let event = input.get("hook_event_name").and_then(Value::as_str).unwrap_or("");
     let session = input.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
     let base = |state: &'static str, detail: String| AgentEvent {
-        agent: "claude",
+        agent: who,
         session: session.clone(),
         state,
         project: project(input),
@@ -404,32 +421,66 @@ fn opencode_plugin() -> Option<PathBuf> {
     Some(dir.join(sub).join("dark-island.js"))
 }
 
-const OPENCODE_PLUGIN: &str = r#"// Dark Island: shows what opencode is doing on the island.
-// Added by Dark Island; delete this file (or press "Отключить" there) to stop.
-const URL = "__URL__";
-const send = (body) =>
-  fetch(URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => {});
+const OPENCODE_PLUGIN: &str = r#"// Dark Island: what needs you from opencode — a permission request (answer
+// it on the island) and the end of an answer. Added by Dark Island; delete
+// this file (or press "Отключить" there) to stop.
+const ISLAND = "__URL__";
 
-export const DarkIsland = async ({ directory }) => ({
-  event: async ({ event }) => {
-    const p = event.properties ?? {};
-    const session = p.sessionID ?? p.info?.id ?? "";
-    switch (event.type) {
-      case "session.idle":
-        return send({ type: "done", session, cwd: directory, detail: "" });
-      case "session.error":
-        return send({ type: "info", session, cwd: directory, detail: "Ошибка в сессии" });
-      case "session.deleted":
-        return send({ type: "end", session, cwd: directory });
-      case "permission.updated":
-      case "permission.asked":
-        return send({ type: "waiting", session, cwd: directory, detail: p.title ?? "Нужно разрешение" });
-    }
+const post = async (body, ms) => {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(ISLAND, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+    });
+    return await r.json().catch(() => ({}));
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(t);
+  }
+};
+
+export default {
+  id: "dark-island",
+  setup: async (ctx) => {
+    const cwd = ctx.directory ?? ctx.worktree ?? process.cwd();
+    const safe = async (f) => {
+      try {
+        await f();
+      } catch (e) {
+        console.error("dark-island:", e);
+      }
+    };
+    // About to ask you: the island asks too, and its answer is used.
+    await safe(() => ctx.permission.hook("evaluate", async (ev) => {
+      if (ev.effect !== "ask") return;
+      const reply = await post(
+        {
+          hook_event_name: "PermissionRequest",
+          session_id: String(ev.sessionID ?? "opencode"),
+          cwd,
+          tool_name: ev.action,
+          tool_input: { description: (ev.resources ?? []).join(", ") },
+        },
+        35000,
+      );
+      const behavior = reply?.hookSpecificOutput?.decision?.behavior;
+      if (behavior === "allow") ev.effect = "allow";
+      else if (behavior === "deny") {
+        ev.effect = "deny";
+        ev.message = "Отклонено на острове";
+      }
+    }));
+    // The answer is done.
+    await safe(() => ctx.session.hook("experimental.idle", async (ev) => {
+      await post({ type: "done", session: String(ev.sessionID ?? "opencode"), cwd, detail: "" }, 3000);
+    }));
   },
-  "tool.execute.before": async (input) => {
-    send({ type: "working", session: input.sessionID ?? "", cwd: directory, detail: input.tool ?? "" });
-  },
-});
+};
 "#;
 
 /// Writes or deletes the island's plugin for opencode.
@@ -450,6 +501,8 @@ pub struct Connections {
     pub claude: bool,
     pub codex: bool,
     pub opencode: bool,
+    /// The island's permission hook is in Codex's hooks.json.
+    pub codex_hooks: bool,
     /// Codex already has a `notify` program of its own.
     pub codex_busy: bool,
     /// Seconds since each agent last reached the island (none yet: absent).
@@ -467,7 +520,8 @@ pub fn connections() -> Connections {
     let opencode = opencode_plugin().is_some_and(|p| p.exists());
     let now = now_secs();
     let seen = LAST.lock().unwrap().clone().unwrap_or_default().into_iter().map(|(k, t)| (k, now.saturating_sub(t))).collect();
-    Connections { claude, codex, codex_busy, opencode, seen }
+    let codex_hooks = codex_hooks_file().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| t.contains(MARK));
+    Connections { claude, codex, codex_busy, opencode, seen, codex_hooks }
 }
 
 fn backup(path: &PathBuf) {
@@ -518,6 +572,47 @@ pub fn connect_claude(agents: &Agents, on: bool) -> Result<(), String> {
 }
 
 /// Adds or removes the island's `notify` line in Codex's config.toml.
+fn codex_hooks_file() -> Option<PathBuf> {
+    codex_config().and_then(|p| p.parent().map(|d| d.join("hooks.json")))
+}
+
+/// Adds (or removes) the island's PermissionRequest hook in ~/.codex/hooks.json,
+/// keeping any hooks of the user's own. Codex runs it through cmd: curl
+/// passes the request on and prints the island's answer.
+fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
+    let path = codex_hooks_file().ok_or("нет папки пользователя")?;
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
+    let mut root: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
+    if !root.is_object() {
+        root = json!({});
+    }
+    let obj = root.as_object_mut().unwrap();
+    let hooks = obj.entry("hooks").or_insert_with(|| json!({}));
+    if !hooks.is_object() {
+        *hooks = json!({});
+    }
+    let hooks = hooks.as_object_mut().unwrap();
+    if let Some(Value::Array(groups)) = hooks.get_mut("PermissionRequest") {
+        groups.retain(|g| !g.to_string().contains(MARK));
+    }
+    if on {
+        let cmd = format!(
+            "curl -s -m 40 -X POST -H \"Content-Type: application/json\" --data-binary @- \"{}\"",
+            agents.url("codex")
+        );
+        let groups = hooks.entry("PermissionRequest").or_insert_with(|| json!([]));
+        if let Value::Array(g) = groups {
+            g.push(json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": 45, "statusMessage": "Спрашиваю на острове" }] }));
+        }
+    }
+    hooks.retain(|_, v| !matches!(v, Value::Array(a) if a.is_empty()));
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    backup(&path);
+    std::fs::write(&path, serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+}
+
 /// Marks a `notify` of the user's own that the island set aside; it comes
 /// back when the island is disconnected.
 const SAVED: &str = "# dark-island saved: ";
@@ -543,6 +638,9 @@ fn notify_span(lines: &[String]) -> Option<(usize, usize)> {
 /// takes one notify program: with `replace`, one already there is commented
 /// out (and restored on disconnect).
 pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), String> {
+    // Permission requests come through Codex's hooks (same format as Claude
+    // Code's); answers keep coming through `notify`.
+    codex_hooks(agents, on)?;
     let path = codex_config().ok_or("нет папки пользователя")?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let mut lines: Vec<String> = text.lines().filter(|l| !l.contains(MARK)).map(str::to_string).collect();

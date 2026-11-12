@@ -195,6 +195,11 @@ pub fn run(app: &AppHandle) -> Vec<Check> {
             None => c("Агенты", title, "warn", format!("подключён, но с запуска острова {name} ещё ничего не присылал — перезапусти его")),
         });
     }
+    if conn.codex && !conn.codex_hooks {
+        out.push(c("Агенты", "Codex: вопросы", "warn", "хук для вопросов о разрешении не установлен — нажми «Отключить» и «Подключить» у Codex"));
+    } else if conn.codex {
+        out.push(c("Агенты", "Codex: вопросы", "ok", "хук установлен; если вопросы не приходят — в Codex набери /hooks и одобри хук с dark-island в команде"));
+    }
     if s.bool("obsEnabled", false) {
         let port = s.string("obsPort").parse::<u16>().unwrap_or(4455);
         let ok = std::net::TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_secs(1)).is_ok();

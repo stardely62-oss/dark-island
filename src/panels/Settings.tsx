@@ -33,17 +33,61 @@ const AI_HOWTO: Record<string, { steps: string[]; note: string }> = {
   },
   custom: {
     steps: [
-      "Ollama: поставь с ollama.com, в терминале — ollama pull llama3.2",
-      "Адрес: http://127.0.0.1:11434/v1, модель: llama3.2, ключ — любой текст",
-      "LM Studio: Developer → Start Server, адрес http://127.0.0.1:1234/v1",
+      "Ollama: поставь с ollama.com, в терминале — `ollama pull llama3.2`",
+      "Адрес: `http://127.0.0.1:11434/v1`, модель: `llama3.2`, ключ — любой текст",
+      "LM Studio: Developer → Start Server, адрес `http://127.0.0.1:1234/v1`",
     ],
     note: "Модель работает на твоём компьютере: бесплатно и без интернета, но нужен мощный компьютер.",
   },
 };
 
+/**
+ * A line of instructions where web addresses can be opened or copied and
+ * `code` can be copied.
+ */
+function HowtoText({ text, api }: { text: string; api: Bridge | null }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (v: string) => {
+    navigator.clipboard?.writeText(v).catch(() => api?.call("paste_text", { text: v, paste: false }));
+    setCopied(v);
+    window.setTimeout(() => setCopied((c) => (c === v ? null : c)), 1500);
+  };
+  const parts = text.split(/(`[^`]+`|(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ai|org|io|dev|net)(?:\/[\w\-./?=&#]*)?)/gi);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (!p) return null;
+        if (p.startsWith("`")) {
+          const v = p.slice(1, -1);
+          return (
+            <span key={i} className="howto-code" title="Скопировать" onClick={() => copy(v)}>
+              {v}
+              <i>{copied === v ? "скопировано" : "копировать"}</i>
+            </span>
+          );
+        }
+        if (i % 2 === 1) {
+          const url = /^https?:/.test(p) ? p : `https://${p}`;
+          return (
+            <span key={i} className="howto-link">
+              <a onClick={() => api?.call("open_url", { url })} title="Открыть в браузере">
+                {p}
+              </a>
+              <i title="Скопировать адрес" onClick={() => copy(url)}>
+                {copied === url ? "✓" : "⧉"}
+              </i>
+            </span>
+          );
+        }
+        return <span key={i}>{p}</span>;
+      })}
+    </>
+  );
+}
+
 type Hotkey = { action: string; title: string; default: string; combo: string; taken: boolean };
 
-type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean; seen?: Record<string, number> };
+type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean; codex_hooks?: boolean; seen?: Record<string, number> };
 
 /** "сигнал 3 мин назад" / "сигналов ещё не было". */
 function seenText(conn: Conn | null, id: string) {
@@ -576,7 +620,9 @@ export function SettingsTab({
           <summary>Как подключить {preset.name}</summary>
           <ol>
             {AI_HOWTO[provider.id].steps.map((st) => (
-              <li key={st}>{st}</li>
+              <li key={st}>
+                <HowtoText text={st} api={api} />
+              </li>
             ))}
           </ol>
           <div className="howto-note">
@@ -900,7 +946,7 @@ export function SettingsTab({
           <li>Нажми «Проверить» — на острове должна появиться карточка «связь есть»</li>
         </ol>
         <div className="howto-note">
-          На острове видно только важное: вопрос о разрешении (у Claude Code — с кнопками «Разрешить/Запретить») и итоговый ответ. Codex сообщает только об ответах, вопросы о разрешении он острову не передаёт.
+          На острове видно только важное: вопрос о разрешении с кнопками «Разрешить / Запретить» (30 секунд, потом вопрос остаётся в терминале) и итоговый ответ. Codex дополнительно просит один раз подтвердить хук: набери в нём /hooks и одобри новый хук с dark-island в команде.
         </div>
       </details>
       <Row
@@ -917,7 +963,7 @@ export function SettingsTab({
         sub={
           testMsg.codex ??
           (conn?.codex
-            ? `Подключён: Codex сообщает только когда закончил ответ — тогда приходит карточка; ${seenText(conn, "codex")}. Перезапусти Codex после подключения`
+            ? `Подключён: вопросы о разрешении (с кнопками) и итоговые ответы; ${seenText(conn, "codex")}. Один раз: перезапусти Codex, набери /hooks и подтверди новый хук (в его команде есть dark-island) — без этого Codex его не запускает`
             : conn?.codex_busy
               ? "У Codex уже стоит другая программа уведомлений (notify), а он умеет только одну. «Заменить» — остров встанет вместо неё; старая строка останется в config.toml и вернётся при отключении"
               : "Остров добавит notify в ~/.codex/config.toml")

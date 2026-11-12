@@ -2839,3 +2839,39 @@ body.settings-page.preview {
   color: var(--fg-3);
   font-size: 11.5px;
 }
+.howto-link a {
+  color: #9fd8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.howto-link i,
+.howto-code i {
+  font-style: normal;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--fg-2);
+  background: rgb(255 255 255 / 0.08);
+  cursor: pointer;
+}
+.howto-link i:hover,
+.howto-code:hover i {
+  color: var(--fg);
+  background: rgb(255 255 255 / 0.16);
+}
+.howto-code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11.5px;
+  color: var(--fg);
+  background: rgb(0 0 0 / 0.3);
+  cursor: pointer;
+  user-select: text;
+}
+.howto,
+.howto * {
+  user-select: text;
+}
