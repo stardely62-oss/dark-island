@@ -903,7 +903,9 @@ export function SettingsTab({
         title="Codex"
         sub={
           testMsg.codex ??
-          (conn?.codex
+          (conn?.codex && !conn?.codex_hooks
+            ? "Ответы приходят, но хука для вопросов о разрешении нет — нажми «Починить» и перезапусти Codex"
+            : conn?.codex
             ? `Подключён: вопросы о разрешении (с кнопками) и итоговые ответы; ${seenText(conn, "codex")}. Перезапусти Codex после подключения`
             : conn?.codex_busy
               ? "У Codex уже стоит другая программа уведомлений (notify), а он умеет только одну. «Заменить» — остров встанет вместо неё; старая строка останется в config.toml и вернётся при отключении"
@@ -911,6 +913,11 @@ export function SettingsTab({
         }
       >
         {testBtn("codex", conn?.codex)}
+        {conn?.codex && !conn?.codex_hooks && (
+          <button className="text-btn solid accent" onClick={() => connect("codex", true, true)}>
+            Починить
+          </button>
+        )}
         <button className="text-btn solid" onClick={() => connect("codex", !conn?.codex, !conn?.codex && conn?.codex_busy)}>
           {conn?.codex ? "Отключить" : conn?.codex_busy ? "Заменить" : "Подключить"}
         </button>

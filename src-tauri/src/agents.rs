@@ -31,6 +31,12 @@ fn now_secs() -> u64 {
 }
 const MARK: &str = "/dark-island/";
 
+/// Whether a piece of an agent's config is the island's own: its address,
+/// or its own executable run as a hook (`dark-island.exe --agent-hook`).
+fn is_ours(s: &str) -> bool {
+    s.contains(MARK) || s.contains("--agent-hook") || s.to_lowercase().contains("dark-island.exe")
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentEvent {
@@ -514,13 +520,13 @@ pub fn connections() -> Connections {
         .and_then(|p| std::fs::read_to_string(p).ok())
         .is_some_and(|s| s.contains(MARK));
     let toml = codex_config().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
-    let codex = toml.contains(MARK);
+    let codex = toml.lines().any(|l| !l.trim_start().starts_with('#') && is_ours(l));
     let lines: Vec<String> = toml.lines().map(str::to_string).collect();
     let codex_busy = !codex && notify_span(&lines).is_some();
     let opencode = opencode_plugin().is_some_and(|p| p.exists());
     let now = now_secs();
     let seen = LAST.lock().unwrap().clone().unwrap_or_default().into_iter().map(|(k, t)| (k, now.saturating_sub(t))).collect();
-    let codex_hooks = codex_hooks_file().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| t.contains(MARK));
+    let codex_hooks = codex_hooks_file().and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| is_ours(&t));
     Connections { claude, codex, codex_busy, opencode, seen, codex_hooks }
 }
 
@@ -592,8 +598,9 @@ fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
         *hooks = json!({});
     }
     let hooks = hooks.as_object_mut().unwrap();
+    // Ours from any island version (address or executable): replaced, never piled up.
     if let Some(Value::Array(groups)) = hooks.get_mut("PermissionRequest") {
-        groups.retain(|g| !g.to_string().contains(MARK));
+        groups.retain(|g| !is_ours(&g.to_string()));
     }
     let mut trust = None;
     if on {
@@ -776,7 +783,7 @@ pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), Str
     codex_hooks(agents, on)?;
     let path = codex_config().ok_or("нет папки пользователя")?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut lines: Vec<String> = text.lines().filter(|l| !l.contains(MARK)).map(str::to_string).collect();
+    let mut lines: Vec<String> = text.lines().filter(|l| l.starts_with(SAVED) || !is_ours(l)).map(str::to_string).collect();
     if on {
         if let Some((a, b)) = notify_span(&lines) {
             if !replace {
@@ -813,6 +820,13 @@ pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), Str
 
 #[cfg(test)]
 mod codex_tests {
+    #[test]
+    fn recognises_its_own_hooks() {
+        assert!(super::is_ours(r#"{"command":"C:\\Users\\me\\AppData\\Local\\DARK-I~1\\DARK-I~1.EXE --agent-hook codex"}"#));
+        assert!(super::is_ours("notify = [\"curl\", \"http://127.0.0.1:47326/dark-island/codex?t=x\"]"));
+        assert!(!super::is_ours("notify = [\"python\", \"notify.py\"]"));
+    }
+
     #[test]
     fn hook_fingerprint_matches_codex() {
         // Reference value computed with codex-rs's own structures and hashing.
