@@ -10,21 +10,24 @@ const SYSTEM =
   "Ты — помощник в маленькой панели на рабочем столе Windows. Отвечай по-русски, если к тебе обращаются по-русски. Пиши коротко и по делу: панель узкая. Без Markdown-таблиц.";
 
 /** Where "Перевести" goes: auto is Russian ↔ English. */
-export const LANGS: [string, string][] = [
-  ["auto", "Авто (рус ↔ англ)"],
-  ["русский", "Русский"],
-  ["английский", "Английский"],
-  ["украинский", "Украинский"],
-  ["немецкий", "Немецкий"],
-  ["французский", "Французский"],
-  ["испанский", "Испанский"],
-  ["итальянский", "Итальянский"],
-  ["польский", "Польский"],
-  ["турецкий", "Турецкий"],
-  ["китайский", "Китайский"],
-  ["японский", "Японский"],
-  ["корейский", "Корейский"],
-  ["казахский", "Казахский"],
+/** [value for the prompt, full name, short name, mark] */
+export const LANGS: [string, string, string, string][] = [
+  ["auto", "Авто (рус ↔ англ)", "Авто", "⇄"],
+  ["русский", "Русский", "Русский", "RU"],
+  ["английский", "Английский", "English", "EN"],
+  ["украинский", "Украинский", "Українська", "UA"],
+  ["немецкий", "Немецкий", "Deutsch", "DE"],
+  ["французский", "Французский", "Français", "FR"],
+  ["испанский", "Испанский", "Español", "ES"],
+  ["итальянский", "Итальянский", "Italiano", "IT"],
+  ["польский", "Польский", "Polski", "PL"],
+  ["турецкий", "Турецкий", "Türkçe", "TR"],
+  ["китайский", "Китайский", "中文", "ZH"],
+  ["японский", "Японский", "日本語", "JA"],
+  ["корейский", "Корейский", "한국어", "KO"],
+  ["казахский", "Казахский", "Қазақша", "KZ"],
+  ["португальский", "Португальский", "Português", "PT"],
+  ["арабский", "Арабский", "العربية", "AR"],
 ];
 const translatePrompt = (to: string) =>
   !to || to === "auto"
@@ -72,7 +75,24 @@ export function AiTab({
   const [view, setView] = useState<"chat" | "text">("chat");
   const run = useAi(api);
   const provider = providerOf(settings);
-  const translateTo = (settings.translateTo as string) || "auto";
+  // Shown at once; the stored value catches up when the settings come back.
+  const [picked, setPicked] = useState<string | null>(null);
+  const translateTo = picked ?? ((settings.translateTo as string) || "auto");
+  const [langOpen, setLangOpen] = useState(false);
+  useEffect(() => {
+    if (!visible || view !== "text") setLangOpen(false);
+  }, [visible, view]);
+  useEffect(() => {
+    if (!langOpen) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setLangOpen(false);
+    const down = () => setLangOpen(false);
+    window.addEventListener("keydown", key);
+    window.addEventListener("pointerdown", down);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("pointerdown", down);
+    };
+  }, [langOpen]);
   const [hasKey, setHasKey] = useState(true);
   useEffect(() => {
     if (visible) api?.call<Record<string, boolean>>("ai_key_status", { ids: [provider.id] }).then((m) => setHasKey(!!m?.[provider.id]));
@@ -393,21 +413,38 @@ export function AiTab({
               <TabAi size={11} /> Перевести
             </button>
             <span className="muted">на</span>
-            <select
-              className="chip lang-pick"
-              value={translateTo}
-              onChange={(e) => {
-                api?.call("settings_set", { patch: { translateTo: e.target.value } });
-                if (src.trim() && !toolBusy && hasKey) aiAction(translatePrompt(e.target.value));
-              }}
-            >
-              {LANGS.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            <button className={`chip lang-pick ${langOpen ? "on" : ""}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => setLangOpen((o) => !o)}>
+              {LANGS.find(([v]) => v === translateTo)?.[2] ?? "Авто"}
+              <i className="caret" />
+            </button>
           </div>
+          {langOpen && (
+            <div className="lang-pop" onPointerDown={(e) => e.stopPropagation()}>
+              <div className="lang-pop-head">
+                Переводить на
+                <button className="lang-x" onClick={() => setLangOpen(false)} aria-label="Закрыть">
+                  ×
+                </button>
+              </div>
+              <div className="lang-grid">
+                {LANGS.map(([v, , short, flag]) => (
+                  <button
+                    key={v}
+                    className={`lang-opt ${v === translateTo ? "on" : ""}`}
+                    onClick={() => {
+                      setLangOpen(false);
+                      setPicked(v);
+                      api?.call("settings_set", { patch: { translateTo: v } });
+                      if (src.trim() && !toolBusy && hasKey) aiAction(translatePrompt(v));
+                    }}
+                  >
+                    <span className="lang-flag">{flag}</span>
+                    {short}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="text-out">
             <div className="out">{out || <span className="muted">Результат появится здесь</span>}</div>
             <div className="out-actions">
