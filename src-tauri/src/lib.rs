@@ -1415,6 +1415,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// The agent-hook mode of the executable (see main.rs).
+pub fn agent_hook(agent: &str) -> i32 {
+    agents::hook_main(agent)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))

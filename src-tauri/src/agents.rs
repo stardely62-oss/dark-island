@@ -616,11 +616,65 @@ fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
 const CODEX_HOOK_TIMEOUT: u64 = 45;
 const CODEX_HOOK_STATUS: &str = "Спрашиваю на острове";
 
-fn codex_hook_command(agents: &Agents) -> String {
-    format!(
-        "curl -s -m 40 -X POST -H \"Content-Type: application/json\" --data-binary @- \"{}\"",
-        agents.url("codex")
-    )
+/// The hook command Codex runs. Codex runs it in the user's own shell (cmd,
+/// PowerShell, bash…), so it must mean the same in all of them: the
+/// island's own executable, by a path without spaces or quotes.
+fn codex_hook_command(_agents: &Agents) -> String {
+    let exe = std::env::current_exe().map(|p| short_path(&p)).unwrap_or_default();
+    if !exe.contains(' ') && !exe.is_empty() {
+        format!("{exe} --agent-hook codex")
+    } else {
+        // cmd runs it the same way from any of those shells.
+        format!("cmd /c \"{exe}\" --agent-hook codex")
+    }
+}
+
+/// The 8.3 form of a path (no spaces) when Windows has one.
+fn short_path(p: &std::path::Path) -> String {
+    #[cfg(windows)]
+    unsafe {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+        let long = HSTRING::from(p.as_os_str());
+        let mut buf = vec![0u16; 1024];
+        let n = GetShortPathNameW(&long, Some(&mut buf)) as usize;
+        if n > 0 && n < buf.len() {
+            return String::from_utf16_lossy(&buf[..n]);
+        }
+    }
+    p.to_string_lossy().into_owned()
+}
+
+/// `dark-island.exe --agent-hook <agent>`: reads the hook's JSON from stdin,
+/// hands it to the running island and prints its answer (for a permission
+/// request: allow or deny). Never fails the agent: with no island, "{}".
+pub fn hook_main(agent: &str) -> i32 {
+    use std::io::Read;
+    let mut input = String::new();
+    let _ = std::io::stdin().read_to_string(&mut input);
+    let dir = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|| home().map(|h| h.join("AppData").join("Roaming")))
+        .map(|d| d.join("io.github.stardely62.darkisland"));
+    let settings: Value = dir
+        .and_then(|d| std::fs::read(d.join("settings.json")).ok())
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    let (Some(port), Some(token)) = (settings.get("agentPort").and_then(Value::as_u64), settings.get("agentToken").and_then(Value::as_str)) else {
+        println!("{{}}");
+        return 0;
+    };
+    let url = format!("http://127.0.0.1:{port}{MARK}{agent}?t={token}");
+    let agent_http = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(40))).build().new_agent();
+    let answer = agent_http
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .send(input.as_bytes())
+        .ok()
+        .and_then(|mut r| r.body_mut().read_to_string().ok())
+        .unwrap_or_else(|| "{}".into());
+    println!("{answer}");
+    0
 }
 
 /// The fingerprint Codex keeps for an approved hook: SHA-256 over its

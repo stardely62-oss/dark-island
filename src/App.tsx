@@ -931,7 +931,7 @@ export function App() {
   // Over a game the window is hidden: an allowed card shows it for a while.
   const peeking = useRef(false);
   useEffect(() => {
-    const want = cardVisible && presence === "hidden";
+    const want = (cardVisible || (mode === "ask" && level !== "desktop" && level !== "apps")) && presence === "hidden";
     if (want) {
       peeking.current = true;
       api?.call("island_peek", { on: true });
@@ -943,7 +943,7 @@ export function App() {
       peeking.current = false;
       api?.call("island_peek", { on: false });
     }
-  }, [cardVisible, presence, api]);
+  }, [cardVisible, presence, api, mode, level]);
   useEffect(() => {
     if (!card || !cardVisible || card.sticky || held.current) return;
     clearTimeout(cardTimer.current);
@@ -973,11 +973,18 @@ export function App() {
   }, [hovered, cardHold]);
   useEffect(() => {
     if (!hovered) setSuppressed(false);
-    const want = hovered && !cardHold && !(overBuddy && !hoverOpenRef.current);
+    // A question from an agent (with its buttons) is not covered by the open island either.
+    const want = hovered && !cardHold && !ask && !(overBuddy && !hoverOpenRef.current);
     const delay = !want ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : overBuddy ? 600 : EXPAND_DELAY;
     const t = window.setTimeout(() => setHoverOpen(want), delay);
     return () => clearTimeout(t);
-  }, [hovered, presence, overBuddy, cardHold]);
+  }, [hovered, presence, overBuddy, cardHold, ask]);
+  // A question arrives while the island is open under the cursor: it folds
+  // into the question so the buttons are right there.
+  useEffect(() => {
+    if (ask && !pinned) setHoverOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask?.askId]);
   useEffect(() => {
     if (expanded) setHud(false);
   }, [expanded]);
