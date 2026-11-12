@@ -2882,3 +2882,24 @@ body.settings-page.preview {
   background: rgb(255 200 80 / 0.08);
   border: 1px solid rgb(255 200 80 / 0.18);
 }
+.translate-row {
+  align-items: center;
+  margin-top: -2px;
+}
+.translate-row .muted {
+  font-size: 11.5px;
+}
+.chip.lang-pick {
+  appearance: none;
+  padding-right: 20px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 11px) 52%, calc(100% - 7px) 52%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  color-scheme: dark;
+}
+.chip.lang-pick option {
+  background: #1c1c20;
+  color: #eee;
+}

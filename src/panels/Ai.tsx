@@ -3,13 +3,33 @@ import type { Bridge } from "../ipc";
 import { providerOf, useAi, type AiDoc, type AiMsg } from "../ai";
 import type { Settings } from "../settings";
 import { TabAi } from "../components/Icons";
-import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit } from "../textTools";
+import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit, urlDec } from "../textTools";
 
 const CHAT_KEY = "island.chat";
 const SYSTEM =
   "Ты — помощник в маленькой панели на рабочем столе Windows. Отвечай по-русски, если к тебе обращаются по-русски. Пиши коротко и по делу: панель узкая. Без Markdown-таблиц.";
 
-const TRANSLATE = "Переведи: с русского на английский, с любого другого языка — на русский.";
+/** Where "Перевести" goes: auto is Russian ↔ English. */
+export const LANGS: [string, string][] = [
+  ["auto", "Авто (рус ↔ англ)"],
+  ["русский", "Русский"],
+  ["английский", "Английский"],
+  ["украинский", "Украинский"],
+  ["немецкий", "Немецкий"],
+  ["французский", "Французский"],
+  ["испанский", "Испанский"],
+  ["итальянский", "Итальянский"],
+  ["польский", "Польский"],
+  ["турецкий", "Турецкий"],
+  ["китайский", "Китайский"],
+  ["японский", "Японский"],
+  ["корейский", "Корейский"],
+  ["казахский", "Казахский"],
+];
+const translatePrompt = (to: string) =>
+  !to || to === "auto"
+    ? "Переведи: с русского на английский, с любого другого языка — на русский."
+    : `Переведи на ${to} язык (если текст уже на нём — на русский).`;
 
 function loadChat(): AiMsg[] {
   try {
@@ -52,6 +72,7 @@ export function AiTab({
   const [view, setView] = useState<"chat" | "text">("chat");
   const run = useAi(api);
   const provider = providerOf(settings);
+  const translateTo = (settings.translateTo as string) || "auto";
   const [hasKey, setHasKey] = useState(true);
   useEffect(() => {
     if (visible) api?.call<Record<string, boolean>>("ai_key_status", { ids: [provider.id] }).then((m) => setHasKey(!!m?.[provider.id]));
@@ -183,7 +204,7 @@ export function AiTab({
     try {
       setOut(f(src));
     } catch (e) {
-      setOut(`Не получилось: ${String(e)}`);
+      setOut(e instanceof Error && /^Это не/.test(e.message) ? e.message : `Не получилось: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const aiAction = (prompt: string, text = src) => {
@@ -206,7 +227,7 @@ export function AiTab({
     if (!tool || !visible) return;
     setView("text");
     setSrc(tool.text);
-    if (tool.action === "translate") aiAction(TRANSLATE, tool.text);
+    if (tool.action === "translate") aiAction(translatePrompt(translateTo), tool.text);
     onTool();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, visible]);
@@ -347,7 +368,7 @@ export function AiTab({
                 ["Base64", () => local(b64enc)],
                 ["из Base64", () => local(b64dec)],
                 ["URL", () => local(encodeURIComponent)],
-                ["из URL", () => local(decodeURIComponent)],
+                ["из URL", () => local(urlDec)],
               ] as [string, () => void][]
             ).map(([label, f]) => (
               <button key={label} className="chip" onClick={f}>
@@ -356,7 +377,6 @@ export function AiTab({
             ))}
             {(
               [
-                ["Перевести", TRANSLATE],
                 ["Исправить", "Исправь орфографию, пунктуацию и стиль, сохранив смысл и язык."],
                 ["Сократить", "Сократи текст вдвое, сохранив главное."],
                 ["Объяснить", "Объясни простыми словами, что здесь написано."],
@@ -367,6 +387,26 @@ export function AiTab({
                 <TabAi size={11} /> {label}
               </button>
             ))}
+          </div>
+          <div className="tool-chips translate-row">
+            <button className="chip ai" disabled={toolBusy || !hasKey} onClick={() => aiAction(translatePrompt(translateTo))}>
+              <TabAi size={11} /> Перевести
+            </button>
+            <span className="muted">на</span>
+            <select
+              className="chip lang-pick"
+              value={translateTo}
+              onChange={(e) => {
+                api?.call("settings_set", { patch: { translateTo: e.target.value } });
+                if (src.trim() && !toolBusy && hasKey) aiAction(translatePrompt(e.target.value));
+              }}
+            >
+              {LANGS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="text-out">
             <div className="out">{out || <span className="muted">Результат появится здесь</span>}</div>

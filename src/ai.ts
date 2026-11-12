@@ -38,6 +38,14 @@ export function pickModel(list: string[], old: string): string | null {
   return sorted.find((m) => !/preview|exp/i.test(m)) ?? sorted[0];
 }
 
+/** A lighter sibling for a busy model: flash → flash-lite, pro → flash, and so on. */
+export function lighterModel(list: string[], old: string): string | null {
+  const o = old.toLowerCase();
+  const want = /flash-lite/.test(o) ? null : /flash/.test(o) ? "flash-lite" : /(^|-)pro($|-)/.test(o) ? "flash" : /opus/.test(o) ? "sonnet" : /sonnet/.test(o) ? "haiku" : null;
+  if (!want) return null;
+  return pickModel(list, `x-${want}`);
+}
+
 export type AiDoc = { name: string; text: string };
 export type AiMsg = { role: "user" | "assistant"; text: string; images?: string[]; docs?: AiDoc[] };
 
@@ -68,10 +76,36 @@ export function useAi(api: Bridge | null) {
   }, [api]);
 
   const run = useCallback(
-    (provider: Provider, system: string, messages: AiMsg[], onText: (t: string) => void, onDone: (err: string | null) => void, retried = false) => {
+    (provider: Provider, system: string, messages: AiMsg[], onText: (t: string) => void, onDone: (err: string | null) => void, retried = false, busyRetries = 0) => {
       let stop: (() => void) | null = null;
       let cancelled = false;
+      let got = false;
+      const text = (t: string) => {
+        got = true;
+        onText(t);
+      };
       const done = (err: string | null) => {
+        // The service is busy right now (503/529, "high demand", "overloaded"):
+        // wait a moment and ask again, then try a lighter model of the same family once.
+        if (err && !got && !cancelled && busyRetries < 3 && /\((503|529|500)\)|high demand|overloaded|unavailable|temporarily/i.test(err)) {
+          const n = busyRetries + 1;
+          window.setTimeout(() => {
+            if (cancelled) return;
+            if (n < 3) {
+              stop = run(provider, system, messages, onText, onDone, retried, n);
+              return;
+            }
+            api
+              ?.call<string[]>("ai_models", { provider })
+              .then((list) => {
+                const next = lighterModel(list ?? [], provider.model);
+                if (!next || cancelled) return onDone(err);
+                stop = run({ ...provider, model: next }, system, messages, onText, onDone, true, n);
+              })
+              .catch(() => onDone(err));
+          }, n * 1500);
+          return;
+        }
         // A retired model: pick a live one from the provider's list, save it and try once more.
         if (err && !retried && !cancelled && /Нет такой модели|no longer available|not found|does not exist/i.test(err)) {
           api
@@ -87,7 +121,7 @@ export function useAi(api: Bridge | null) {
         }
         onDone(err);
       };
-      stop = start(provider, system, messages, onText, done);
+      stop = start(provider, system, messages, text, done);
       return () => {
         cancelled = true;
         stop?.();

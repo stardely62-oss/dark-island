@@ -33,15 +33,38 @@ export function translit(s: string) {
 export const sentence = (s: string) => s.toLowerCase().replace(/(^\s*|[.!?]\s+)(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
 export const title = (s: string) => s.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
 
+function parseJson(s: string) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    throw new Error("Это не JSON — нужен текст вида {\"ключ\": \"значение\"}");
+  }
+}
 export function prettyJson(s: string) {
-  return JSON.stringify(JSON.parse(s), null, 2);
+  return JSON.stringify(parseJson(s), null, 2);
 }
 export function minJson(s: string) {
-  return JSON.stringify(JSON.parse(s));
+  return JSON.stringify(parseJson(s));
 }
 export function b64enc(s: string) {
   return btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 }
 export function b64dec(s: string) {
-  return new TextDecoder().decode(Uint8Array.from(atob(s.trim()), (c) => c.charCodeAt(0)));
+  let bin: string;
+  try {
+    // URL-safe Base64 and missing padding are fine too.
+    const t = s.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+    bin = atob(t + "=".repeat((4 - (t.length % 4)) % 4));
+  } catch {
+    throw new Error("Это не Base64 — тут можно раскодировать только текст вроде 0L/RgNC40LLQtdGC. Чтобы закодировать, нажми «Base64»");
+  }
+  const out = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  return out;
+}
+export function urlDec(s: string) {
+  try {
+    return decodeURIComponent(s.replace(/\+/g, " "));
+  } catch {
+    throw new Error("Это не закодированный адрес (в нём нет правильных %XX)");
+  }
 }
