@@ -43,7 +43,11 @@ export type Reaction =
   /** Scrolled over: his head spins. */
   | "dizzy"
   /** The charger went in: he gets a jolt of energy. */
-  | "charged";
+  | "charged"
+  /** Woken up: shakes his sleepy head side to side. */
+  | "groggy"
+  /** "No": shakes his head (e.g. asked to sleep while music plays). */
+  | "nope";
 
 // ---------------------------------------------------------------- the life ----
 
@@ -103,8 +107,10 @@ export type BuddyLook = {
   birthday: string;
   /** Loud music is on: he puts headphones on (unless he wears something). */
   music: boolean;
+  /** Something is playing: no sleeping through music. */
+  playing: boolean;
 };
-let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "", birthday: "", music: false };
+let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "", birthday: "", music: false, playing: false };
 
 // ------------------------------------------------------------------ the pet ----
 
@@ -334,6 +340,14 @@ export const buddy = {
     notify();
     window.setTimeout(notify, ms + 30);
   },
+  /** Wakes him if he was put to bed (music came on), the sleepy way. */
+  wake() {
+    if (!pet.asleep) return;
+    pet.asleep = false;
+    savePet();
+    action = null;
+    buddy.react("groggy", 2000);
+  },
   configure(l: Partial<BuddyLook> & { sounds?: boolean }) {
     if (l.sounds !== undefined) setSounds(l.sounds);
     if (l.hat && l.hat !== "none" && l.hat !== look.hat && !pet.hats.includes(l.hat)) {
@@ -394,10 +408,12 @@ export const buddy = {
   },
   /** Puts him to bed (nightcap and all) or wakes him up. */
   toggleSleep() {
+    // Music is on: he won't go to bed.
+    if (!pet.asleep && look.playing) return buddy.react("nope", 1200);
     pet.asleep = !pet.asleep;
     savePet();
     action = null;
-    if (!pet.asleep) buddy.react("surprised", 900);
+    if (!pet.asleep) buddy.react("groggy", 2000);
     else {
       sfx("sleep");
       notify();
@@ -837,6 +853,15 @@ function Props() {
         <g className="bd-confetti">
           {r(2, -3, 1, 1, "#ff6f9c", "1")}{r(7, -5, 1, 1, "#ffd84a", "2")}{r(12, -3, 1, 1, "#7fd0ff", "3")}{r(18, -4, 1, 1, "#7cbf5a", "4")}{r(-1, -2, 1, 1, "#c27ce0", "5")}
         </g>
+      </g>
+      <g className="bd-p bd-p-polish">
+        <g className="bd-cloth">{r(14, 2, 3, 2, "#9fd8ff")}{r(15, 4, 1, 1, "#7fb8e0")}</g>
+        <g className="bd-sparkles">
+          {r(17, -1, 1, 1, "#fff", "s1")}{r(16, -2, 3, 1, "#fff8c0", "s2")}{r(17, -3, 1, 3, "#fff8c0", "s3")}
+        </g>
+      </g>
+      <g className="bd-p bd-p-knock">
+        <g className="bd-knocks">{r(15, 1, 1, 1, "#e6e6e6", "k1")}{r(17, 0, 1, 1, "#e6e6e6", "k2")}{r(16, 3, 1, 1, "#e6e6e6", "k3")}</g>
       </g>
       <g className="bd-p bd-p-think">
         {r(14, 1, 1, 1, "#e6e6e6")}{r(15, 0, 1, 1, "#e6e6e6")}

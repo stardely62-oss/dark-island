@@ -39,7 +39,7 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, type Mood } from "./components/Buddy";
+import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, usePet, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs";
@@ -694,6 +694,16 @@ export function App() {
     const wx = !cur ? "" : /snow|sleet/.test(sym) ? "snow" : /rain|drizzle|thunder/.test(sym) ? "rain" : cur.temp >= 27 ? "hot" : cur.temp <= -5 ? "snow" : "";
     buddy.configure({ weather: wx });
   }, [weather]);
+  // Music on: no sleeping through it — a dozing Клодик wakes up, groggy.
+  useEffect(() => {
+    buddy.configure({ playing: !!media?.playing });
+    if (media?.playing) buddy.wake();
+  }, [media?.playing]);
+  const wasSleeping = useRef(sleeping);
+  useEffect(() => {
+    if (wasSleeping.current && !sleeping) buddy.react("groggy", 2000);
+    wasSleeping.current = sleeping;
+  }, [sleeping]);
   // Loud music: headphones on.
   useEffect(() => {
     buddy.configure({ music: !!media?.playing && !!volume && !volume.muted && volume.level >= 0.5 });
@@ -2093,7 +2103,13 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
   }, [SIZE]);
 
   // Without his own life he keeps to his place and only watches the cursor.
-  const spot = !life ? "home" : (visit ?? (tab === "home" ? "home" : tab));
+  // Asleep (away, or put to bed) he stays where he dozed off: no walks, no hops.
+  const pet = usePet();
+  const dozing = sleeping || pet.asleep;
+  const lastSpot = useRef("home");
+  const wanted = !life ? "home" : (visit ?? (tab === "home" ? "home" : tab));
+  const spot = dozing ? lastSpot.current : wanted;
+  lastSpot.current = spot;
   // On the tab bar he is smaller: the tabs are his playground, the clock is his home.
   const k = spot === "home" ? 1 : 0.66;
   useLayoutEffect(() => {
@@ -2157,27 +2173,72 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos, shown]);
 
-  // A walk now and then: to a random tab, a look around, and back.
+  // Walks now and then, along different routes; at each stop he busies
+  // himself with something: puzzles over it, studies it with a magnifier,
+  // knocks, polishes the icon, sniffs, salutes…
   useEffect(() => {
-    if (!shown || sleeping || !life) return;
+    if (!shown || dozing || !life) return;
     let t = 0;
-    const plan = () => {
-      t = window.setTimeout(() => {
-        const here = tab === "home" ? "home" : tab;
-        const options = ["home", ...TABS.map((x) => x.id)].filter((x) => x !== here && x !== "home");
-        setVisit(options[Math.floor(Math.random() * options.length)]);
-        t = window.setTimeout(() => {
-          setVisit(null);
-          plan();
-        }, 1800 + Math.random() * 1800);
-      }, 9000 + Math.random() * 14000);
+    let alive = true;
+    const later = (ms: number, f: () => void) => {
+      t = window.setTimeout(() => alive && f(), ms);
     };
+    const ids = TABS.map((x) => x.id as string);
+    const here = tab === "home" ? "home" : tab;
+    const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    const away = ids.filter((x) => x !== here && x !== "home");
+    const STOP_ACTS: [string, number][] = [
+      ["puzzle", 2200],
+      ["magnify", 3200],
+      ["knock", 1600],
+      ["polish", 2200],
+      ["sniff", 2000],
+      ["salute", 1400],
+      ["look", 1800],
+      ["think", 2600],
+    ];
+    const route = (): string[] => {
+      const kind = pick(["visit", "visit", "tour", "patrol", "far"]);
+      if (kind === "tour") {
+        const a = [...away].sort(() => Math.random() - 0.5);
+        return a.slice(0, 2 + Math.floor(Math.random() * 2));
+      }
+      if (kind === "patrol") {
+        // Along the tab bar, one way or the other.
+        const line = ids.filter((x) => x !== "home");
+        return (Math.random() < 0.5 ? line : [...line].reverse()).filter((x) => x !== here);
+      }
+      if (kind === "far") {
+        const i = ids.indexOf(here === "home" ? ids[0] : here);
+        const far = ids[i < ids.length / 2 ? ids.length - 1 : 1];
+        return [far === here ? pick(away) : far];
+      }
+      return [pick(away)];
+    };
+    const walk = (stops: string[], i: number) => {
+      if (i >= stops.length) {
+        setVisit(null);
+        return later(800, plan);
+      }
+      setVisit(stops[i]);
+      // On a patrol he only stops now and then; elsewhere at every stop.
+      const busy = stops.length < 4 || Math.random() < 0.35;
+      if (!busy) return later(650, () => walk(stops, i + 1));
+      const [act, ms] = pick(STOP_ACTS);
+      later(700, () => {
+        buddy.act(act, ms);
+        later(ms + 250, () => walk(stops, i + 1));
+      });
+    };
+    const plan = () => later(9000 + Math.random() * 14000, () => walk(route(), 0));
     plan();
     return () => {
+      alive = false;
       clearTimeout(t);
       setVisit(null);
     };
-  }, [shown, sleeping, tab, life]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, dozing, tab, life]);
 
   if (!pos) return null;
   return (

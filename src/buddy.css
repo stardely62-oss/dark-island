@@ -1441,3 +1441,186 @@
   0%, 100% { transform: translateY(0); }
   45% { transform: translateY(-4px); }
 }
+
+/* ---- waking up and saying no ---- */
+.buddy.re-groggy .bd-eyes,
+.buddy.re-nope .bd-eyes {
+  opacity: 0;
+}
+.buddy.re-groggy .bd-half {
+  opacity: 1;
+  animation: dc-blinky 2s steps(1);
+}
+.buddy.re-groggy .bd-jump {
+  animation: bd-groggy 2s ease-in-out;
+}
+.buddy.re-groggy .bd-zz {
+  opacity: 1;
+  animation: bd-zz-out 1s ease-out forwards;
+}
+@keyframes bd-groggy {
+  0% { transform: translateY(1px) scale(1.04, 0.94) rotate(0deg); }
+  15% { transform: rotate(-11deg); }
+  27% { transform: rotate(10deg); }
+  39% { transform: rotate(-8deg); }
+  51% { transform: rotate(6deg); }
+  62% { transform: rotate(-3deg); }
+  75% { transform: rotate(0deg) scale(0.95, 1.1); }
+  100% { transform: rotate(0deg) scale(1, 1); }
+}
+@keyframes dc-blinky {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0; }
+}
+@keyframes bd-zz-out {
+  to { opacity: 0; transform: translate(2px, -3px); }
+}
+.buddy.re-groggy .bd-big {
+  animation: dc-wide 2s steps(1);
+}
+@keyframes dc-wide {
+  0%, 60% { opacity: 0; }
+  61%, 100% { opacity: 1; }
+}
+.buddy.re-nope .bd-mad {
+  opacity: 1;
+}
+.buddy.re-nope .bd-jump {
+  animation: bd-nope 1.2s ease-in-out;
+}
+@keyframes bd-nope {
+  0%, 100% { transform: translateX(0); }
+  15%, 45% { transform: translateX(-1.5px); }
+  30%, 60% { transform: translateX(1.5px); }
+  75% { transform: translateX(0); }
+}
+
+/* ---- what he does at the stops of a walk ---- */
+/* puzzled: squints, a "?" bobs over him, scratches his head, trembles a bit */
+.buddy.act-puzzle .bd-mark {
+  opacity: 1;
+  animation: bd-z 1.1s ease-in-out infinite;
+}
+.buddy.act-puzzle .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-puzzle .bd-mad {
+  opacity: 1;
+}
+.buddy.act-puzzle .bd-arm-r {
+  animation: bd-scratch 0.22s steps(1) 9;
+}
+.buddy.act-puzzle .bd-jump {
+  animation: bd-strain 2.2s ease-in-out;
+}
+@keyframes bd-strain {
+  0%, 100% { transform: scale(1, 1); }
+  20%, 80% { transform: scale(1.05, 0.93) translateX(0); }
+  30%, 50%, 70% { transform: scale(1.05, 0.93) translateX(-0.3px); }
+  40%, 60% { transform: scale(1.05, 0.93) translateX(0.3px); }
+}
+
+/* knock knock: taps the tab with his paw, little "tok" marks fly off */
+.buddy.act-knock .bd-p-knock {
+  opacity: 1;
+}
+.buddy.act-knock .bd-arm-r {
+  animation: bd-knock 0.4s ease-in-out 4;
+}
+.buddy.act-knock .bd-knocks rect {
+  opacity: 0;
+  animation: bd-tok 0.4s ease-out 4;
+}
+.buddy.act-knock .bd-knocks rect:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.buddy.act-knock .bd-knocks rect:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.buddy.act-knock .bd-gaze {
+  translate: 1px -1px;
+}
+@keyframes bd-knock {
+  0%, 100% { transform: translate(0, 0); }
+  40% { transform: translate(1px, -3px); }
+  55% { transform: translate(1.5px, -2px); }
+}
+@keyframes bd-tok {
+  0%, 40% { opacity: 0; transform: translate(0, 0); }
+  50% { opacity: 1; }
+  100% { opacity: 0; transform: translate(1px, -1px); }
+}
+
+/* polishing the tab icon until it sparkles */
+.buddy.act-polish .bd-p-polish {
+  opacity: 1;
+}
+.buddy.act-polish .bd-cloth,
+.buddy.act-polish .bd-arm-r {
+  animation: bd-wipe 0.36s ease-in-out 6;
+}
+.buddy.act-polish .bd-sparkles {
+  opacity: 0;
+  animation: bd-sparkle 2.2s steps(1) forwards;
+}
+.buddy.act-polish .bd-sparkles rect {
+  animation: bd-twinkle 0.3s steps(1) infinite;
+}
+.buddy.act-polish .bd-eyes {
+  animation: bd-bliss 2.2s steps(1);
+}
+.buddy.act-polish .bd-happy {
+  animation: bd-bliss-on 2.2s steps(1);
+}
+@keyframes bd-wipe {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(1px, -1px); }
+  50% { transform: translate(0, -2px); }
+  75% { transform: translate(-1px, -1px); }
+}
+@keyframes bd-sparkle {
+  0%, 75% { opacity: 0; }
+  76%, 100% { opacity: 1; }
+}
+@keyframes bd-twinkle {
+  50% { opacity: 0.3; }
+}
+
+/* sniffing around: nose down, little steps forward */
+.buddy.act-sniff .bd-jump {
+  animation: bd-sniff 2s ease-in-out;
+}
+.buddy.act-sniff .bd-gaze {
+  translate: 0.8px 1px;
+}
+.buddy.act-sniff .bd-leg-a {
+  animation: bd-step 0.25s steps(1) 8;
+}
+.buddy.act-sniff .bd-leg-b {
+  animation: bd-step 0.25s steps(1) 8 -0.12s;
+}
+@keyframes bd-sniff {
+  0%, 100% { transform: rotate(0deg) translateX(0); }
+  15%, 35%, 55%, 75% { transform: rotate(8deg) translate(0.5px, 0.5px); }
+  25%, 45%, 65%, 85% { transform: rotate(6deg) translate(1px, 0.3px); }
+}
+
+/* a salute, proud */
+.buddy.act-salute .bd-arm-r {
+  transform: translate(-1px, -3px);
+  transition: transform 0.15s ease-out;
+}
+.buddy.act-salute .bd-jump {
+  animation: bd-attention 1.4s ease-out;
+}
+.buddy.act-salute .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-salute .bd-happy {
+  opacity: 1;
+}
+@keyframes bd-attention {
+  0% { transform: scale(1, 1); }
+  15% { transform: scale(0.94, 1.1); }
+  30%, 100% { transform: scale(0.97, 1.05); }
+}
