@@ -225,15 +225,19 @@ export function App() {
   // While the tour is on screen, other cards wait their turn instead of pushing it away.
   const touring = useRef(false);
   const waiting = useRef<Omit<Card, "key">[]>([]);
+  const cardRef = useRef<Card | null>(null);
+  const actionable = (c: Omit<Card, "key"> | null) =>
+    !!c && (!!c.open || c.kind === "agent" || c.kind === "reminder" || c.kind === "tour");
   const showCard = useCallback((c: Omit<Card, "key">) => {
-    if (touring.current && c.kind !== "tour") {
+    // A card you can act on is not pushed away by a plain message: that waits.
+    if ((touring.current && c.kind !== "tour") || (actionable(cardRef.current) && !actionable(c))) {
       waiting.current.push(c);
       return;
     }
     clearTimeout(cardTimer.current);
+    // The timer starts once the card is on screen (see below): behind an
+    // open island it would run out unseen.
     setCard({ ...c, key: Date.now() });
-    if (!c.sticky)
-      cardTimer.current = window.setTimeout(() => setCard(null), (c.ms ?? CARD_MS) * cardScaleRef.current);
   }, []);
 
   const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
@@ -628,14 +632,7 @@ export function App() {
       if (next === null || next >= TOUR.length) {
         touring.current = false;
         setCard(null);
-        // What came in during the tour, one after another.
-        const flush = () => {
-          const c = waiting.current.shift();
-          if (!c) return;
-          showCard(c);
-          window.setTimeout(flush, (c.ms ?? CARD_MS) * cardScaleRef.current + 300);
-        };
-        window.setTimeout(flush, 600);
+        // What came in during the tour follows, one by one (see the queue).
         try {
           localStorage.setItem("island.tour", "done");
         } catch {
@@ -869,8 +866,37 @@ export function App() {
   // A card you can act on (show the file, answer an agent, a reminder) stays a
   // card under the cursor: it doesn't turn into the open island and doesn't
   // vanish while you aim at it.
+  cardRef.current = card;
+  // When a card goes, the next waiting one comes.
+  useEffect(() => {
+    if (card || touring.current || !waiting.current.length) return;
+    const t = window.setTimeout(() => {
+      const c = waiting.current.shift();
+      if (c) showCard(c);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [card, showCard]);
   const cardHold = !!card && (!!card.open || card.kind === "agent" || card.kind === "reminder" || card.kind === "tour");
   const held = useRef(false);
+  // A card's time runs while it is visible.
+  const cardVisible = mode === "card";
+  useEffect(() => {
+    if (!card || !cardVisible || card.sticky || held.current) return;
+    clearTimeout(cardTimer.current);
+    cardTimer.current = window.setTimeout(() => setCard(null), (card.ms ?? CARD_MS) * cardScaleRef.current);
+    return () => clearTimeout(cardTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.key, cardVisible]);
+  // A card to act on that arrives just as you reach for the island: the
+  // island folds into the card, so the first click is on it.
+  const hoverSince = useRef(0);
+  useEffect(() => {
+    if (hovered) hoverSince.current = Date.now();
+  }, [hovered]);
+  useEffect(() => {
+    if (cardHold && hovered && !pinned && Date.now() - hoverSince.current < 2000) setHoverOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.key]);
   useEffect(() => {
     if (hovered && cardHold) {
       held.current = true;
