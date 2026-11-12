@@ -1269,3 +1269,175 @@
 .sticker.locked b {
   color: var(--fg-3);
 }
+
+/* ---- dances (while music plays; one beat = --tempo) ----
+   Whims and reactions win: the dances only run when he is free. */
+.buddy.dance-bounce:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-bounce var(--tempo, 0.5s) ease-in-out infinite;
+}
+.buddy.dance-bounce:not([class*="act-"]):not([class*="re-"]) .bd-arm-l,
+.buddy.dance-bounce:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-arms-pump var(--tempo, 0.5s) ease-in-out infinite;
+}
+@keyframes dc-bounce {
+  0%, 100% { transform: translateY(0) scale(1.06, 0.94); }
+  50% { transform: translateY(-1.6px) scale(0.97, 1.04); }
+}
+@keyframes dc-arms-pump {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+/* arms up, one and then the other, swaying */
+.buddy.dance-arms:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-sway calc(var(--tempo, 0.5s) * 2) ease-in-out infinite;
+}
+.buddy.dance-arms:not([class*="act-"]):not([class*="re-"]) .bd-arm-l {
+  animation: dc-arm-up calc(var(--tempo, 0.5s) * 2) ease-in-out infinite;
+}
+.buddy.dance-arms:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-arm-up calc(var(--tempo, 0.5s) * 2) ease-in-out infinite calc(var(--tempo, 0.5s) * -1);
+}
+.buddy.dance-arms:not([class*="act-"]):not([class*="re-"]) .bd-eyes {
+  opacity: 0;
+}
+.buddy.dance-arms:not([class*="act-"]):not([class*="re-"]) .bd-happy {
+  opacity: 1;
+}
+@keyframes dc-sway {
+  0%, 100% { transform: rotate(-5deg) translateX(-0.5px); }
+  50% { transform: rotate(5deg) translateX(0.5px); }
+}
+@keyframes dc-arm-up {
+  0%, 45%, 100% { transform: translate(0, 0); }
+  15%, 30% { transform: translate(0, -4px); }
+}
+
+/* the twist: hips one way, legs the other */
+.buddy.dance-twist:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-twist calc(var(--tempo, 0.5s) * 2) ease-in-out infinite;
+}
+.buddy.dance-twist:not([class*="act-"]):not([class*="re-"]) .bd-legs {
+  animation: dc-twist-legs calc(var(--tempo, 0.5s) * 2) ease-in-out infinite;
+}
+.buddy.dance-twist:not([class*="act-"]):not([class*="re-"]) .bd-leg-a {
+  animation: bd-step calc(var(--tempo, 0.5s) / 2) steps(1) infinite;
+}
+.buddy.dance-twist:not([class*="act-"]):not([class*="re-"]) .bd-leg-b {
+  animation: bd-step calc(var(--tempo, 0.5s) / 2) steps(1) infinite calc(var(--tempo, 0.5s) / -4);
+}
+@keyframes dc-twist {
+  0%, 100% { transform: rotate(-11deg) translateY(0.5px); }
+  50% { transform: rotate(11deg) translateY(0.5px); }
+}
+@keyframes dc-twist-legs {
+  0%, 100% { transform: translateX(1px); }
+  50% { transform: translateX(-1px); }
+}
+
+/* headbang: a sharp nod on every beat, eyes shut */
+.buddy.dance-headbang:not([class*="act-"]):not([class*="re-"]) .bd-body {
+  animation: dc-bang var(--tempo, 0.5s) cubic-bezier(0.5, 0, 0.3, 1) infinite;
+}
+.buddy.dance-headbang:not([class*="act-"]):not([class*="re-"]) .bd-eyes {
+  opacity: 0;
+}
+.buddy.dance-headbang:not([class*="act-"]):not([class*="re-"]) .bd-closed {
+  opacity: 1;
+}
+.buddy.dance-headbang:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-horns calc(var(--tempo, 0.5s) * 4) steps(1) infinite;
+}
+@keyframes dc-bang {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  18% { transform: rotate(14deg) translateY(1px); }
+  45% { transform: rotate(-2deg) translateY(0); }
+}
+@keyframes dc-horns {
+  0%, 50% { transform: translate(0, 0); }
+  51%, 100% { transform: translate(0, -4px); }
+}
+
+/* disco: point up to the right, then down to the left */
+.buddy.dance-disco:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-point calc(var(--tempo, 0.5s) * 2) cubic-bezier(0.6, 0, 0.3, 1) infinite;
+}
+.buddy.dance-disco:not([class*="act-"]):not([class*="re-"]) .bd-arm-l {
+  animation: dc-point-l calc(var(--tempo, 0.5s) * 2) cubic-bezier(0.6, 0, 0.3, 1) infinite;
+}
+.buddy.dance-disco:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-hips calc(var(--tempo, 0.5s) * 2) cubic-bezier(0.6, 0, 0.3, 1) infinite;
+}
+.buddy.dance-disco:not([class*="act-"]):not([class*="re-"]) .bd-gaze {
+  animation: dc-look calc(var(--tempo, 0.5s) * 2) steps(1) infinite;
+}
+@keyframes dc-point {
+  0%, 100% { transform: translate(1px, -4px); }
+  50% { transform: translate(0, 1px); }
+}
+@keyframes dc-point-l {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-1px, 2px); }
+}
+@keyframes dc-hips {
+  0%, 100% { transform: translateX(1px) rotate(4deg); }
+  50% { transform: translateX(-1.5px) rotate(-4deg); }
+}
+@keyframes dc-look {
+  0% { translate: 1px -0.8px; }
+  50% { translate: -1px 0.6px; }
+}
+
+/* robot: stiff moves in hard steps */
+.buddy.dance-robot:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-robot calc(var(--tempo, 0.5s) * 4) steps(1) infinite;
+}
+.buddy.dance-robot:not([class*="act-"]):not([class*="re-"]) .bd-arm-l {
+  animation: dc-robot-arm calc(var(--tempo, 0.5s) * 2) steps(1) infinite;
+}
+.buddy.dance-robot:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-robot-arm calc(var(--tempo, 0.5s) * 2) steps(1) infinite var(--tempo, 0.5s);
+}
+.buddy.dance-robot:not([class*="act-"]):not([class*="re-"]) .bd-eyes {
+  opacity: 0;
+}
+.buddy.dance-robot:not([class*="act-"]):not([class*="re-"]) .bd-half {
+  opacity: 1;
+}
+@keyframes dc-robot {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(1px); }
+  50% { transform: translateX(0) translateY(-1px); }
+  75% { transform: translateX(-1px); }
+}
+@keyframes dc-robot-arm {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(0, -2px); }
+  50% { transform: translate(0, -4px); }
+  75% { transform: translate(0, -2px); }
+}
+
+/* jump: big jumps every two beats, arms up in the air */
+.buddy.dance-jump:not([class*="act-"]):not([class*="re-"]) .bd-jump {
+  animation: dc-jump calc(var(--tempo, 0.5s) * 2) cubic-bezier(0.3, 0.6, 0.4, 1) infinite;
+}
+.buddy.dance-jump:not([class*="act-"]):not([class*="re-"]) .bd-arm-l,
+.buddy.dance-jump:not([class*="act-"]):not([class*="re-"]) .bd-arm-r {
+  animation: dc-jump-arms calc(var(--tempo, 0.5s) * 2) ease-in-out infinite;
+}
+.buddy.dance-jump:not([class*="act-"]):not([class*="re-"]) .bd-eyes {
+  opacity: 0;
+}
+.buddy.dance-jump:not([class*="act-"]):not([class*="re-"]) .bd-happy {
+  opacity: 1;
+}
+@keyframes dc-jump {
+  0%, 100% { transform: translateY(0) scale(1.15, 0.82); }
+  12% { transform: translateY(0) scale(0.92, 1.1); }
+  45% { transform: translateY(-5px) scale(0.95, 1.06); }
+  80% { transform: translateY(0) scale(1.1, 0.88); }
+}
+@keyframes dc-jump-arms {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-4px); }
+}

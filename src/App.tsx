@@ -1018,7 +1018,11 @@ export function App() {
       paintLight(L, cx, drive.current.target.h > 60, glowRef.current, blobRefs.map((r) => r.current));
       const box = boxRef.current;
       if (box) {
-        box.style.width = `${L.w}px`;
+        // Whole pixels: a fractional width centred by half would put all the
+        // text between pixels, and it would look soft.
+        const bw = Math.round(L.w);
+        box.style.width = `${bw}px`;
+        box.style.marginLeft = `${-Math.round(bw / 2)}px`;
         box.style.height = `${L.h}px`;
         box.style.borderRadius = `0 0 ${L.radius}px ${L.radius}px`;
       }
@@ -1547,7 +1551,7 @@ function View({
     <div
       ref={ref}
       className={`view ${on ? "on" : ""}`}
-      style={{ width: shape.w, height: top || onMeasure ? undefined : shape.h }}
+      style={{ width: shape.w, marginLeft: -Math.round(shape.w / 2), height: top || onMeasure ? undefined : shape.h }}
       aria-hidden={!on}
     >
       {children}

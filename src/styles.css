@@ -72,7 +72,6 @@ body.preview {
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translateX(-50%);
   /* clip, not hidden: a hidden box can still be scrolled sideways by wide
      content and focus, which shifted whole tabs to the left. */
   overflow: clip;
@@ -82,13 +81,13 @@ body.preview {
   overflow: clip;
   position: absolute;
   top: 0;
+  /* Centred with a whole-pixel margin (set inline), not translate(-50%):
+     half pixels and a will-change layer both blur the text. */
   left: 50%;
-  translate: -50% 0;
   opacity: 0;
   scale: 0.96;
   transform-origin: 50% 0;
   pointer-events: none;
-  will-change: opacity, scale;
   /* Leaving: quick fade, so two views never fight for attention. */
   transition:
     opacity 0.12s ease-out,
@@ -2712,4 +2711,44 @@ body.settings-page.preview {
 .tools-row.extra .tool-btn {
   height: 56px;
   font-size: 11.5px;
+}
+
+/* launcher: icons only, centred */
+.launcher:not(.adding):not(.menu) {
+  justify-content: center;
+  gap: 6px;
+}
+.launcher:not(.adding):not(.menu) .launch-item {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.06);
+}
+.launcher:not(.adding):not(.menu) .launch-item:hover {
+  background: rgb(255 255 255 / 0.12);
+}
+.launcher:not(.adding):not(.menu) .launch-item.add {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.launcher:not(.adding):not(.menu) .launch-item.add.wide {
+  width: auto;
+  padding: 0 14px 0 12px;
+  gap: 8px;
+}
+.launcher .launch-item.back {
+  background: rgb(255 255 255 / 0.12);
+}
+.launcher .launch-warn {
+  top: 3px;
+  right: 3px;
+}
+.launcher .launch-item.more {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg-2);
 }

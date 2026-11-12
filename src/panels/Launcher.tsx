@@ -85,8 +85,27 @@ export function Launcher({
     return apps.filter((a) => a.Name.toLowerCase().includes(f)).slice(0, 4);
   }, [q, apps]);
 
+  // Only as many as fit across the island: icons are 42px with 6px between.
+  const [cap, setCap] = useState(9);
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setCap(Math.max(3, Math.floor((el.clientWidth + 6) / 48))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [adding, menu]);
   const group = openGroup ? items.find((i) => i.target === openGroup && i.kind === "group") ?? null : null;
-  const shown = group ? group.items ?? [] : items;
+  // Shortcuts from before the limit are not lost: past the last place, a
+  // "+N" opens the rest like a group.
+  const MORE = "__more";
+  const all = openGroup === MORE ? items.slice(cap - 1) : group ? group.items ?? [] : items;
+  const inside = !!group || openGroup === MORE;
+  const places = cap - (inside ? 1 : 0);
+  const overflow = all.length > places;
+  const shown = overflow ? all.slice(0, places - 1) : all;
+  const hidden = overflow ? all.length - shown.length : 0;
+  // The "+" takes a place too (and "back" inside a group).
+  const roomForMore = !overflow && openGroup !== MORE && all.length < places;
 
   /** Replaces one shortcut wherever it is (top level or inside a group). */
   const update = (target: string, f: (s: Shortcut) => Shortcut | null): Shortcut[] =>
@@ -282,12 +301,11 @@ export function Launcher({
 
   return (
     <div className={`launcher ${group ? "in-group" : ""}`} ref={row}>
-      {group && (
-        <button className="launch-item back" title="Назад" onClick={() => setOpenGroup(null)}>
+      {inside && (
+        <button className="launch-item back" title={group ? `Назад · ${group.name}` : "Назад"} onClick={() => setOpenGroup(null)}>
           <svg width="10" height="12" viewBox="0 0 10 12" aria-hidden>
             <path d="M7 1.5 2.5 6 7 10.5" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span className="launch-name group-name">{group.name}</span>
         </button>
       )}
       {shown.map((s) => (
@@ -313,19 +331,25 @@ export function Launcher({
             setMenu(s);
           }}
         >
-          <ShortcutIcon api={api} s={s} size={22} />
-          <span className="launch-name">{s.name}</span>
+          <ShortcutIcon api={api} s={s} size={26} />
           {s.hotkey && failed.includes(s.hotkey) && <span className="launch-warn" title="Сочетание занято" />}
         </button>
       ))}
-      <button className="launch-item add" title={group ? "Добавить в группу" : "Добавить ярлык"} onClick={() => setAdding(true)}>
-        <span className="launch-icon">
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-            <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </span>
-        {!items.length && <span className="launch-name">Добавить ярлык</span>}
-      </button>
+      {overflow && openGroup !== MORE && (
+        <button className="launch-item more" title={`Ещё ${hidden}`} onClick={() => setOpenGroup(MORE)}>
+          +{hidden}
+        </button>
+      )}
+      {roomForMore && (
+        <button className={`launch-item add ${items.length ? "" : "wide"}`} title={group ? "Добавить в группу" : "Добавить ярлык"} onClick={() => setAdding(true)}>
+          <span className="launch-icon">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+              <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </span>
+          {!items.length && <span className="launch-name">Добавить ярлык</span>}
+        </button>
+      )}
       {drag && (
         <span
           className="launch-ghost"

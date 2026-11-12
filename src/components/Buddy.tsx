@@ -920,7 +920,32 @@ export function climbOut(fromEl: Element | null) {
 
 // ---------------------------------------------------------------- per frame ----
 
+// ---- dancing to the music ----
+
+/** His dances; one at a time, a new one every dozen seconds or so. */
+const DANCES = ["bounce", "arms", "twist", "headbang", "disco", "robot", "jump"];
+const groove = { style: "bounce", since: 0, lastHit: 0, beat: 0.5, prev: 0 };
+
+/** Keeps the tempo (from the time between beats) and picks the dance. */
+function feelTheMusic(L: Liquid) {
+  const now = L.t;
+  // A beat starts when the flash jumps up.
+  if (L.beat > 0.6 && groove.prev <= 0.6) {
+    const gap = now - groove.lastHit;
+    if (gap > 0.28 && gap < 1.3) groove.beat += (gap - groove.beat) * 0.3;
+    groove.lastHit = now;
+  }
+  groove.prev = L.beat;
+  if (L.music > 0.5 && now - groove.since > 10 + Math.random() * 6) {
+    const others = DANCES.filter((d) => d !== groove.style);
+    groove.style = others[Math.floor(Math.random() * others.length)];
+    groove.since = now;
+  }
+  if (L.music < 0.2) groove.since = now;
+}
+
 /**
+
  * Per-frame part of the companion: gaze, dancing and happy eyes. `cursor` is
  * in window coordinates, or null when it is far away.
  */
@@ -929,6 +954,9 @@ export function animateBuddies(L: Liquid, cursor: { x: number; y: number } | nul
   const m = L.music;
   const beat = L.beat;
   const mid = 0.5 * (L.levels[2] + L.levels[3]);
+  feelTheMusic(L);
+  const dancing = m > 0.5;
+  const tempo = `${Math.max(0.3, Math.min(1.2, groove.beat)).toFixed(3)}s`;
   buddies.forEach((el) => {
     let gx = 0;
     let gy = 0;
@@ -956,6 +984,9 @@ export function animateBuddies(L: Liquid, cursor: { x: number; y: number } | nul
     el.style.setProperty("--sx", shuffle.toFixed(2));
     el.style.setProperty("--squash", (1 + 0.07 * beat * m).toFixed(3));
     el.classList.toggle("happy", happy === 1);
-    el.classList.toggle("dance", m > 0.5);
+    el.classList.toggle("dance", dancing);
+    // The chosen dance, in time with the music.
+    for (const d of DANCES) el.classList.toggle(`dance-${d}`, dancing && groove.style === d);
+    el.style.setProperty("--tempo", tempo);
   });
 }
