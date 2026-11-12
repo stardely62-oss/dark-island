@@ -40,7 +40,6 @@ type Events = {
   mic_muted: boolean;
   vpn: { on: boolean; name: string | null; country?: string; ip?: string };
   downloads: { name: string; size: number; speed: number; total: number }[];
-  vpn_error: string;
   settings_section: string;
   tour: null;
   obs: { connected: boolean; recording: boolean; streaming: boolean; paused: boolean };
@@ -338,10 +337,7 @@ function mockBridge(): Bridge {
     ],
     bt_connect: () => null,
     vpn_status: () => mockVpn,
-    vpn_names: () => ["Офис"],
-    vpn_set: (a) => {
-      mockVpn = a.on ? "Офис" : null;
-    },
+    vpn_ip: () => (mockVpn ? ["NL", "185.107.56.12"] : null),
     launcher_hotkeys: () => [],
     hotkeys_list: () => [
       { action: "toggle", title: "Открыть или закрыть остров", default: "Ctrl+Alt+KeyI", combo: "Ctrl+Alt+KeyI", taken: false },

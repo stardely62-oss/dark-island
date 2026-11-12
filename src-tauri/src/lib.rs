@@ -395,7 +395,7 @@ fn in_dialog<T>(f: impl FnOnce() -> T) -> T {
 }
 
 /// Keys that belong to this computer, never exported, imported or reset.
-const LOCAL_KEYS: &[&str] = &["agentToken", "agentPort", "vpnProxy"];
+const LOCAL_KEYS: &[&str] = &["agentToken", "agentPort"];
 
 /// Saves the settings to a JSON file the user picks; returns its path.
 #[tauri::command]
@@ -692,113 +692,20 @@ async fn vpn_status() -> Option<String> {
     sys::vpn_now()
 }
 
-/// VPN connections Windows itself knows (Settings → VPN).
+/// The address the internet sees while a VPN is on, and its country.
 #[tauri::command]
-async fn vpn_names() -> Vec<String> {
-    sys::run_hidden("powershell -NoProfile -Command \"Get-VpnConnection | ForEach-Object { $_.Name }\"")
-        .map(|o| o.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
-        .unwrap_or_default()
-}
-
-/// Turns the chosen VPN on or off: Windows' own connection (rasdial),
-/// Cloudflare WARP (warp-cli), or the user's own commands.
-#[tauri::command]
-async fn vpn_set(app: AppHandle, on: bool) -> Result<(), String> {
-    let s = app.state::<Ctl>().settings.clone();
-    let client = s.string("vpnClient");
-    let r = match client.as_str() {
-        "windows" => {
-            let name = s.string("vpnName");
-            if name.is_empty() {
-                return Err("Выбери подключение в настройках".into());
-            }
-            let q = name.replace('"', "");
-            sys::run_hidden(&if on { format!("rasdial \"{q}\"") } else { format!("rasdial \"{q}\" /disconnect") }).map(|_| ())
-        }
-        "warp" => {
-            let exe = "\"%ProgramFiles%\\Cloudflare\\Cloudflare WARP\\warp-cli.exe\"";
-            sys::run_hidden(&format!("{exe} {}", if on { "connect" } else { "disconnect" })).map(|_| ())
-        }
-        "custom" => {
-            let cmd = s.string(if on { "vpnOn" } else { "vpnOff" });
-            if cmd.trim().is_empty() {
-                return Err("Впиши команды включения и выключения в настройках".into());
-            }
-            if s.bool("vpnAdmin", false) {
-                if sys::run_elevated(&cmd) { Ok(()) } else { Err("Windows не дала прав администратора".into()) }
-            } else {
-                sys::run_hidden(&cmd).map(|_| ())
-            }
-        }
-        // A VPN program (Happ, Incy, v2rayN…): it has no command line, so the
-        // island starts it, and switches the system proxy it set up.
-        _ => vpn_app(&app, &s, on),
-    };
-    diag::log(&app, &format!("vpn {client} {}: {r:?}", if on { "on" } else { "off" }));
-    r
-}
-
-/// The link scheme of a VPN program that can be switched by link, if it is installed.
-fn vpn_scheme(id: &str) -> Option<&'static str> {
-    let low = id.to_lowercase();
-    ["happ", "incy"].into_iter().find(|s| low.contains(s) && sys::scheme_registered(s))
-}
-
-fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), String> {
-    let id = s.string("vpnApp");
-    if id.is_empty() {
-        return Err("Выбери VPN-программу: Настройки → Сеть".into());
+async fn vpn_ip(app: AppHandle) -> Option<(String, String)> {
+    sys::vpn_now()?;
+    if let Some(v) = live::vpn_ip_cached() {
+        return Some(v);
     }
-    // The exe name, when the Start menu id is a path to it.
-    let exe = id
-        .rsplit(['\\', '/'])
-        .next()
-        .filter(|n| n.to_lowercase().ends_with(".exe"))
-        .map(|n| n[..n.len() - 4].to_lowercase());
-    let name = s.string("vpnAppName").to_lowercase();
-    let scheme = vpn_scheme(&format!("{id} {name}"));
-    // Running? By the exe in its id, or by its name / link scheme among running programs.
-    let running = {
-        let exes = sys::running_exes();
-        exe.as_ref().is_some_and(|e| exes.contains(e))
-            || exes.iter().any(|e| scheme.is_some_and(|sc| e.contains(sc)) || (!name.is_empty() && e.contains(name.split_whitespace().next().unwrap_or("\u{0}"))))
-    };
-    let remember = |server: &str| {
-        let mut m = serde_json::Map::new();
-        m.insert("vpnProxy".into(), serde_json::Value::String(server.to_string()));
-        s.merge(m);
-    };
-    // 1. Quietest: the program runs in system-proxy mode, so switching the
-    //    Windows proxy is all it takes, and no window shows.
-    if on {
-        let saved = s.string("vpnProxy");
-        if running && !saved.is_empty() && sys::system_proxy().is_none() {
-            sys::set_system_proxy(true, &saved);
-            diag::log(app, &format!("vpn app: proxy {saved} on"));
-            return Ok(());
-        }
-    } else if let Some(server) = sys::system_proxy() {
-        remember(&server);
-        sys::set_system_proxy(false, "");
-        diag::log(app, &format!("vpn app: proxy {server} off"));
-        return Ok(());
+    if !app.state::<Ctl>().settings.bool("vpnCountry", true) {
+        return None;
     }
-    // 2. Happ and Incy take commands by link: happ://connect, incy://disconnect.
-    if let Some(scheme) = scheme {
-        let url = format!("{scheme}://{}", if on { "connect" } else { "disconnect" });
-        if sys::open_scheme_quiet(&url, scheme) {
-            diag::log(app, &format!("vpn app: {url} (running: {running})"));
-            return Ok(());
-        }
-        diag::log(app, &format!("vpn app: {url} did not open"));
-    } else {
-        diag::log(app, &format!("vpn app {id} / {name}: no link scheme"));
-    }
-    // 3. Not running yet (most connect on start), or a TUN tunnel only the program can stop.
-    sys::launch_app(&id);
-    Ok(())
+    let v = live::vpn_country()?;
+    live::vpn_ip_remember(Some(v.clone()));
+    Some(v)
 }
-
 
 // ---- documents in the chat ------------------------------------------------------------
 
@@ -1190,7 +1097,6 @@ const HOTKEYS: &[(&str, &str, &str)] = &[
     ("dictation", "Ctrl+Alt+KeyD", "Голос в текст"),
     ("record", "Ctrl+Alt+KeyR", "Запись экрана"),
     ("plain", "Ctrl+Alt+Shift+KeyV", "Вставить без форматирования"),
-    ("vpn", "Ctrl+Alt+KeyP", "VPN: включить и выключить"),
 ];
 
 /// Registered island hotkeys: shortcut id → (action, shortcut).
@@ -1306,15 +1212,6 @@ fn on_hotkey(app: &AppHandle, action: &str) {
         "area" | "full" | "ocr" | "qr" | "color" => {
             let (app, mode) = (app.clone(), action.to_string());
             std::thread::spawn(move || capture::start(&app, &mode));
-        }
-        "vpn" => {
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let on = sys::vpn_now().is_none();
-                if let Err(e) = vpn_set(app.clone(), on).await {
-                    let _ = app.emit_to("island", "vpn_error", e);
-                }
-            });
         }
         "dictation" => dictate(app, String::new()),
         "record" => record_toggle(app),
@@ -1529,8 +1426,7 @@ pub fn run() {
             bt_devices,
             bt_connect,
             vpn_status,
-            vpn_names,
-            vpn_set,
+            vpn_ip,
             doc_pick,
             launcher_hotkeys
         ])

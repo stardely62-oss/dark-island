@@ -275,8 +275,6 @@ export function SettingsTab({
   const [models, setModels] = useState<string[]>([]);
   const [modelErr, setModelErr] = useState<string | null>(null);
   const [devices, setDevices] = useState<{ outputs: { id: string; name: string; default: boolean }[]; inputs: { id: string; name: string; default: boolean }[] }>({ outputs: [], inputs: [] });
-  const [vpnNames, setVpnNames] = useState<string[]>([]);
-  const [apps, setApps] = useState<{ Name: string; AppID: string }[]>([]);
   const [monitors, setMonitors] = useState<{ index: number; name: string; width: number; height: number; primary: boolean }[]>([]);
   const refreshKeys = () =>
     api
@@ -287,8 +285,6 @@ export function SettingsTab({
     refreshKeys();
     api?.call<typeof monitors>("monitors_list").then((m) => setMonitors(m ?? []));
     api?.call<typeof devices>("audio_devices").then((d) => d && setDevices(d));
-    api?.call<string[]>("vpn_names").then((n) => setVpnNames(n ?? []));
-    api?.call<{ Name: string; AppID: string }[]>("apps_list").then((a) => setApps(a ?? []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, visible]);
   const provider = providerOf(settings);
@@ -862,77 +858,12 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="6">Сеть</div>
-      <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, только когда VPN включается">
+      <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, когда VPN включается; видно на плитке VPN в «Управлении»">
         <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
-      <Row title="Чем включать VPN" sub="Плитка в «Управлении», команда «vpn» и Ctrl+Alt+P">
-        <Segmented
-          value={settings.vpnClient}
-          options={[
-            ["app", "Программа"],
-            ["warp", "WARP"],
-            ["windows", "Windows"],
-            ["custom", "Команды"],
-          ]}
-          onChange={(v) => set({ vpnClient: v })}
-        />
+      <Row title="VPN" sub="Остров только показывает, включён ли VPN и какой у тебя IP (нажми на плитку — скопируется). Включать и выключать — в самой VPN-программе">
+        {null}
       </Row>
-      {settings.vpnClient === "app" && (
-        <Row
-          title="VPN-программа"
-          sub="Happ и Incy включаются и выключаются сами (по ссылкам happ://connect, incy://disconnect), в любом режиме. Остальные (v2rayN, Hiddify…): системный прокси остров переключает сам, в режиме TUN — открывает программу"
-        >
-          <input
-            className="search set-input"
-            list="vpn-apps"
-            key={settings.vpnAppName}
-            defaultValue={settings.vpnAppName}
-            placeholder="начни вводить название"
-            onFocus={onTypeStart}
-            onBlur={(e) => {
-              const name = e.target.value.trim();
-              const a = apps.find((x) => x.Name.toLowerCase() === name.toLowerCase());
-              set(a ? { vpnApp: a.AppID, vpnAppName: a.Name } : { vpnApp: "", vpnAppName: "" });
-            }}
-          />
-          <datalist id="vpn-apps">
-            {apps.map((a) => (
-              <option key={a.AppID} value={a.Name} />
-            ))}
-          </datalist>
-        </Row>
-      )}
-      {settings.vpnClient === "windows" && (
-        <Row title="Подключение" sub={vpnNames.length ? "Из Параметры → Сеть → VPN" : "В Windows нет VPN-подключений"}>
-          {vpnNames.length ? (
-            <select className="search set-input select" value={settings.vpnName} onChange={(e) => set({ vpnName: e.target.value })}>
-              <option value="">не выбрано</option>
-              {vpnNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <button className="text-btn solid" onClick={() => api?.call("open_windows_settings", { page: "vpn" })}>
-              Добавить
-            </button>
-          )}
-        </Row>
-      )}
-      {settings.vpnClient === "custom" && (
-        <>
-          <Row title="Команда включения" sub="Например: wg-quick up или C:\Program Files\Client\cli.exe connect">
-            <input className="search set-input" defaultValue={settings.vpnOn} onFocus={onTypeStart} onBlur={(e) => set({ vpnOn: e.target.value })} />
-          </Row>
-          <Row title="Команда выключения">
-            <input className="search set-input" defaultValue={settings.vpnOff} onFocus={onTypeStart} onBlur={(e) => set({ vpnOff: e.target.value })} />
-          </Row>
-          <Row title="От администратора" sub="Windows спросит разрешение при каждом переключении">
-            <Toggle on={!!settings.vpnAdmin} onChange={(v) => set({ vpnAdmin: v })} />
-          </Row>
-        </>
-      )}
 
       <div className="set-group" data-tab="3">OBS Studio</div>
       <Row title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">

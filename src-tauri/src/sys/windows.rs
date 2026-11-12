@@ -64,7 +64,7 @@ use windows::Devices::Radios::{Radio, RadioAccessStatus, RadioKind, RadioState};
 use windows::Win32::Foundation::{FILETIME, LPARAM, WPARAM};
 use windows::Win32::Storage::FileSystem::FileTimeToLocalFileTime;
 use windows::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
-use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
+use windows::Win32::System::Registry::{RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
 use windows::Win32::System::Power::SetSuspendState;
 use windows::Win32::System::Shutdown::LockWorkStation;
 use windows::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE};
@@ -232,6 +232,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
             let now = vpn_now();
             if now != vpn_before {
                 vpn_before = now.clone();
+                crate::live::vpn_ip_remember(None);
                 let _ = app.emit_to("island", "vpn", serde_json::json!({ "on": now.is_some(), "name": now }));
                 if let (Some(name), true) = (now, settings.bool("vpnCountry", true)) {
                     let app = app.clone();
@@ -239,6 +240,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
                         // Give the tunnel a moment to carry traffic.
                         thread::sleep(Duration::from_secs(2));
                         if let Some((country, ip)) = crate::live::vpn_country() {
+                            crate::live::vpn_ip_remember(Some((country.clone(), ip.clone())));
                             let _ = app.emit_to("island", "vpn", serde_json::json!({ "on": true, "name": name, "country": country, "ip": ip }));
                         }
                     });
@@ -1394,22 +1396,6 @@ pub fn system_proxy() -> Option<String> {
     }
 }
 
-/// Turns the system proxy on (with `server`, if given) or off, and tells
-/// running programs the settings changed.
-pub fn set_system_proxy(on: bool, server: &str) {
-    use windows::Win32::Networking::WinInet::{InternetSetOptionW, INTERNET_OPTION_REFRESH, INTERNET_OPTION_SETTINGS_CHANGED};
-    unsafe {
-        let key = HSTRING::from(INET);
-        if on && !server.is_empty() {
-            let w: Vec<u16> = server.encode_utf16().chain(std::iter::once(0)).collect();
-            let _ = RegSetKeyValueW(HKEY_CURRENT_USER, &key, &HSTRING::from("ProxyServer"), windows::Win32::System::Registry::REG_SZ.0, Some(w.as_ptr() as *const _), (w.len() * 2) as u32);
-        }
-        let v: u32 = on as u32;
-        let _ = RegSetKeyValueW(HKEY_CURRENT_USER, &key, &HSTRING::from("ProxyEnable"), REG_DWORD.0, Some(&v as *const u32 as *const _), 4);
-        let _ = InternetSetOptionW(None, INTERNET_OPTION_SETTINGS_CHANGED, None, 0);
-        let _ = InternetSetOptionW(None, INTERNET_OPTION_REFRESH, None, 0);
-    }
-}
 
 /// What carries traffic now: a VPN adapter (TUN included) or a local proxy.
 pub fn vpn_now() -> Option<String> {
@@ -1645,94 +1631,4 @@ pub fn running_exes() -> std::collections::HashSet<String> {
     out
 }
 
-/// Whether a URL scheme such as `happ://` is registered on this computer.
-pub fn scheme_registered(scheme: &str) -> bool {
-    unsafe {
-        reg_string(HKEY_CLASSES_ROOT, &format!("{scheme}\\shell\\open\\command"), "").is_some()
-            || reg_string(HKEY_CLASSES_ROOT, scheme, "URL Protocol").is_some()
-    }
-}
 
-/// Visible top-level windows of programs whose exe name contains `name`.
-fn windows_of(name: &str) -> Vec<isize> {
-    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
-    unsafe extern "system" fn each(h: HWND, l: LPARAM) -> windows::core::BOOL {
-        let out = &mut *(l.0 as *mut Vec<isize>);
-        if IsWindowVisible(h).as_bool() {
-            out.push(h.0 as isize);
-        }
-        true.into()
-    }
-    let mut all: Vec<isize> = Vec::new();
-    unsafe {
-        let _ = EnumWindows(Some(each), LPARAM(&mut all as *mut _ as isize));
-    }
-    let name = name.to_lowercase();
-    all.into_iter()
-        .filter(|&h| {
-            let mut pid = 0u32;
-            unsafe { GetWindowThreadProcessId(HWND(h as *mut _), Some(&mut pid)) };
-            let path = process_path(pid).to_lowercase();
-            path.rsplit('\\').next().is_some_and(|exe| exe.contains(&name))
-        })
-        .collect()
-}
-
-/// Sends a link to a tray program (`incy://connect`) without its window
-/// coming up: any window of it that appears in the next few seconds is
-/// put back into the tray, and the window you were in gets the focus back.
-pub fn open_scheme_quiet(url: &str, program: &str) -> bool {
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SetForegroundWindow, SW_HIDE, SW_SHOWMINNOACTIVE};
-    let before = windows_of(program);
-    let prev = unsafe { GetForegroundWindow() }.0 as isize;
-    let r = unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(url), None, None, SW_SHOWMINNOACTIVE) };
-    if (r.0 as isize) <= 32 {
-        return false;
-    }
-    let program = program.to_string();
-    std::thread::spawn(move || {
-        for _ in 0..50 {
-            std::thread::sleep(std::time::Duration::from_millis(120));
-            let fresh: Vec<isize> = windows_of(&program).into_iter().filter(|h| !before.contains(h)).collect();
-            if fresh.is_empty() {
-                continue;
-            }
-            unsafe {
-                for h in fresh {
-                    let _ = ShowWindow(HWND(h as *mut _), SW_HIDE);
-                }
-                if prev != 0 {
-                    let _ = SetForegroundWindow(HWND(prev as *mut _));
-                }
-            }
-        }
-    });
-    true
-}
-
-/// Runs a command line hidden, asking for administrator rights (UAC).
-pub fn run_elevated(cmd: &str) -> bool {
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
-    let args = HSTRING::from(format!("/c {cmd}"));
-    let r = unsafe { ShellExecuteW(None, w!("runas"), w!("cmd.exe"), &args, None, SW_HIDE) };
-    r.0 as isize > 32
-}
-
-/// Runs a command line hidden and waits; Ok with its output, Err with it on failure.
-pub fn run_hidden(cmd: &str) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let out = std::process::Command::new("cmd.exe")
-        .raw_arg(format!("/c {cmd}"))
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| e.to_string())?;
-    let text = String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
-    if out.status.success() {
-        Ok(text)
-    } else {
-        Err(text.trim().chars().take(300).collect())
-    }
-}

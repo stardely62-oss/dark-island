@@ -42,7 +42,6 @@ export function ControlsTab({
   onMic,
   through,
   onThrough,
-  vpnClient,
 }: {
   api: Bridge | null;
   visible: boolean;
@@ -55,7 +54,6 @@ export function ControlsTab({
   onMic: () => void;
   through: boolean;
   onThrough: (v: boolean) => void;
-  vpnClient: string;
 }) {
   const [c, setC] = useState<Controls | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -81,7 +79,6 @@ export function ControlsTab({
   const armTimer = useRef(0);
 
   const [vpn, setVpn] = useState<string | null | undefined>(undefined);
-  const [vpnErr, setVpnErr] = useState<string | null>(null);
   useEffect(() => {
     if (visible) api?.call<Controls>("controls_get").then(setC);
   }, [api, visible]);
@@ -92,15 +89,18 @@ export function ControlsTab({
     const id = window.setInterval(load, 3000);
     return () => clearInterval(id);
   }, [api, visible]);
-  const toggleVpn = () => {
-    const on = !vpn;
-    setBusy("vpn");
-    setVpnErr(null);
-    api
-      ?.call("vpn_set", { on })
-      .then(() => window.setTimeout(() => api?.call<string | null>("vpn_status").then((v) => setVpn(v ?? null)), 1500))
-      .catch((e) => setVpnErr(String(e)))
-      .finally(() => window.setTimeout(() => setBusy(null), 1500));
+  // VPN: only shown, not switched. The address the internet sees, and its country.
+  const [ip, setIp] = useState<[string, string] | null>(null);
+  const [ipCopied, setIpCopied] = useState(false);
+  useEffect(() => {
+    if (!visible || !vpn) return setIp(null);
+    api?.call<[string, string] | null>("vpn_ip").then((v) => setIp(v ?? null));
+  }, [api, visible, vpn]);
+  const copyIp = () => {
+    if (!ip) return;
+    api?.call("paste_text", { text: ip[1], paste: false });
+    setIpCopied(true);
+    window.setTimeout(() => setIpCopied(false), 1400);
   };
 
   const toggle = (what: "wifi" | "bluetooth" | "dark" | "mic", on: boolean) => {
@@ -128,9 +128,9 @@ export function ControlsTab({
     <button
       className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
       disabled={on === null || on === undefined}
-      title={what === "vpn" && vpnErr ? vpnErr : `${title}: ${sub}`}
+      title={what === "vpn" ? (ip ? "Нажми, чтобы скопировать IP" : "VPN включается и выключается в самой VPN-программе") : `${title}: ${sub}`}
       onClick={() =>
-        what === "mic" ? onMic() : what === "vpn" ? toggleVpn() : what === "through" ? onThrough(!through) : toggle(what, !on)
+        what === "mic" ? onMic() : what === "vpn" ? copyIp() : what === "through" ? onThrough(!through) : toggle(what, !on)
       }
     >
       <span className="ctl-icon">{icon}</span>
@@ -184,7 +184,7 @@ export function ControlsTab({
                 </button>
               )}
             </div>
-            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, vpnErr ? "не вышло" : vpn ? vpn : vpnClient === "warp" ? "WARP выключен" : "выключен")}
+            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, !vpn ? "выключен" : ipCopied ? "IP скопирован" : ip ? `${ip[0]} · ${ip[1]}` : vpn)}
             {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
             {tile(
               "mic",

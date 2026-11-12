@@ -488,7 +488,6 @@ export function App() {
         b.on("foreground", setForeground),
         b.on("downloads", setDownloads),
         b.on("tour", () => window.dispatchEvent(new Event("island-tour"))),
-        b.on("vpn_error", (e) => showCard({ kind: "info", title: "VPN", sub: e, ms: 3500 })),
         b.on("obs", (o) => {
           const live = o.recording || o.streaming;
           if (live !== obsLive.current) buddy.react(live ? "surprised" : "happy", 1100);
@@ -1067,14 +1066,7 @@ export function App() {
           pomodoro(!pomoRef.current);
           return;
         }
-        if (id === "vpn") {
-          api?.call<string | null>("vpn_status").then((now) =>
-            api
-              ?.call("vpn_set", { on: !now })
-              .catch((e) => showCard({ kind: "info", title: "VPN", sub: String(e), ms: 3500 })),
-          );
-          return;
-        }
+
         api?.call<{ wifi: boolean; bluetooth: boolean; dark: boolean }>("controls_get").then((c) => {
           const on = !c[id as "wifi" | "bluetooth" | "dark"];
           api?.call("controls_set", { what: id, on });
@@ -1413,7 +1405,6 @@ export function App() {
             micUsers={privacy.mic}
             through={!!settings.through}
             onThrough={(v) => setSetting({ through: v })}
-            vpnClient={settings.vpnClient}
             onMic={() =>
               api?.call<boolean | null>("mic_toggle").then((m) => {
                 if (m === null || m === undefined) return;

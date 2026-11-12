@@ -404,6 +404,18 @@ pub fn spawn_downloads(app: AppHandle) {
 
 // ------------------------------------------------------------------ vpn ----
 
+static VPN_IP: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
+
+/// The last known country and IP behind the VPN (cleared when it goes off).
+pub fn vpn_ip_cached() -> Option<(String, String)> {
+    VPN_IP.lock().ok()?.clone()
+}
+pub fn vpn_ip_remember(v: Option<(String, String)>) {
+    if let Ok(mut g) = VPN_IP.lock() {
+        *g = v;
+    }
+}
+
 /// Public IP and country, asked only when a VPN comes up (and only if allowed).
 pub fn vpn_country() -> Option<(String, String)> {
     let v = get_json("https://ipwho.is/?fields=success,ip,country_code")?;
