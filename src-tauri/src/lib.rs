@@ -758,11 +758,12 @@ fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), Stri
     // Happ and Incy take commands by link: happ://connect, incy://disconnect.
     if let Some(scheme) = vpn_scheme(&format!("{id} {}", s.string("vpnAppName"))) {
         let url = format!("{scheme}://{}", if on { "connect" } else { "disconnect" });
-        if sys::open_scheme(&url) {
+        if sys::open_scheme_quiet(&url, scheme) {
             diag::log(app, &format!("vpn app: {url}"));
             return Ok(());
         }
     }
+    diag::log(app, &format!("vpn app {id}: no link scheme, switching the old way"));
     let running = exe.as_ref().is_some_and(|e| sys::running_exes().contains(e));
     let remember = |server: &str| {
         let mut m = serde_json::Map::new();

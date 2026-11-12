@@ -1647,15 +1647,68 @@ pub fn running_exes() -> std::collections::HashSet<String> {
 
 /// Whether a URL scheme such as `happ://` is registered on this computer.
 pub fn scheme_registered(scheme: &str) -> bool {
-    unsafe { reg_string(HKEY_CLASSES_ROOT, &format!("{scheme}\\shell\\open\\command"), "").is_some() }
+    unsafe {
+        reg_string(HKEY_CLASSES_ROOT, &format!("{scheme}\\shell\\open\\command"), "").is_some()
+            || reg_string(HKEY_CLASSES_ROOT, scheme, "URL Protocol").is_some()
+    }
 }
 
-/// Opens a URL with whatever program its scheme belongs to (`happ://connect`).
-pub fn open_scheme(url: &str) -> bool {
+/// Visible top-level windows of programs whose exe name contains `name`.
+fn windows_of(name: &str) -> Vec<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
+    unsafe extern "system" fn each(h: HWND, l: LPARAM) -> windows::core::BOOL {
+        let out = &mut *(l.0 as *mut Vec<isize>);
+        if IsWindowVisible(h).as_bool() {
+            out.push(h.0 as isize);
+        }
+        true.into()
+    }
+    let mut all: Vec<isize> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(each), LPARAM(&mut all as *mut _ as isize));
+    }
+    let name = name.to_lowercase();
+    all.into_iter()
+        .filter(|&h| {
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(HWND(h as *mut _), Some(&mut pid)) };
+            let path = process_path(pid).to_lowercase();
+            path.rsplit('\\').next().is_some_and(|exe| exe.contains(&name))
+        })
+        .collect()
+}
+
+/// Sends a link to a tray program (`incy://connect`) without its window
+/// coming up: any window of it that appears in the next few seconds is
+/// put back into the tray, and the window you were in gets the focus back.
+pub fn open_scheme_quiet(url: &str, program: &str) -> bool {
     use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-    let r = unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(url), None, None, SW_SHOWNORMAL) };
-    r.0 as isize > 32
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SetForegroundWindow, SW_HIDE, SW_SHOWMINNOACTIVE};
+    let before = windows_of(program);
+    let prev = unsafe { GetForegroundWindow() }.0 as isize;
+    let r = unsafe { ShellExecuteW(None, w!("open"), &HSTRING::from(url), None, None, SW_SHOWMINNOACTIVE) };
+    if (r.0 as isize) <= 32 {
+        return false;
+    }
+    let program = program.to_string();
+    std::thread::spawn(move || {
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            let fresh: Vec<isize> = windows_of(&program).into_iter().filter(|h| !before.contains(h)).collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            unsafe {
+                for h in fresh {
+                    let _ = ShowWindow(HWND(h as *mut _), SW_HIDE);
+                }
+                if prev != 0 {
+                    let _ = SetForegroundWindow(HWND(prev as *mut _));
+                }
+            }
+        }
+    });
+    true
 }
 
 /// Runs a command line hidden, asking for administrator rights (UAC).
