@@ -1187,7 +1187,7 @@ fn island_peek(app: AppHandle, ctl: State<'_, Ctl>, on: bool) {
     let Some(w) = app.get_webview_window("island") else { return };
     let hidden = ctl.shared.snap.lock().unwrap().presence == types::Presence::Hidden;
     if on {
-        let _ = w.show();
+        sys::show_quiet(&w);
     } else if hidden {
         let _ = w.hide();
     }

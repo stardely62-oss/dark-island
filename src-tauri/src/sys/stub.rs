@@ -14,6 +14,10 @@ pub fn spawn(_app: AppHandle, _shared: Arc<Shared>, _settings: Arc<crate::settin
 
 pub fn prepare_window(_win: &WebviewWindow) {}
 
+pub fn show_quiet(win: &WebviewWindow) {
+    let _ = win.show();
+}
+
 pub fn cursor_pos() -> Option<(f64, f64)> {
     None
 }

@@ -60,6 +60,8 @@ type Card = {
   title: string;
   sub?: string;
   sticky?: boolean;
+  /** Shown even while the island is hidden over a game (the good-luck wish). */
+  peek?: boolean;
   mood?: Mood;
   ms?: number;
 };
@@ -229,6 +231,8 @@ export function App() {
   const touring = useRef(false);
   const waiting = useRef<Omit<Card, "key">[]>([]);
   const cardRef = useRef<Card | null>(null);
+  // When the island last went away into a game (for the good-luck wish).
+  const gameWish = useRef(0);
   const actionable = (c: Omit<Card, "key"> | null) =>
     !!c && (!!c.open || c.kind === "agent" || c.kind === "reminder" || c.kind === "tour");
   const showCard = useCallback((c: Omit<Card, "key">) => {
@@ -328,9 +332,10 @@ export function App() {
   const level = (settings.cardsOver as string) ?? "all";
   const cardAllowed =
     !!card &&
+    (card.peek ||
     (important
       ? level === "all" || (level === "apps" && presence !== "hidden") || (level === "desktop" && presence === "normal")
-      : presence !== "hidden");
+      : presence !== "hidden"));
   const mode: Mode = commandOpen
     ? "command"
     : party
@@ -401,11 +406,21 @@ export function App() {
         b.on("media", setMedia),
         b.on("battery", setBattery),
         b.on("presence", (p) => {
-          // Into a game: he waves good luck before the island goes away.
+          // Into a game: he waves good luck before the island goes away —
+          // once per gaming stretch, not on every Alt+Tab back into it.
           if (p === "hidden" && presenceRef.current !== "hidden") {
-            buddy.act("wave", 1500);
-            buddy.count("game");
-            showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1500 });
+            const now = Date.now();
+            if (now - gameWish.current > 15 * 60_000 && !actionable(cardRef.current)) {
+              buddy.act("wave", 1500);
+              buddy.count("game");
+              showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1400, peek: true });
+            }
+            gameWish.current = now;
+          }
+          // Out of the game (Alt+Tab): a wish not yet shown is no longer wanted.
+          if (p !== "hidden") {
+            waiting.current = waiting.current.filter((c) => !c.peek);
+            setCard((c) => (c?.peek ? null : c));
           }
           presenceRef.current = p;
           setPresence(p);

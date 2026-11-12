@@ -109,6 +109,18 @@ pub fn spawn(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>) -> Se
 
 /// The island must never steal focus from the window the user is typing in,
 /// and must not show up in Alt+Tab.
+/// Shows a window without taking the focus (a game in front stays in front).
+pub fn show_quiet(win: &WebviewWindow) {
+    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+    let Ok(h) = win.hwnd() else {
+        let _ = win.show();
+        return;
+    };
+    unsafe {
+        let _ = ShowWindow(HWND(h.0 as _), SW_SHOWNOACTIVATE);
+    }
+}
+
 pub fn prepare_window(win: &WebviewWindow) {
     let Ok(h) = win.hwnd() else { return };
     let hwnd = HWND(h.0 as _);
@@ -287,7 +299,7 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
                             }
                         });
                     } else if before == Presence::Hidden {
-                        let _ = w.show();
+                        show_quiet(&w);
                     }
                 }
                 let _ = app.emit_to("island", "presence", p);
