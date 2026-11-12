@@ -318,6 +318,19 @@ impl Steam {
 
 const PARTIAL: &[&str] = &["crdownload", "part", "partial", "download", "opdownload"];
 
+/// Chromium browsers (Chrome, Edge, Yandex, Opera) write to
+/// "Unconfirmed 241032.crdownload" until they know the real name.
+const UNCONFIRMED: &[&str] = &["Unconfirmed", "Не подтвержден", "Не підтверджено", "Nicht bestätigt", "Non confirmé", "No confirmado", "Niepotwierdzony"];
+
+/// What the pill shows for a file being written.
+fn partial_name(file: &str) -> String {
+    let base = file.rsplit_once('.').map(|(b, _)| b).unwrap_or(file);
+    let anon = base.rsplit_once(' ').is_some_and(|(word, num)| {
+        !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) && UNCONFIRMED.iter().any(|u| word.eq_ignore_ascii_case(u) || word == *u)
+    });
+    if anon { "Файл из браузера".into() } else { base.to_string() }
+}
+
 /// Watches the Downloads folder: files being written show up in the pill,
 /// a finished file shows a card.
 pub fn spawn_downloads(app: AppHandle) {
@@ -352,7 +365,7 @@ pub fn spawn_downloads(app: AppHandle) {
                 .filter(|(n, _)| partial(n))
                 .map(|(n, &size)| {
                     let prev = before.get(n).copied().unwrap_or(size);
-                    let name = n.rsplit_once('.').map(|(b, _)| b).unwrap_or(n).to_string();
+                    let name = partial_name(n);
                     Download { name, size, speed: ((size.saturating_sub(prev)) as f64 / secs) as u64, total: 0 }
                 })
                 .chain(steam.poll(secs))
@@ -417,6 +430,14 @@ pub fn favicon(url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::vdf_value;
+
+    #[test]
+    fn unconfirmed_downloads_get_a_plain_name() {
+        assert_eq!(super::partial_name("Не подтвержден 241032.crdownload"), "Файл из браузера");
+        assert_eq!(super::partial_name("Unconfirmed 5.crdownload"), "Файл из браузера");
+        assert_eq!(super::partial_name("movie.mkv.crdownload"), "movie.mkv");
+        assert_eq!(super::partial_name("Report 2024.pdf.part"), "Report 2024.pdf");
+    }
 
     #[test]
     fn steam_manifest_values() {

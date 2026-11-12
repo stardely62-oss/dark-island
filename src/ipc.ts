@@ -258,6 +258,7 @@ function mockBridge(): Bridge {
       { name: "Steam", kind: "app", target: "steam" },
     ];
   if (params.get("pill")) Object.assign(mockSettings, { musicPill: params.get("pill"), lyrics: true });
+  if (params.has("bday")) { const d = new Date(); mockSettings.userBirthday = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
   const mockControls = { wifi: true, ssid: "Home-5G", bluetooth: true, dark: true };
   let note = "Идеи:\n— остров под музыку ✓\n— Клодик ✓\n— буфер обмена";
   let mockVpn: string | null = null;

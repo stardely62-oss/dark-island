@@ -17,11 +17,10 @@ const AI_HOWTO: Record<string, { steps: string[]; note: string }> = {
   },
   gemini: {
     steps: [
-      "Включи VPN (страна США или Европа) в режиме «системный прокси» или TUN — остров ходит через него сам",
       "Открой aistudio.google.com/apikey → Create API key",
       "Вставь ключ ниже и нажми «Список», чтобы выбрать модель, например `gemini-3.8-flash`",
     ],
-    note: "Бесплатный тариф с лимитами. Из России и ряда стран Google отвечает «User location is not supported» — это значит, что запрос пошёл мимо VPN. Если модель сняли с поддержки, остров сам выберет похожую.",
+    note: "Бесплатный тариф с лимитами. Если модель сняли с поддержки, остров сам выберет похожую.",
   },
   openrouter: {
     steps: ["Открой openrouter.ai и войди", "Keys → Create Key", "Вставь ключ ниже; бесплатные модели — с «:free» в названии (кнопка «Список»)"],
@@ -629,6 +628,13 @@ export function SettingsTab({
               </li>
             ))}
           </ol>
+          {provider.id !== "custom" && (
+            <div className="howto-note howto-vpn">
+              Из России и ряда других стран многие нейросети (Claude, OpenAI, Gemini и другие) работают только через VPN. Включи VPN
+              (сервер в США или Европе) в режиме «системный прокси» или TUN — остров сам пойдёт через него. Ошибка «location is not
+              supported», «unsupported country» или «Request not allowed» значит, что запрос прошёл мимо VPN: попробуй режим TUN.
+            </div>
+          )}
           <div className="howto-note">
             {AI_HOWTO[provider.id].note} Ключ шифруется Windows и уходит только в сам сервис. Чат — вкладка ✦ на острове или Ctrl+Alt+A; вопрос можно задать и в командной строке (Alt+Space).
           </div>

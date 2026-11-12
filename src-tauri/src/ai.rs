@@ -113,7 +113,9 @@ fn error_text(code: u16, body: &str) -> String {
         429 => "Слишком много запросов или кончился лимит. ",
         _ => "",
     };
-    let hint = if msg.contains("location is not supported") || msg.contains("unsupported_country") {
+    let low = msg.to_lowercase();
+    let blocked = ["location is not supported", "unsupported_country", "unsupported country", "not available in your country", "not available in your region", "request not allowed", "country, region, or territory"];
+    let hint = if blocked.iter().any(|b| low.contains(b)) {
         "Сервис недоступен из вашей страны — нужен VPN. Остров ходит через системный прокси Windows: включите в VPN режим «системный прокси» или TUN и повторите. "
     } else {
         hint

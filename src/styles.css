@@ -2875,3 +2875,10 @@ body.settings-page.preview {
 .howto * {
   user-select: text;
 }
+.howto-vpn {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgb(255 200 80 / 0.08);
+  border: 1px solid rgb(255 200 80 / 0.18);
+}

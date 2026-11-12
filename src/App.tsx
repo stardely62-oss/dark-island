@@ -39,10 +39,11 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
+import { PartyScene } from "./components/Party";
 import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, usePet, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
-type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs";
+type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs" | "party";
 type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "ai" | "controls" | "settings";
 type MusicPill = "compact" | "wide" | "player" | "lyrics" | "line";
 type Pomo = { phase: "work" | "rest"; round: number };
@@ -55,7 +56,7 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
+  open?: { party?: boolean; path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -104,6 +105,8 @@ function sizeOf(
       return { w: 560, h: commandHeight(opts.rows ?? 0) };
     case "ask":
       return { w: 410, h: 116 };
+    case "party":
+      return { w: 440, h: 196 };
     case "agent":
       return { w: 300, h: 34 };
     case "expanded":
@@ -240,6 +243,14 @@ export function App() {
     setCard({ ...c, key: Date.now() });
   }, []);
 
+  // The birthday show in the open island (a hover on the birthday card starts it).
+  const [party, setParty] = useState(0);
+  useEffect(() => {
+    if (!party) return;
+    const t = window.setTimeout(() => setParty(0), 10_500);
+    return () => clearTimeout(t);
+  }, [party]);
+
   const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
   // ---- pomodoro: 25 minutes of work, 5 of rest (15 after every fourth) ----
   const [pomo, setPomoState] = useState<Pomo | null>(() => {
@@ -322,7 +333,9 @@ export function App() {
       : presence !== "hidden");
   const mode: Mode = commandOpen
     ? "command"
-    : expanded
+    : party
+      ? "party"
+      : expanded
       ? "expanded"
       : ask
         ? "ask"
@@ -756,8 +769,9 @@ export function App() {
       showCard({
         kind: "info",
         title: who === "user" ? "С днём рождения!" : `У ${buddy.look.name} день рождения!`,
-        sub: who === "user" ? `${buddy.look.name} испёк торт` : `Ему ${buddyAge()} — погладь его сегодня`,
-        ms: 7000,
+        sub: who === "user" ? `${buddy.look.name} испёк торт — наведи` : `Ему ${buddyAge()} — наведи`,
+        open: { party: true },
+        ms: 15000,
       });
     };
     const first = window.setTimeout(check, 4000);
@@ -962,6 +976,13 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.key]);
   useEffect(() => {
+    if (hovered && card?.open?.party) {
+      setParty(Date.now());
+      setCard(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovered, card?.key]);
+  useEffect(() => {
     if (hovered && cardHold) {
       held.current = true;
       clearTimeout(cardTimer.current);
@@ -974,11 +995,11 @@ export function App() {
   useEffect(() => {
     if (!hovered) setSuppressed(false);
     // A question from an agent (with its buttons) is not covered by the open island either.
-    const want = hovered && !cardHold && !ask && !(overBuddy && !hoverOpenRef.current);
+    const want = hovered && !cardHold && !ask && !party && !(overBuddy && !hoverOpenRef.current);
     const delay = !want ? COLLAPSE_DELAY : presence === "strip" ? EXPAND_DELAY_STRIP : overBuddy ? 600 : EXPAND_DELAY;
     const t = window.setTimeout(() => setHoverOpen(want), delay);
     return () => clearTimeout(t);
-  }, [hovered, presence, overBuddy, cardHold, ask]);
+  }, [hovered, presence, overBuddy, cardHold, ask, party]);
   // A question arrives while the island is open under the cursor: it folds
   // into the question so the buttons are right there.
   useEffect(() => {
@@ -1263,6 +1284,12 @@ export function App() {
             api?.call("dictate_toggle");
             return;
           }
+          if (mode === "party") return;
+          if (mode === "card" && card?.open?.party) {
+            setParty(Date.now());
+            setCard(null);
+            return;
+          }
           if (mode === "card" && (card?.kind === "reminder" || card?.kind === "tour")) return;
           if (mode === "card" && card?.open) {
             if (card.open.path) api?.call("open_path", { path: card.open.path });
@@ -1401,6 +1428,16 @@ export function App() {
         )}
         <View on={mode === "agent"} shape={sizeOf("agent")}>
           <AgentPill working={working} />
+        </View>
+        <View on={mode === "party"} shape={sizeOf("party")}>
+          {!!party && (
+            <PartyScene
+              key={party}
+              title={birthdayToday() === "buddy" ? `${buddy.look.name}у ${buddyAge()}!` : "С днём рождения!"}
+              sub={birthdayToday() === "buddy" ? "Спасибо, что ты со мной" : `${buddy.look.name} испёк тебе торт`}
+              onClose={() => setParty(0)}
+            />
+          )}
         </View>
         <View on={mode === "ask"} shape={sizeOf("ask")}>
           {ask && <AskCard ask={ask} onAnswer={answer} />}

@@ -440,7 +440,8 @@ function snapshot() {
   const now = Date.now();
   const re = reaction && reaction.until > now ? reaction.name : "";
   const act = action && action.until > now ? action.name : "";
-  const hat = look.hat === "none" ? seasonalHat() : look.hat;
+  // On a birthday he wears the party hat all day, whatever he usually wears.
+  const hat = birthdayToday() ? "party" : look.hat === "none" ? seasonalHat() : look.hat;
   const st = pet.asleep ? "" : isHungry() ? "hungry" : look.life ? (state ?? "") : "";
   return `${re}|${look.life && !pet.asleep ? act : ""}|${st}|${pet.asleep ? "nightcap" : hat}|${look.name}|${look.weather}|${pet.asleep ? 1 : 0}|${hearts()}|${Object.keys(pet.stickers).length}`;
 }

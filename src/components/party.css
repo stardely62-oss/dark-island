@@ -1,0 +1,289 @@
+/* The birthday show inside the open island. Timeline:
+   0–1.6s he walks in with the cake, 1.6–2s sets it down,
+   2.3–3.1s blows, 3.1s the candles go out, from 3.3s claps and confetti. */
+.party {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: inherit;
+  background: radial-gradient(120% 90% at 50% 110%, rgb(255 111 156 / 0.16), transparent 60%);
+}
+.party-flags {
+  position: absolute;
+  top: 6px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+  justify-content: space-between;
+}
+.party-flags i {
+  width: 12px;
+  height: 14px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform-origin: 50% 0;
+  animation: party-flag-in 0.4s ease-out backwards, party-flag 1.6s ease-in-out 0.4s infinite alternate;
+}
+.party-flags i:nth-child(2n) {
+  margin-top: 4px;
+}
+@keyframes party-flag-in {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+@keyframes party-flag {
+  to {
+    transform: rotate(6deg);
+  }
+}
+.party-title {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: party-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) 3.3s backwards;
+}
+.party-title b {
+  font-size: 19px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #ff6f9c, #ffd84a, #7fd0ff, #c27ce0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.party-title span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+@keyframes party-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+.party-floor {
+  position: absolute;
+  left: 60px;
+  right: 60px;
+  bottom: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.12);
+}
+
+/* ---- the cake: carried in, then set down ---- */
+.party-cake-at {
+  position: absolute;
+  left: 232px;
+  bottom: 23px;
+  animation: party-carry-cake 2.05s linear both;
+}
+.party-cake {
+  display: block;
+}
+@keyframes party-carry-cake {
+  0% {
+    transform: translate(-260px, -14px);
+  }
+  78% {
+    transform: translate(-6px, -14px);
+  }
+  92% {
+    transform: translate(0, 2px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+.party-flames rect.f1,
+.party-flames rect.f2,
+.party-flames rect.f3 {
+  animation: party-flicker 0.22s steps(2) infinite;
+}
+.party-flames rect.f2 {
+  animation-delay: -0.1s;
+}
+.party-flames {
+  animation: party-out 0.25s ease-in 3.05s forwards;
+}
+@keyframes party-flicker {
+  50% {
+    transform: translateY(0.4px);
+    opacity: 0.75;
+  }
+}
+@keyframes party-out {
+  to {
+    opacity: 0;
+    transform: translateX(1.5px) scaleY(0.4);
+  }
+}
+.party-smoke rect {
+  opacity: 0;
+  animation: party-smoke 1.6s ease-out 3.15s forwards;
+}
+.party-smoke rect.s2 {
+  animation-delay: 3.25s;
+}
+.party-smoke rect.s3 {
+  animation-delay: 3.35s;
+}
+@keyframes party-smoke {
+  10% {
+    opacity: 0.8;
+  }
+  to {
+    opacity: 0;
+    transform: translate(2px, -5px);
+  }
+}
+
+/* ---- him ---- */
+.party-buddy {
+  position: absolute;
+  left: 150px;
+  bottom: 22px;
+  animation: party-walk 1.6s linear both, party-lean 0.8s ease-in-out 2.3s both;
+}
+@keyframes party-walk {
+  from {
+    transform: translateX(-260px);
+  }
+}
+/* steps back a little and leans in to blow */
+@keyframes party-lean {
+  40%,
+  70% {
+    translate: 6px 0;
+    rotate: 6deg;
+  }
+}
+.party-me {
+  display: block;
+  animation: party-bob 0.32s ease-in-out 5 both;
+}
+@keyframes party-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+/* his arms hold the cake on the way in, then clap */
+@keyframes party-hold {
+  from {
+    translate: 0 -2px;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+.party-me .bd-arm-l {
+  animation: party-hold 2s steps(1) both, party-clap-l 0.32s ease-in-out 3.3s 12;
+}
+.party-me .bd-arm-r {
+  animation: party-hold 2s steps(1) both, party-clap-r 0.32s ease-in-out 3.3s 12;
+}
+@keyframes party-clap-l {
+  50% {
+    translate: 3px -2px;
+  }
+}
+@keyframes party-clap-r {
+  50% {
+    translate: -3px -2px;
+  }
+}
+/* cheeks puffed while he blows, happy eyes after */
+.party-me .bd-eyes {
+  animation: party-hide 0.01s linear 3.3s forwards;
+}
+.party-me .bd-happy {
+  animation: party-show 0.01s linear 3.3s forwards;
+}
+@keyframes party-hide {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes party-show {
+  to {
+    opacity: 1;
+  }
+}
+.party-me .bd-jump {
+  animation: party-jump 0.5s ease-out 3.35s 3;
+}
+@keyframes party-jump {
+  40% {
+    translate: 0 -2px;
+  }
+}
+.party-puff {
+  position: absolute;
+  left: 74px;
+  top: 26px;
+}
+.party-puff i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(220 235 255 / 0.85);
+  opacity: 0;
+  animation: party-puff 0.7s ease-out 2.45s;
+}
+.party-puff i:nth-child(2) {
+  animation-delay: 2.6s;
+  top: -4px;
+}
+.party-puff i:nth-child(3) {
+  animation-delay: 2.75s;
+  top: 3px;
+}
+@keyframes party-puff {
+  15% {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+    transform: translate(38px, -10px) scale(1.8);
+  }
+}
+
+/* ---- confetti ---- */
+.party-confetti i {
+  position: absolute;
+  top: -12px;
+  border-radius: 1px;
+  opacity: 0;
+  animation-name: party-fall;
+  animation-timing-function: cubic-bezier(0.3, 0.4, 0.6, 1);
+  animation-fill-mode: forwards;
+  animation-iteration-count: 2;
+}
+@keyframes party-fall {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), 210px) rotate(calc(var(--spin) * 540deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .party *,
+  .party {
+    animation-duration: 0.01s !important;
+    animation-delay: 0s !important;
+  }
+}
