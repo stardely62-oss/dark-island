@@ -2920,14 +2920,24 @@ body.settings-page.preview {
   background: #18181c;
   border: 1px solid rgb(255 255 255 / 0.08);
   box-shadow: 0 -6px 24px rgb(0 0 0 / 0.45);
-  animation: lang-pop-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-  transform-origin: 30% 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(0, 10px, 0);
+  transition:
+    opacity 0.14s ease,
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0.2s;
 }
-@keyframes lang-pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
-  }
+.lang-pop.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0);
+  transition:
+    opacity 0.16s ease,
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s;
 }
 .lang-pop-head {
   display: flex;

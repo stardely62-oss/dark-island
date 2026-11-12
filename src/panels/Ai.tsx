@@ -418,8 +418,8 @@ export function AiTab({
               <i className="caret" />
             </button>
           </div>
-          {langOpen && (
-            <div className="lang-pop" onPointerDown={(e) => e.stopPropagation()}>
+          {view === "text" && (
+            <div className={`lang-pop ${langOpen ? "open" : ""}`} aria-hidden={!langOpen} onPointerDown={(e) => e.stopPropagation()}>
               <div className="lang-pop-head">
                 Переводить на
                 <button className="lang-x" onClick={() => setLangOpen(false)} aria-label="Закрыть">
