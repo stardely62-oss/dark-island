@@ -595,14 +595,13 @@ fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
     if let Some(Value::Array(groups)) = hooks.get_mut("PermissionRequest") {
         groups.retain(|g| !g.to_string().contains(MARK));
     }
+    let mut trust = None;
     if on {
-        let cmd = format!(
-            "curl -s -m 40 -X POST -H \"Content-Type: application/json\" --data-binary @- \"{}\"",
-            agents.url("codex")
-        );
+        let cmd = codex_hook_command(agents);
         let groups = hooks.entry("PermissionRequest").or_insert_with(|| json!([]));
         if let Value::Array(g) = groups {
-            g.push(json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": 45, "statusMessage": "Спрашиваю на острове" }] }));
+            g.push(json!({ "hooks": [{ "type": "command", "command": cmd, "timeout": CODEX_HOOK_TIMEOUT, "statusMessage": CODEX_HOOK_STATUS }] }));
+            trust = Some((g.len() - 1, codex_hook_hash(&cmd)));
         }
     }
     hooks.retain(|_, v| !matches!(v, Value::Array(a) if a.is_empty()));
@@ -610,7 +609,87 @@ fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
         let _ = std::fs::create_dir_all(dir);
     }
     backup(&path);
-    std::fs::write(&path, serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+    std::fs::write(&path, serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    codex_trust(&path, trust)
+}
+
+const CODEX_HOOK_TIMEOUT: u64 = 45;
+const CODEX_HOOK_STATUS: &str = "Спрашиваю на острове";
+
+fn codex_hook_command(agents: &Agents) -> String {
+    format!(
+        "curl -s -m 40 -X POST -H \"Content-Type: application/json\" --data-binary @- \"{}\"",
+        agents.url("codex")
+    )
+}
+
+/// The fingerprint Codex keeps for an approved hook: SHA-256 over its
+/// normalized description as compact JSON with sorted keys (as codex-rs
+/// hooks/src/engine/discovery.rs `hook_hash` and config `version_for_toml`).
+fn codex_hook_hash(command: &str) -> String {
+    use sha2::{Digest, Sha256};
+    // Keys in sorted order: serde_json here keeps insertion order.
+    let identity = json!({
+        "event_name": "permission_request",
+        "hooks": [{
+            "async": false,
+            "command": command,
+            "statusMessage": CODEX_HOOK_STATUS,
+            "timeout": CODEX_HOOK_TIMEOUT,
+            "type": "command",
+        }],
+    });
+    let bytes = serde_json::to_vec(&identity).unwrap_or_default();
+    let hash = Sha256::digest(bytes);
+    format!("sha256:{}", hash.iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
+const TRUST_BEGIN: &str = "# dark-island: approval of its hook (begin)";
+const TRUST_END: &str = "# dark-island: approval of its hook (end)";
+
+/// Approves the island's hook in Codex's config.toml, the way /hooks would,
+/// so nobody has to do it by hand. `trust`: (group index, fingerprint).
+fn codex_trust(hooks_file: &std::path::Path, trust: Option<(usize, String)>) -> Result<(), String> {
+    let path = codex_config().ok_or("нет папки пользователя")?;
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut out = Vec::new();
+    let mut inside = false;
+    for l in text.lines() {
+        if l.trim() == TRUST_BEGIN {
+            inside = true;
+            continue;
+        }
+        if l.trim() == TRUST_END {
+            inside = false;
+            continue;
+        }
+        if !inside {
+            out.push(l.to_string());
+        }
+    }
+    if let Some((group, hash)) = trust {
+        // The key Codex uses: "<hooks.json path>:permission_request:<group>:<handler>".
+        // With CODEX_HOME set, Codex canonicalizes the folder first.
+        let file = match std::env::var_os("CODEX_HOME").filter(|v| !v.is_empty()) {
+            Some(home) => std::fs::canonicalize(home).map(|d| d.join("hooks.json")).unwrap_or_else(|_| hooks_file.to_path_buf()),
+            None => hooks_file.to_path_buf(),
+        };
+        let key = format!("{}:permission_request:{group}:0", file.display());
+        if !key.contains('\'') {
+            while out.last().is_some_and(|l| l.trim().is_empty()) {
+                out.pop();
+            }
+            out.push(String::new());
+            out.push(TRUST_BEGIN.into());
+            out.push(format!("[hooks.state.'{key}']"));
+            out.push(format!("trusted_hash = \"{hash}\""));
+            out.push(TRUST_END.into());
+        }
+    }
+    backup(&path);
+    let mut body = out.join("\n");
+    body.push('\n');
+    std::fs::write(&path, body).map_err(|e| e.to_string())
 }
 
 /// Marks a `notify` of the user's own that the island set aside; it comes
@@ -676,4 +755,14 @@ pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), Str
     let mut out = lines.join("\n");
     out.push('\n');
     std::fs::write(&path, out).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod codex_tests {
+    #[test]
+    fn hook_fingerprint_matches_codex() {
+        // Reference value computed with codex-rs's own structures and hashing.
+        let cmd = "curl -s -m 40 -X POST -H \"Content-Type: application/json\" --data-binary @- \"http://127.0.0.1:47326/dark-island/codex?t=abc\"";
+        assert_eq!(super::codex_hook_hash(cmd), "sha256:8b3697d86fd41a1875e208eb1424768a6a6be2dddc9c4c3ee772b86f90b9431e");
+    }
 }

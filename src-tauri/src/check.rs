@@ -198,7 +198,7 @@ pub fn run(app: &AppHandle) -> Vec<Check> {
     if conn.codex && !conn.codex_hooks {
         out.push(c("Агенты", "Codex: вопросы", "warn", "хук для вопросов о разрешении не установлен — нажми «Отключить» и «Подключить» у Codex"));
     } else if conn.codex {
-        out.push(c("Агенты", "Codex: вопросы", "ok", "хук установлен; если вопросы не приходят — в Codex набери /hooks и одобри хук с dark-island в команде"));
+        out.push(c("Агенты", "Codex: вопросы", "ok", "хук установлен и одобрен; перезапусти Codex, если он был открыт"));
     }
     if s.bool("obsEnabled", false) {
         let port = s.string("obsPort").parse::<u16>().unwrap_or(4455);
