@@ -91,16 +91,25 @@ export function ControlsTab({
   }, [api, visible]);
   // VPN: only shown, not switched. The address the internet sees, and its country.
   const [ip, setIp] = useState<[string, string] | null>(null);
-  const [ipCopied, setIpCopied] = useState(false);
+  // The IP shows for a few seconds after a click (and is copied).
+  const [ipShown, setIpShown] = useState(false);
+  const ipTimer = useRef(0);
   useEffect(() => {
     if (!visible || !vpn) return setIp(null);
     api?.call<[string, string] | null>("vpn_ip").then((v) => setIp(v ?? null));
   }, [api, visible, vpn]);
   const copyIp = () => {
-    if (!ip) return;
-    api?.call("paste_text", { text: ip[1], paste: false });
-    setIpCopied(true);
-    window.setTimeout(() => setIpCopied(false), 1400);
+    if (!vpn) return;
+    const copy = (v: [string, string] | null) => v && api?.call("paste_text", { text: v[1], paste: false });
+    if (ip) copy(ip);
+    else
+      api?.call<[string, string] | null>("vpn_ip").then((v) => {
+        setIp(v ?? null);
+        copy(v ?? null);
+      });
+    setIpShown(true);
+    clearTimeout(ipTimer.current);
+    ipTimer.current = window.setTimeout(() => setIpShown(false), 6000);
   };
 
   const toggle = (what: "wifi" | "bluetooth" | "dark" | "mic", on: boolean) => {
@@ -128,7 +137,7 @@ export function ControlsTab({
     <button
       className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
       disabled={on === null || on === undefined}
-      title={what === "vpn" ? (ip ? "Нажми, чтобы скопировать IP" : "VPN включается и выключается в самой VPN-программе") : `${title}: ${sub}`}
+      title={what === "vpn" ? (vpn ? "Нажми — покажу и скопирую IP" : "VPN включается и выключается в самой VPN-программе") : `${title}: ${sub}`}
       onClick={() =>
         what === "mic" ? onMic() : what === "vpn" ? copyIp() : what === "through" ? onThrough(!through) : toggle(what, !on)
       }
@@ -184,7 +193,7 @@ export function ControlsTab({
                 </button>
               )}
             </div>
-            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, !vpn ? "выключен" : ipCopied ? "IP скопирован" : ip ? `${ip[0]} · ${ip[1]}` : vpn)}
+            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, !vpn ? "выключен" : ipShown ? (ip ? `${ip[0]} · ${ip[1]}` : "узнаю IP…") : vpn)}
             {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
             {tile(
               "mic",

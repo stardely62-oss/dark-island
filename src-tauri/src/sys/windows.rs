@@ -1399,7 +1399,24 @@ pub fn system_proxy() -> Option<String> {
 
 /// What carries traffic now: a VPN adapter (TUN included) or a local proxy.
 pub fn vpn_now() -> Option<String> {
-    vpn_adapter().or_else(|| system_proxy().map(|_| "через прокси".to_string()))
+    vpn_adapter().map(|a| vpn_kind(&a)).or_else(|| system_proxy().map(|_| "через прокси".to_string()))
+}
+
+/// How a VPN adapter carries traffic, in words for the tile.
+fn vpn_kind(adapter: &str) -> String {
+    let a = adapter.to_lowercase();
+    let has = |ws: &[&str]| ws.iter().any(|w| a.contains(w));
+    if has(&["wireguard", "nordlynx", "amnezia"]) {
+        "через WireGuard".into()
+    } else if has(&["warp", "cloudflare"]) {
+        "через WARP".into()
+    } else if has(&["openvpn", "tap-windows"]) {
+        "через OpenVPN".into()
+    } else if has(&["wintun", "tun", "sing-box", "singbox", "xray", "v2ray", "clash", "mihomo", "hiddify", "happ", "incy", "karing", "nekoray", "nekobox", "throne", "outline"]) {
+        "через TUN".into()
+    } else {
+        format!("через {adapter}")
+    }
 }
 
 /// The name of an active VPN adapter, if any.
