@@ -109,15 +109,20 @@ pub fn spawn(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>) -> Se
 
 /// The island must never steal focus from the window the user is typing in,
 /// and must not show up in Alt+Tab.
-/// Shows a window without taking the focus (a game in front stays in front).
+/// Shows a window without leaving the focus with it (a game in front stays
+/// in front). It goes through Tauri's own show, so Tauri keeps knowing the
+/// window is visible: a raw ShowWindow behind its back gets undone on its
+/// next style change, and the island vanished.
 pub fn show_quiet(win: &WebviewWindow) {
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
-    let Ok(h) = win.hwnd() else {
-        let _ = win.show();
-        return;
-    };
+    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+    let before = unsafe { GetForegroundWindow() };
+    let _ = win.show();
+    let Ok(h) = win.hwnd() else { return };
     unsafe {
-        let _ = ShowWindow(HWND(h.0 as _), SW_SHOWNOACTIVATE);
+        let after = GetForegroundWindow();
+        if !before.is_invalid() && after.0 == h.0 as _ && before.0 != after.0 {
+            let _ = SetForegroundWindow(before);
+        }
     }
 }
 
@@ -287,6 +292,14 @@ fn run(app: AppHandle, shared: Arc<Shared>, settings: Arc<Settings>, rx: Receive
                 let _ = app.emit_to("island", "foreground", fg);
             }
             let before = std::mem::replace(&mut shared.snap.lock().unwrap().presence, p);
+            // Never lost: outside a game the island must be on screen.
+            if p != Presence::Hidden && p == before {
+                if let Some(w) = app.get_webview_window("island") {
+                    if !w.is_visible().unwrap_or(true) {
+                        show_quiet(&w);
+                    }
+                }
+            }
             if p != before {
                 if let Some(w) = app.get_webview_window("island") {
                     if p == Presence::Hidden {
