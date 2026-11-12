@@ -755,21 +755,21 @@ fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), Stri
         .next()
         .filter(|n| n.to_lowercase().ends_with(".exe"))
         .map(|n| n[..n.len() - 4].to_lowercase());
-    // Happ and Incy take commands by link: happ://connect, incy://disconnect.
-    if let Some(scheme) = vpn_scheme(&format!("{id} {}", s.string("vpnAppName"))) {
-        let url = format!("{scheme}://{}", if on { "connect" } else { "disconnect" });
-        if sys::open_scheme_quiet(&url, scheme) {
-            diag::log(app, &format!("vpn app: {url}"));
-            return Ok(());
-        }
-    }
-    diag::log(app, &format!("vpn app {id}: no link scheme, switching the old way"));
-    let running = exe.as_ref().is_some_and(|e| sys::running_exes().contains(e));
+    let name = s.string("vpnAppName").to_lowercase();
+    let scheme = vpn_scheme(&format!("{id} {name}"));
+    // Running? By the exe in its id, or by its name / link scheme among running programs.
+    let running = {
+        let exes = sys::running_exes();
+        exe.as_ref().is_some_and(|e| exes.contains(e))
+            || exes.iter().any(|e| scheme.is_some_and(|sc| e.contains(sc)) || (!name.is_empty() && e.contains(name.split_whitespace().next().unwrap_or("\u{0}"))))
+    };
     let remember = |server: &str| {
         let mut m = serde_json::Map::new();
         m.insert("vpnProxy".into(), serde_json::Value::String(server.to_string()));
         s.merge(m);
     };
+    // 1. Quietest: the program runs in system-proxy mode, so switching the
+    //    Windows proxy is all it takes, and no window shows.
     if on {
         let saved = s.string("vpnProxy");
         if running && !saved.is_empty() && sys::system_proxy().is_none() {
@@ -777,20 +777,28 @@ fn vpn_app(app: &AppHandle, s: &settings::Settings, on: bool) -> Result<(), Stri
             diag::log(app, &format!("vpn app: proxy {saved} on"));
             return Ok(());
         }
-        // Not running yet (most connect on start), or in TUN mode: open it.
-        sys::launch_app(&id);
-        return Ok(());
-    }
-    if let Some(server) = sys::system_proxy() {
+    } else if let Some(server) = sys::system_proxy() {
         remember(&server);
         sys::set_system_proxy(false, "");
         diag::log(app, &format!("vpn app: proxy {server} off"));
         return Ok(());
     }
-    // A TUN tunnel only the program itself can stop: bring it up.
+    // 2. Happ and Incy take commands by link: happ://connect, incy://disconnect.
+    if let Some(scheme) = scheme {
+        let url = format!("{scheme}://{}", if on { "connect" } else { "disconnect" });
+        if sys::open_scheme_quiet(&url, scheme) {
+            diag::log(app, &format!("vpn app: {url} (running: {running})"));
+            return Ok(());
+        }
+        diag::log(app, &format!("vpn app: {url} did not open"));
+    } else {
+        diag::log(app, &format!("vpn app {id} / {name}: no link scheme"));
+    }
+    // 3. Not running yet (most connect on start), or a TUN tunnel only the program can stop.
     sys::launch_app(&id);
     Ok(())
 }
+
 
 // ---- documents in the chat ------------------------------------------------------------
 
