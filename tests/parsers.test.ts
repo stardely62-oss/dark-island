@@ -84,3 +84,12 @@ describe("текст песни", () => {
     expect(lineAt(lines, 99999)).toBe(2);
   });
 });
+
+import { pickModel } from "../src/ai";
+describe("pickModel", () => {
+  it("replaces a retired model with a live one of the same family", () => {
+    const list = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.8-pro", "text-embedding-004", "gemini-3.9-flash-preview", "gemini-2.5-flash"];
+    expect(pickModel(list, "gemini-2.5-flash")).toBe("gemini-3.8-flash");
+    expect(pickModel(["a-embed"], "x")).toBeNull();
+  });
+});

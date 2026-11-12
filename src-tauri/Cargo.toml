@@ -22,7 +22,7 @@ base64 = "0.22"
 arboard = { version = "3", default-features = false, features = ["image-data"] }
 png = "0.18"
 rqrr = "0.11"
-ureq = { version = "3", features = ["json"] }
+ureq = { version = "3", features = ["json", "socks-proxy"] }
 pdf-extract = "0.12"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 gif = "0.14"

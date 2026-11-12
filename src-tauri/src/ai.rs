@@ -61,8 +61,9 @@ impl Keys {
 
 // -------------------------------------------------------------- requests ----
 
-fn stream_agent() -> ureq::Agent {
+fn stream_agent(url: &str) -> ureq::Agent {
     ureq::Agent::config_builder()
+        .proxy(crate::live::proxy_for(url))
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_recv_response(Some(Duration::from_secs(120)))
         .timeout_recv_body(Some(Duration::from_secs(600)))
@@ -111,6 +112,11 @@ fn error_text(code: u16, body: &str) -> String {
         404 => "Нет такой модели или адреса. ",
         429 => "Слишком много запросов или кончился лимит. ",
         _ => "",
+    };
+    let hint = if msg.contains("location is not supported") || msg.contains("unsupported_country") {
+        "Сервис недоступен из вашей страны — нужен VPN. Остров ходит через системный прокси Windows: включите в VPN режим «системный прокси» или TUN и повторите. "
+    } else {
+        hint
     };
     format!("{hint}{} ({code})", msg.chars().take(300).collect::<String>())
 }
@@ -196,7 +202,7 @@ fn claude_stream(
         body["system"] = json!(system);
     }
     let base = if p.base.is_empty() { ANTHROPIC } else { p.base.trim_end_matches('/') };
-    let mut resp = stream_agent()
+    let mut resp = stream_agent(base)
         .post(format!("{base}/messages"))
         .header("x-api-key", key)
         .header("anthropic-version", "2023-06-01")
@@ -265,7 +271,7 @@ fn openai_stream(
         }
     }
     let body = json!({ "model": p.model, "stream": true, "messages": messages });
-    let mut resp = stream_agent()
+    let mut resp = stream_agent(&p.base)
         .post(format!("{}/chat/completions", p.base.trim_end_matches('/')))
         .header("Authorization", format!("Bearer {key}"))
         .header("content-type", "application/json")
@@ -301,7 +307,7 @@ fn openai_stream(
 /// Model ids the key can use.
 pub fn models(keys: &Keys, p: &Provider) -> Result<Vec<String>, String> {
     let key = keys.get(&p.id).ok_or("Нет ключа")?;
-    let agent = stream_agent();
+    let agent = stream_agent(&p.base);
     let mut resp = if p.protocol == "anthropic" {
         agent
             .get(format!("{}/models?limit=100", if p.base.is_empty() { ANTHROPIC } else { p.base.trim_end_matches('/') }))
@@ -351,7 +357,7 @@ pub fn transcribe(keys: &Keys, key_id: &str, base: &str, model: &str, wav: Vec<u
     );
     body.extend_from_slice(&wav);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-    let mut resp = stream_agent()
+    let mut resp = stream_agent(base)
         .post(format!("{}/audio/transcriptions", base.trim_end_matches('/')))
         .header("Authorization", format!("Bearer {key}"))
         .header("content-type", format!("multipart/form-data; boundary={boundary}"))
@@ -394,7 +400,7 @@ pub fn wav(samples: &[i16], rate: u32) -> Vec<u8> {
 pub fn upload(keys: &Keys, service: &str, png: &[u8]) -> Result<String, String> {
     let key = keys.get(service).ok_or("Нет ключа сервиса картинок: добавь его в настройках")?;
     let b64 = B64.encode(png);
-    let agent = stream_agent();
+    let agent = stream_agent("https://api.imgbb.com");
     let (mut resp, path) = match service {
         "imgbb" => (
             agent

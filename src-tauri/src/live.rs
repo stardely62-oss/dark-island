@@ -20,7 +20,35 @@ use crate::settings::Settings;
 const UA: &str = "DarkIsland/0.1 (Windows desktop widget)";
 
 fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(12))).build().new_agent()
+    ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(12))).proxy(proxy()).build().new_agent()
+}
+
+/// The proxy Windows is set to use, when a VPN program (Happ, v2rayN…)
+/// works through one: the island goes the same way, or services that are
+/// blocked by country (Gemini…) would see the real one.
+/// "127.0.0.1:10809", "http=…;https=…;socks=…" → a proxy for ureq.
+pub fn proxy() -> Option<ureq::Proxy> {
+    // Without a system proxy, HTTPS_PROXY and friends still count (as before).
+    let Some(raw) = crate::sys::system_proxy() else { return ureq::Proxy::try_from_env() };
+    let pick = |kind: &str| {
+        raw.split(';').find_map(|p| p.trim().strip_prefix(kind).map(str::to_string))
+    };
+    let url = if let Some(h) = pick("https=").or_else(|| pick("http=")) {
+        format!("http://{h}")
+    } else if let Some(h) = pick("socks=") {
+        format!("socks5://{h}")
+    } else if raw.contains("://") {
+        raw.clone()
+    } else {
+        format!("http://{}", raw.trim())
+    };
+    ureq::Proxy::new(&url).ok()
+}
+
+/// No proxy for the computer itself (Ollama, LM Studio, the island).
+pub fn proxy_for(url: &str) -> Option<ureq::Proxy> {
+    let local = ["//127.0.0.1", "//localhost", "//[::1]", "//0.0.0.0"].iter().any(|h| url.contains(h));
+    if local { None } else { proxy() }
 }
 
 pub fn get_json(url: &str) -> Option<Value> {
