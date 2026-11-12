@@ -342,6 +342,13 @@ function mockBridge(): Bridge {
       mockVpn = a.on ? "Офис" : null;
     },
     launcher_hotkeys: () => [],
+    hotkeys_list: () => [
+      { action: "toggle", title: "Открыть или закрыть остров", default: "Ctrl+Alt+KeyI", combo: "Ctrl+Alt+KeyI", taken: false },
+      { action: "mic", title: "Микрофон: выключить и включить", default: "Ctrl+Alt+KeyM", combo: "Ctrl+Alt+KeyM", taken: true },
+      { action: "record", title: "Запись экрана", default: "Ctrl+Alt+KeyR", combo: "Ctrl+Alt+Shift+KeyR", taken: false },
+    ],
+    hotkey_set: () => null,
+    hotkeys_pause: () => null,
     self_check: () => [
       { group: "Остров", title: "Горячие клавиши", status: "warn", detail: "заняты другой программой: Alt+Space" },
       { group: "Звук", title: "Микрофон сейчас", status: "warn", detail: "слушает: Discord.exe (это и есть оранжевая точка)" },

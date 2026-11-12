@@ -7,6 +7,8 @@ export const DEFAULTS = {
   hideInGames: true,
   agents: true,
   agentsAnswer: true,
+  agentsWorking: false,
+  cardsOver: "all" as "all" | "apps" | "desktop",
   clipboardHistory: true,
   clipSkipApps: [] as string[],
   searchEngine: "google",

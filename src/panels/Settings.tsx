@@ -3,6 +3,45 @@ import type { Bridge } from "../ipc";
 import { ENGINES, type Settings } from "../settings";
 import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
 import { Buddy, COLORS, HATS, STICKERS, buddy, usePet } from "../components/Buddy";
+import { comboOf, keyLabel } from "./Launcher";
+
+/** How to connect each AI service, step by step. */
+const AI_HOWTO: Record<string, { steps: string[]; note: string }> = {
+  anthropic: {
+    steps: ["Открой platform.claude.com и войди", "Settings → API Keys → Create Key", "Скопируй ключ (sk-ant-…) и вставь в поле «Ключ» ниже"],
+    note: "Платно: нужен баланс на счёте. Лучшее качество ответов.",
+  },
+  groq: {
+    steps: ["Открой console.groq.com и войди (можно через Google)", "API Keys → Create API Key", "Вставь ключ ниже — он же подойдёт для диктовки Whisper"],
+    note: "Бесплатно с дневным лимитом. Очень быстро.",
+  },
+  gemini: {
+    steps: ["Открой aistudio.google.com/apikey", "Create API key", "Вставь ключ ниже"],
+    note: "Бесплатный тариф с лимитами. Из некоторых стран доступен только через VPN.",
+  },
+  openrouter: {
+    steps: ["Открой openrouter.ai и войди", "Keys → Create Key", "Вставь ключ ниже; бесплатные модели — с «:free» в названии (кнопка «Список»)"],
+    note: "Сотни моделей через один ключ, есть бесплатные.",
+  },
+  deepseek: {
+    steps: ["Открой platform.deepseek.com", "API keys → Create new API key", "Пополни баланс и вставь ключ ниже"],
+    note: "Платно, но дёшево.",
+  },
+  openai: {
+    steps: ["Открой platform.openai.com/api-keys", "Create new secret key", "Пополни баланс (Billing) и вставь ключ ниже"],
+    note: "Платно.",
+  },
+  custom: {
+    steps: [
+      "Ollama: поставь с ollama.com, в терминале — ollama pull llama3.2",
+      "Адрес: http://127.0.0.1:11434/v1, модель: llama3.2, ключ — любой текст",
+      "LM Studio: Developer → Start Server, адрес http://127.0.0.1:1234/v1",
+    ],
+    note: "Модель работает на твоём компьютере: бесплатно и без интернета, но нужен мощный компьютер.",
+  },
+};
+
+type Hotkey = { action: string; title: string; default: string; combo: string; taken: boolean };
 
 type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: boolean; seen?: Record<string, number> };
 
@@ -157,6 +196,11 @@ export function SettingsTab({
   }, []);
   // ---- data and version ----
   const [dataMsg, setDataMsg] = useState<string | null>(null);
+  const [hotkeys, setHotkeys] = useState<Hotkey[]>([]);
+  const [recordingKey, setRecordingKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (visible) api?.call<Hotkey[]>("hotkeys_list").then((l) => setHotkeys(l ?? []));
+  }, [api, visible]);
   const [checks, setChecks] = useState<{ group: string; title: string; status: "ok" | "warn" | "fail"; detail: string }[] | null>(null);
   const [checking, setChecking] = useState(false);
   const runCheck = () => {
@@ -294,6 +338,20 @@ export function SettingsTab({
         />
       </Row>
 
+      <Row
+        title="Важные уведомления"
+        sub="Загрузки, ответы ИИ и агентов, напоминания, таймер, уведомления Windows. «Поверх всего» — и в играх (в окне без рамки; в исключительном полноэкранном режиме Windows не даёт рисовать поверх)"
+      >
+        <Segmented
+          value={settings.cardsOver}
+          options={[
+            ["all", "Поверх всего"],
+            ["apps", "Кроме игр"],
+            ["desktop", "Только на свободном экране"],
+          ]}
+          onChange={(v) => set({ cardsOver: v })}
+        />
+      </Row>
       <Row title="Автоскрытие" sub="Остров уходит за край и возвращается, если задержать курсор у самого верха">
         <Toggle on={!!settings.autoHide} onChange={(v) => set({ autoHide: v })} />
       </Row>
@@ -513,6 +571,19 @@ export function SettingsTab({
           ))}
         </select>
       </Row>
+      {AI_HOWTO[provider.id] && (
+        <details className="howto" open={!keyStatus[provider.id]}>
+          <summary>Как подключить {preset.name}</summary>
+          <ol>
+            {AI_HOWTO[provider.id].steps.map((st) => (
+              <li key={st}>{st}</li>
+            ))}
+          </ol>
+          <div className="howto-note">
+            {AI_HOWTO[provider.id].note} Ключ шифруется Windows и уходит только в сам сервис. Чат — вкладка ✦ на острове или Ctrl+Alt+A; вопрос можно задать и в командной строке (Alt+Space).
+          </div>
+        </details>
+      )}
       {keyRow({ id: provider.id, title: `Ключ ${preset.name}`, sub: "Хранится только на этом компьютере", url: preset.keyUrl })}
       {provider.id === "custom" && (
         <Row title="Адрес" sub="OpenAI-совместимый, например Ollama или LM Studio">
@@ -821,6 +892,17 @@ export function SettingsTab({
       )}
 
       <div className="set-group" data-tab="2">ИИ-агенты в терминале</div>
+      <details className="howto">
+        <summary>Как это работает</summary>
+        <ol>
+          <li>Нажми «Подключить» у своего агента — остров пропишет ему, куда сообщать (копия исходного файла сохранится рядом)</li>
+          <li>Перезапусти агента: настройки он читает только при запуске</li>
+          <li>Нажми «Проверить» — на острове должна появиться карточка «связь есть»</li>
+        </ol>
+        <div className="howto-note">
+          На острове видно только важное: вопрос о разрешении (у Claude Code — с кнопками «Разрешить/Запретить») и итоговый ответ. Codex сообщает только об ответах, вопросы о разрешении он острову не передаёт.
+        </div>
+      </details>
       <Row
         title="Claude Code"
         sub={testMsg.claude ?? (conn?.claude ? `Подключён: работа, вопросы и конец ответа; ${seenText(conn, "claude")}. Новые сессии подхватят сразу` : "Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом")}
@@ -858,6 +940,9 @@ export function SettingsTab({
       {err && <div className="set-error">{err}</div>}
       <Row title="Показывать агентов на острове">
         <Toggle on={settings.agents} onChange={(v) => set({ agents: v })} />
+      </Row>
+      <Row title="Показывать, пока агент работает" sub="Клодик печатает в пилюле всё время работы. Выключено — только вопросы и итоговый ответ">
+        <Toggle on={!!settings.agentsWorking} onChange={(v) => set({ agentsWorking: v })} />
       </Row>
       <Row title="Отвечать на разрешения с острова" sub="30 секунд на ответ, потом вопрос уходит в терминал">
         <Toggle on={settings.agentsAnswer} onChange={(v) => set({ agentsAnswer: v })} />
@@ -1009,23 +1094,52 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="7">Горячие клавиши</div>
-      <div className="keys">
-        <span>Ctrl+Alt+I</span> открыть или закрыть остров
-        <span>Alt+Space</span> командная строка
-        <span>Ctrl+Alt+V</span> история буфера
-        <span>Ctrl+Alt+S</span> скриншот области
-        <span>Ctrl+Alt+Shift+S</span> скриншот экрана
-        <span>Ctrl+Alt+O</span> текст с экрана
-        <span>Ctrl+Alt+Q</span> QR-код с экрана
-        <span>Ctrl+Alt+C</span> пипетка
-        <span>Ctrl+Alt+M</span> микрофон: выключить и включить
-        <span>Ctrl+Alt+T</span> сквозной режим
-        <span>Ctrl+Alt+A</span> чат с ИИ
-        <span>Ctrl+Alt+D</span> голос в текст
-        <span>Ctrl+Alt+R</span> запись экрана
-        <span>Ctrl+Alt+Shift+V</span> вставить без форматирования
-        <span>Ctrl+Alt+P</span> VPN: включить и выключить
+      <div className="set-sub keys-hint">
+        Нажми на сочетание и затем новые клавиши. Backspace — выключить, «Сброс» — как было. Красным — занято другой программой.
       </div>
+      {hotkeys.map((h) => (
+        <div key={h.action} className={`set-row hotkey-row ${h.taken ? "taken" : ""}`}>
+          <div className="set-text">
+            <div className="set-title">{h.title}</div>
+            {h.taken && <div className="set-sub bad-text">занято другой программой — выбери другое</div>}
+          </div>
+          <button
+            className={`text-btn solid hotkey-btn ${recordingKey === h.action ? "accent" : ""}`}
+            onClick={() => {
+              setRecordingKey(h.action);
+              api?.call("hotkeys_pause", { on: true });
+            }}
+            onBlur={() => {
+              if (recordingKey !== h.action) return;
+              setRecordingKey(null);
+              api?.call("hotkeys_pause", { on: false });
+            }}
+            onKeyDown={(e) => {
+              if (recordingKey !== h.action) return;
+              e.preventDefault();
+              if (e.key === "Escape") {
+                setRecordingKey(null);
+                return void api?.call("hotkeys_pause", { on: false });
+              }
+              if (e.key === "Backspace" || e.key === "Delete") {
+                setRecordingKey(null);
+                return void api?.call<Hotkey[]>("hotkey_set", { action: h.action, combo: "" }).then((l) => l && setHotkeys(l));
+              }
+              const k = comboOf(e);
+              if (!k) return;
+              setRecordingKey(null);
+              api?.call<Hotkey[]>("hotkey_set", { action: h.action, combo: k }).then((l) => l && setHotkeys(l));
+            }}
+          >
+            {recordingKey === h.action ? "Нажми сочетание…" : h.combo ? keyLabel(h.combo) : "выключено"}
+          </button>
+          {h.combo !== h.default && (
+            <button className="text-btn" onClick={() => api?.call<Hotkey[]>("hotkey_set", { action: h.action, combo: null }).then((l) => l && setHotkeys(l))}>
+              Сброс
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

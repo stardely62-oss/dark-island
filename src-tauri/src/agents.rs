@@ -277,7 +277,8 @@ fn claude(app: &AppHandle, agents: &Agents, settings: &Settings, input: &Value) 
             match kind {
                 // Already shown through PermissionRequest.
                 "permission_prompt" => {}
-                "idle_prompt" => emit(app, base("waiting", "Ждёт тебя".into())),
+                // Already shown as the final answer (Stop): no reminder card.
+                "idle_prompt" => {}
                 _ => emit(app, base("info", short(msg, 140))),
             }
             "{}".into()

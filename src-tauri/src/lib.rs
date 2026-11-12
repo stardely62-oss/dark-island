@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
 use clip::{ClipData, ClipView, Clips, Note, Shelf, ShelfItem};
@@ -1150,108 +1150,198 @@ async fn icon_get(kind: String, target: String) -> Option<String> {
 
 /// Ctrl+Alt+I opens or closes the island, Ctrl+Alt+V opens the clipboard,
 /// Alt+Space opens the command bar.
+/// The island's own hotkeys: action → default combination. The user can
+/// change each one in the settings ("hotkeys" → { action: "Ctrl+Alt+KeyM" }).
+const HOTKEYS: &[(&str, &str, &str)] = &[
+    ("toggle", "Ctrl+Alt+KeyI", "Открыть или закрыть остров"),
+    ("command", "Alt+Space", "Командная строка"),
+    ("clipboard", "Ctrl+Alt+KeyV", "История буфера"),
+    ("area", "Ctrl+Alt+KeyS", "Снимок области"),
+    ("full", "Ctrl+Alt+Shift+KeyS", "Снимок экрана"),
+    ("ocr", "Ctrl+Alt+KeyO", "Текст с экрана"),
+    ("qr", "Ctrl+Alt+KeyQ", "QR-код с экрана"),
+    ("color", "Ctrl+Alt+KeyC", "Пипетка"),
+    ("mic", "Ctrl+Alt+KeyM", "Микрофон: выключить и включить"),
+    ("through", "Ctrl+Alt+KeyT", "Сквозной режим"),
+    ("chat", "Ctrl+Alt+KeyA", "Чат с ИИ"),
+    ("dictation", "Ctrl+Alt+KeyD", "Голос в текст"),
+    ("record", "Ctrl+Alt+KeyR", "Запись экрана"),
+    ("plain", "Ctrl+Alt+Shift+KeyV", "Вставить без форматирования"),
+    ("vpn", "Ctrl+Alt+KeyP", "VPN: включить и выключить"),
+];
+
+/// Registered island hotkeys: shortcut id → (action, shortcut).
+static ACTION_KEYS: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, (String, Shortcut)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+/// "Ctrl+Alt+KeyM" → a shortcut ("Ctrl" is spelled the way the parser wants).
+fn parse_combo(s: &str) -> Option<Shortcut> {
+    s.replace("Ctrl", "Control").replace("Win+", "Super+").parse::<Shortcut>().ok()
+}
+
+/// (Re)registers the island's hotkeys from the settings; remembers which
+/// ones another program holds.
+fn apply_hotkeys(app: &AppHandle) {
+    let mut map = ACTION_KEYS.lock().unwrap();
+    for (_, (_, sc)) in map.drain() {
+        let _ = app.global_shortcut().unregister(sc);
+    }
+    let custom = app.state::<Ctl>().settings.all().get("hotkeys").cloned().unwrap_or_default();
+    let mut taken = Vec::new();
+    for (action, default, _) in HOTKEYS {
+        let combo = custom.get(*action).and_then(|v| v.as_str()).unwrap_or(default).to_string();
+        if combo.is_empty() {
+            continue; // turned off
+        }
+        let Some(sc) = parse_combo(&combo) else {
+            taken.push(format!("{combo} (не понял)"));
+            continue;
+        };
+        if app.global_shortcut().register(sc).is_ok() {
+            map.insert(sc.id(), (action.to_string(), sc));
+        } else {
+            taken.push(combo.replace("Key", "").replace("Digit", ""));
+        }
+    }
+    *check::HOTKEYS_TAKEN.lock().unwrap() = taken;
+}
+
+#[derive(serde::Serialize)]
+struct HotkeyInfo {
+    action: &'static str,
+    title: &'static str,
+    default: &'static str,
+    combo: String,
+    taken: bool,
+}
+
+/// The island's hotkeys with their current combinations, for the settings.
+#[tauri::command]
+fn hotkeys_list(app: AppHandle) -> Vec<HotkeyInfo> {
+    let custom = app.state::<Ctl>().settings.all().get("hotkeys").cloned().unwrap_or_default();
+    let live = ACTION_KEYS.lock().unwrap();
+    HOTKEYS
+        .iter()
+        .map(|(action, default, title)| {
+            let combo = custom.get(*action).and_then(|v| v.as_str()).unwrap_or(default).to_string();
+            let taken = !combo.is_empty() && !live.values().any(|(a, _)| a == action);
+            HotkeyInfo { action, title, default, combo, taken }
+        })
+        .collect()
+}
+
+/// Saves one combination ("" turns it off, null restores the default) and
+/// registers everything again.
+#[tauri::command]
+fn hotkey_set(app: AppHandle, action: String, combo: Option<String>) -> Vec<HotkeyInfo> {
+    let ctl = app.state::<Ctl>();
+    let mut all = ctl.settings.all().get("hotkeys").and_then(|v| v.as_object().cloned()).unwrap_or_default();
+    match combo {
+        Some(c) => {
+            all.insert(action, serde_json::Value::String(c));
+        }
+        None => {
+            all.remove(&action);
+        }
+    }
+    let mut patch = serde_json::Map::new();
+    patch.insert("hotkeys".into(), serde_json::Value::Object(all));
+    ctl.settings.merge(patch);
+    apply_hotkeys(&app);
+    hotkeys_list(app)
+}
+
+/// An important card while a game hides the island: shows the window for
+/// the card (`on`), and hides it again afterwards if the game is still on.
+#[tauri::command]
+fn island_peek(app: AppHandle, ctl: State<'_, Ctl>, on: bool) {
+    let Some(w) = app.get_webview_window("island") else { return };
+    let hidden = ctl.shared.snap.lock().unwrap().presence == types::Presence::Hidden;
+    if on {
+        let _ = w.show();
+    } else if hidden {
+        let _ = w.hide();
+    }
+}
+
+/// While a new combination is being typed in the settings, the island's own
+/// hotkeys step aside (else they would catch the keys first).
+#[tauri::command]
+fn hotkeys_pause(app: AppHandle, on: bool) {
+    if on {
+        let mut map = ACTION_KEYS.lock().unwrap();
+        for (_, (_, sc)) in map.drain() {
+            let _ = app.global_shortcut().unregister(sc);
+        }
+    } else {
+        apply_hotkeys(&app);
+    }
+}
+
+fn on_hotkey(app: &AppHandle, action: &str) {
+    match action {
+        "area" | "full" | "ocr" | "qr" | "color" => {
+            let (app, mode) = (app.clone(), action.to_string());
+            std::thread::spawn(move || capture::start(&app, &mode));
+        }
+        "vpn" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let on = sys::vpn_now().is_none();
+                if let Err(e) = vpn_set(app.clone(), on).await {
+                    let _ = app.emit_to("island", "vpn_error", e);
+                }
+            });
+        }
+        "dictation" => dictate(app, String::new()),
+        "record" => record_toggle(app),
+        "plain" => {
+            // Paste without formatting: the clipboard's text only.
+            std::thread::spawn(move || {
+                let text = arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok());
+                if let Some(t) = text {
+                    if put_on_clipboard(ClipData::Text(t)) {
+                        std::thread::sleep(std::time::Duration::from_millis(120));
+                        sys::send_paste();
+                    }
+                }
+            });
+        }
+        "mic" => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                let r = sys::mic_toggle();
+                diag::log(&app, &format!("mic hotkey -> {r:?}"));
+                if let Some(muted) = r {
+                    let _ = app.emit_to("island", "mic_muted", muted);
+                }
+            });
+        }
+        // toggle, command, clipboard, through, chat: the page handles them.
+        other => {
+            let _ = app.emit_to("island", "hotkey", other);
+        }
+    }
+}
+
 fn register_hotkeys(app: &AppHandle) -> tauri::Result<()> {
-    let toggle = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyI);
-    let clipboard = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyV);
-    let command = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-    let mic = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyM);
-    let through = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyT);
-    let vpn = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP);
-    let dictation = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyD);
-    let record = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyR);
-    let chat = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyA);
-    let plain = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyV);
-    let ca = Some(Modifiers::CONTROL | Modifiers::ALT);
-    let screen: [(Shortcut, &str); 5] = [
-        (Shortcut::new(ca, Code::KeyS), "area"),
-        (Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT), Code::KeyS), "full"),
-        (Shortcut::new(ca, Code::KeyO), "ocr"),
-        (Shortcut::new(ca, Code::KeyQ), "qr"),
-        (Shortcut::new(ca, Code::KeyC), "color"),
-    ];
-    let screen_keys: Vec<Shortcut> = screen.iter().map(|(s, _)| *s).collect();
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |app, sc, ev| {
                 if ev.state() != ShortcutState::Pressed {
                     return;
                 }
-                if let Some((_, mode)) = screen.iter().find(|(s, _)| s == sc) {
-                    let (app, mode) = (app.clone(), mode.to_string());
-                    std::thread::spawn(move || capture::start(&app, &mode));
-                    return;
+                let action = ACTION_KEYS.lock().unwrap().get(&sc.id()).map(|(a, _)| a.clone());
+                if let Some(a) = action {
+                    return on_hotkey(app, &a);
                 }
-                let name = if *sc == toggle {
-                    "toggle"
-                } else if *sc == clipboard {
-                    "clipboard"
-                } else if *sc == command {
-                    "command"
-                } else if let Some((kind, target, _)) = LAUNCH_KEYS.lock().unwrap().get(&sc.id()).cloned() {
+                if let Some((kind, target, _)) = LAUNCH_KEYS.lock().unwrap().get(&sc.id()).cloned() {
                     launch(app, &kind, &target);
-                    return;
-                } else if *sc == vpn {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let on = sys::vpn_now().is_none();
-                        if let Err(e) = vpn_set(app.clone(), on).await {
-                            let _ = app.emit_to("island", "vpn_error", e);
-                        }
-                    });
-                    return;
-                } else if *sc == through {
-                    "through"
-                } else if *sc == chat {
-                    "chat"
-                } else if *sc == dictation {
-                    dictate(app, String::new());
-                    return;
-                } else if *sc == record {
-                    record_toggle(app);
-                    return;
-                } else if *sc == plain {
-                    // Paste without formatting: the clipboard's text only.
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        let text = arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok());
-                        if let Some(t) = text {
-                            if put_on_clipboard(ClipData::Text(t)) {
-                                std::thread::sleep(std::time::Duration::from_millis(120));
-                                sys::send_paste();
-                            }
-                        }
-                        let _ = app;
-                    });
-                    return;
-                } else if *sc == mic {
-                    let app = app.clone();
-                    std::thread::spawn(move || {
-                        let r = sys::mic_toggle();
-                        diag::log(&app, &format!("mic hotkey -> {r:?}"));
-                        if let Some(muted) = r {
-                            let _ = app.emit_to("island", "mic_muted", muted);
-                        }
-                    });
-                    return;
-                } else {
-                    return;
-                };
-                let _ = app.emit_to("island", "hotkey", name);
+                }
             })
             .build(),
     )?;
-    // Another program may already own a combination: the rest still work,
-    // and the self-check names the ones that were taken.
-    let names = [
-        "Ctrl+Alt+I", "Ctrl+Alt+V", "Alt+Space", "Ctrl+Alt+M", "Ctrl+Alt+T", "Ctrl+Alt+D", "Ctrl+Alt+R", "Ctrl+Alt+A", "Ctrl+Alt+Shift+V",
-        "Ctrl+Alt+P", "Ctrl+Alt+S", "Ctrl+Alt+Shift+S", "Ctrl+Alt+O", "Ctrl+Alt+Q", "Ctrl+Alt+C",
-    ];
-    let keys = [toggle, clipboard, command, mic, through, dictation, record, chat, plain, vpn].into_iter().chain(screen_keys);
-    for (sc, name) in keys.zip(names) {
-        if app.global_shortcut().register(sc).is_err() {
-            check::HOTKEYS_TAKEN.lock().unwrap().push(name.to_string());
-        }
-    }
+    apply_hotkeys(app);
     Ok(())
 }
 
@@ -1384,6 +1474,10 @@ pub fn run() {
             settings_open,
             tour_start,
             agents_test,
+            hotkeys_list,
+            hotkey_set,
+            hotkeys_pause,
+            island_peek,
             self_check,
             settings_export,
             settings_import,

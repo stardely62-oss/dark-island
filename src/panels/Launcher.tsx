@@ -27,7 +27,7 @@ export function useLauncherHotkeys(api: Bridge | null, items: Shortcut[]) {
 /** "Ctrl+Alt+KeyG" → "Ctrl+Alt+G". */
 export const keyLabel = (k: string) => k.replace(/\bKey([A-Z])\b/g, "$1").replace(/\bDigit(\d)\b/g, "$1");
 
-function comboOf(e: React.KeyboardEvent): string | null {
+export function comboOf(e: React.KeyboardEvent): string | null {
   if (["Control", "Alt", "Shift", "Meta"].includes(e.key)) return null;
   const mods = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Super"].filter(Boolean);
   // A bare key would fire while typing anywhere: at least one modifier, F-keys aside.

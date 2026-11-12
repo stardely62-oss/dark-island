@@ -110,6 +110,9 @@ export function AiTab({
       setDocErr(bad.length ? `${bad[0].name}: ${bad[0].error}` : null);
     });
   const [busy, setBusy] = useState(false);
+  const answer = useRef("");
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const [error, setError] = useState<string | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -141,13 +144,19 @@ export function AiTab({
       provider,
       SYSTEM,
       next.slice(-20),
-      (t) => setMsgs([...next, { role: "assistant", text: t }]),
+      (t) => {
+        answer.current = t;
+        setMsgs([...next, { role: "assistant", text: t }]);
+      },
       (err) => {
         setBusy(false);
         stopRef.current = null;
         if (err) {
           setError(err);
           setMsgs((m) => (m[m.length - 1]?.text ? m : m.slice(0, -1)));
+        } else if (!visibleRef.current && answer.current) {
+          // You went elsewhere while it thought: the answer comes as a card.
+          window.dispatchEvent(new CustomEvent("ai-answered", { detail: answer.current }));
         }
       },
     );

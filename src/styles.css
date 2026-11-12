@@ -2794,3 +2794,48 @@ body.settings-page.preview {
   color: var(--fg-2);
   min-width: 0;
 }
+.keys-hint {
+  margin: 0 10px 4px;
+}
+.hotkey-row .hotkey-btn {
+  min-width: 150px;
+  font-variant-numeric: tabular-nums;
+}
+.hotkey-row.taken .hotkey-btn {
+  box-shadow: inset 0 0 0 1.5px rgb(255 107 91 / 0.8);
+}
+.bad-text {
+  color: #ff8a7a !important;
+}
+
+/* how-to blocks in the settings */
+.howto {
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgb(127 208 255 / 0.06);
+  font-size: 12.5px;
+  color: var(--fg-2);
+}
+.howto summary {
+  cursor: pointer;
+  color: #9fd8ff;
+  font-weight: 600;
+  list-style: none;
+}
+.howto summary::before {
+  content: "› ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.howto[open] summary::before {
+  transform: rotate(90deg);
+}
+.howto ol {
+  margin: 8px 0 6px;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+.howto-note {
+  color: var(--fg-3);
+  font-size: 11.5px;
+}

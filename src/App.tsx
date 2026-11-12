@@ -55,7 +55,7 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string };
+  open?: { path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -309,13 +309,24 @@ export function App() {
   const tucked =
     !commandOpen &&
     (settings.autoHide || (foreground !== "" && (settings.hideForApps as string[]).some((a) => a.toLowerCase().replace(/\.exe$/, "") === foreground)));
+  // Where cards may appear. Important ones (downloads, agents, AI answers,
+  // reminders, timers, notifications) follow the setting: over everything,
+  // over ordinary apps (not over games) or only when nothing covers the top
+  // of the screen. Small ones (Caps Lock, layout…) never show over a game.
+  const important = !!card && ["agent", "capture", "notify", "reminder", "timer", "tour"].includes(card.kind);
+  const level = (settings.cardsOver as string) ?? "all";
+  const cardAllowed =
+    !!card &&
+    (important
+      ? level === "all" || (level === "apps" && presence !== "hidden") || (level === "desktop" && presence === "normal")
+      : presence !== "hidden");
   const mode: Mode = commandOpen
     ? "command"
     : expanded
       ? "expanded"
       : ask
         ? "ask"
-        : card
+        : card && cardAllowed
           ? "card"
           : hud
             ? "hud"
@@ -708,6 +719,16 @@ export function App() {
   useEffect(() => {
     buddy.configure({ music: !!media?.playing && !!volume && !volume.muted && volume.level >= 0.5 });
   }, [media?.playing, volume]);
+  // An AI answer that came while you were elsewhere.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail.replace(/\s+/g, " ").trim();
+      buddy.react("happy", 1500);
+      showCard({ kind: "capture", title: "ИИ ответил", sub: t.slice(0, 120), open: { tab: "ai" }, ms: 7000 });
+    };
+    window.addEventListener("ai-answered", on);
+    return () => window.removeEventListener("ai-answered", on);
+  }, [showCard]);
   // A new sticker for the album.
   useEffect(() => {
     const on = (e: Event) => {
@@ -798,7 +819,13 @@ export function App() {
 
   // ---- agents ----------------------------------------------------------------
   const onAgentRef = useRef<(e: AgentEvent) => void>(() => {});
+  const pendingDone = useRef<Record<string, { t: number }>>({});
   onAgentRef.current = (e: AgentEvent) => {
+    if (e.session === "test") {
+      // "Проверить" in the settings: shown at once.
+      showCard({ kind: "agent", title: `${AGENT_NAMES[e.agent] ?? e.agent}: связь есть`, sub: e.detail, mood: "done", ms: 4000 });
+      return;
+    }
     const name = AGENT_NAMES[e.agent ?? "claude"] ?? "Claude";
     const where = e.project ? ` · ${e.project}` : "";
     const stopWorking = () =>
@@ -807,29 +834,50 @@ export function App() {
         return rest;
       });
     const clearAsk = () => setAsk((a) => (a && a.session === e.session ? null : a));
+    // Only what needs you: a permission request and the final answer.
+    // Agents report every step (Codex: every intermediate reply), so "done"
+    // waits for the agent to go quiet; anything newer from the session
+    // replaces it.
+    const pend = pendingDone.current;
+    const cancel = () => {
+      clearTimeout(pend[e.session]?.t);
+      delete pend[e.session];
+    };
     switch (e.state) {
       case "working":
-        setWorking((w) => ({ ...w, [e.session]: { ...e, at: Date.now() } }));
+        cancel();
+        if (settings.agentsWorking) setWorking((w) => ({ ...w, [e.session]: { ...e, at: Date.now() } }));
         clearAsk();
         break;
       case "ask":
+        cancel();
         setAsk(e);
         buddy.react("surprised", 1200);
         chime();
         break;
       case "waiting":
+        cancel();
         clearAsk();
         stopWorking();
         showCard({ kind: "agent", title: `${name} ждёт${where}`, sub: e.detail, mood: "ask", ms: 4000 });
         break;
-      case "done":
-        clearAsk();
-        stopWorking();
-        buddy.react("excited", 2200);
-        showCard({ kind: "agent", title: `${name} закончил${where}`, sub: e.detail || "Готово", mood: "done", ms: 5000 });
+      case "done": {
+        cancel();
+        const quiet = e.agent === "codex" ? 15_000 : e.agent === "opencode" ? 2500 : 800;
+        const detail = e.detail;
+        pend[e.session] = {
+          t: window.setTimeout(() => {
+            delete pend[e.session];
+            clearAsk();
+            stopWorking();
+            buddy.react("excited", 2200);
+            showCard({ kind: "agent", title: `${name} ответил${where}`, sub: detail || "Готово", mood: "done", ms: 6000 });
+          }, quiet),
+        };
         break;
+      }
       case "info":
-        showCard({ kind: "agent", title: `${name}${where}`, sub: e.detail, mood: "ask", ms: 3500 });
+        // Progress notes: not worth a card.
         break;
       case "end":
         clearAsk();
@@ -880,6 +928,22 @@ export function App() {
   const held = useRef(false);
   // A card's time runs while it is visible.
   const cardVisible = mode === "card";
+  // Over a game the window is hidden: an allowed card shows it for a while.
+  const peeking = useRef(false);
+  useEffect(() => {
+    const want = cardVisible && presence === "hidden";
+    if (want) {
+      peeking.current = true;
+      api?.call("island_peek", { on: true });
+      // The game may have just hidden the island a moment later: once more.
+      const t = window.setTimeout(() => api?.call("island_peek", { on: true }), 1700);
+      return () => clearTimeout(t);
+    }
+    if (peeking.current) {
+      peeking.current = false;
+      api?.call("island_peek", { on: false });
+    }
+  }, [cardVisible, presence, api]);
   useEffect(() => {
     if (!card || !cardVisible || card.sticky || held.current) return;
     clearTimeout(cardTimer.current);
@@ -1199,6 +1263,11 @@ export function App() {
             if (card.open.app) api?.call("app_launch", { id: card.open.app });
             if (card.open.reveal) api?.call("reveal_path", { path: card.open.reveal });
             if (card.open.settings) api?.call("open_windows_settings", { page: card.open.settings });
+            if (card.open.tab) {
+              setTab(card.open.tab);
+              setSuppressed(false);
+              setPinned(true);
+            }
             if (card.open.translate) {
               setAiTool({ text: card.open.translate, action: "translate" });
               setTab("ai");
@@ -1488,7 +1557,9 @@ function CardView({
           <div className="card-title">{card.title}</div>
           {card.sub && <div className="agent-sub">{card.sub}</div>}
         </div>
-        {card.open && <span className="card-open">{card.open.translate ? "Перевести" : card.open.reveal ? "Показать" : "Открыть"}</span>}
+        {card.open && (
+          <span className="card-open">{card.open.translate ? "Перевести" : card.open.reveal ? "Показать" : card.open.tab ? "Прочитать" : "Открыть"}</span>
+        )}
       </div>
     );
   }
