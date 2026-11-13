@@ -40,9 +40,11 @@ import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
 import { BREAK_MOVES, BreakScene, MOVE_MS, PartyScene } from "./components/Party";
+import { lang, setLang, locale } from "./i18n";
 import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, usePet, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
+import { t } from "./i18n";
 type Mode = "idle" | "media" | "hud" | "expanded" | "strip" | "card" | "timer" | "command" | "ask" | "agent" | "tucked" | "download" | "dictation" | "recording" | "obs" | "party";
 type Tab = "home" | "clip" | "shelf" | "note" | "weather" | "ai" | "controls" | "settings";
 type MusicPill = "compact" | "wide" | "player" | "lyrics" | "line";
@@ -211,7 +213,7 @@ export function App() {
         life: settings.buddyLife,
         color: settings.buddyColor,
         hat: settings.buddyHat,
-        name: settings.buddyName || "Клодик",
+        name: settings.buddyName || t("Клодик"),
         sounds: settings.buddySounds,
         birthday: (settings.userBirthday as string) ?? "",
       }),
@@ -298,17 +300,17 @@ export function App() {
         setPomo({ phase: "rest", round: p.round });
         timerRef.current.start(rest * 60_000);
         buddy.act("coffee", 4000);
-        showCard({ kind: "info", title: `Помидор ${p.round} готов`, sub: `Перерыв ${rest} минут — встань, потянись`, ms: 6000 });
+        showCard({ kind: "info", title: t("Помидор {0} готов", p.round), sub: t("Перерыв {0} минут — встань, потянись", rest), ms: 6000 });
       } else {
         setPomo({ phase: "work", round: p.round + 1 });
         timerRef.current.start(25 * 60_000);
         buddy.act("laptop", 4400);
-        showCard({ kind: "info", title: "За работу", sub: `Помидор ${p.round + 1}: 25 минут`, ms: 5000 });
+        showCard({ kind: "info", title: t("За работу"), sub: t("Помидор {0}: 25 минут", p.round + 1), ms: 5000 });
       }
       return;
     }
     buddy.react("excited", 3000);
-    showCard({ kind: "timer", title: "Таймер", sub: `${fmtClock(total)} — готово`, sticky: true });
+    showCard({ kind: "timer", title: t("Таймер"), sub: t("{0} — готово", fmtClock(total)), sticky: true });
     window.setTimeout(chime, 2500);
   });
   useEffect(() => buddy.setFocus(pomoRef.current?.phase ?? null), []);
@@ -322,7 +324,7 @@ export function App() {
         setPomo({ phase: "work", round: 1 });
         timerRef.current.start(25 * 60_000);
         buddy.act("laptop", 4400);
-        showCard({ kind: "info", title: "Помодоро", sub: "25 минут работы, потом перерыв", ms: 3500 });
+        showCard({ kind: "info", title: t("Помодоро"), sub: t("25 минут работы, потом перерыв"), ms: 3500 });
       } else {
         setPomo(null);
         timerRef.current.reset();
@@ -426,7 +428,7 @@ export function App() {
             if (now - gameWish.current > 15 * 60_000 && !actionable(cardRef.current)) {
               buddy.act("wave", 1500);
               buddy.count("game");
-              showCard({ kind: "info", title: "Удачи в игре!", sub: buddy.look.name + " подождёт тут", ms: 1400, peek: true });
+              showCard({ kind: "info", title: t("Удачи в игре!"), sub: buddy.look.name + t(" подождёт тут"), ms: 1400, peek: true });
             }
             gameWish.current = now;
           }
@@ -472,8 +474,8 @@ export function App() {
         }),
         b.on("keys", (k) => {
           if (expandedRef.current) return;
-          if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? "включён" : "выключен" });
-          else if (k.layout) showCard({ kind: "layout", title: "Раскладка", sub: k.layout });
+          if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? t("включён") : t("выключен") });
+          else if (k.layout) showCard({ kind: "layout", title: t("Раскладка"), sub: k.layout });
         }),
         b.on("agent", (e) => onAgentRef.current(e)),
         b.on("weather", setWeather),
@@ -484,12 +486,12 @@ export function App() {
             if (d.state === "done") {
               // Into the chat box, or it was pasted where the cursor was.
               if (d.target === "chat") window.dispatchEvent(new CustomEvent("chat-dictation", { detail: d.text ?? "" }));
-              else showCard({ kind: "capture", title: "Текст вставлен", sub: d.text, ms: 3500 });
+              else showCard({ kind: "capture", title: t("Текст вставлен"), sub: d.text, ms: 3500 });
             } else if (d.privacy) {
-              showCard({ kind: "capture", title: "Диктовка Windows выключена", sub: "Открыть параметры конфиденциальности речи", open: { settings: "speech" }, ms: 8000 });
+              showCard({ kind: "capture", title: t("Диктовка Windows выключена"), sub: t("Открыть параметры конфиденциальности речи"), open: { settings: "speech" }, ms: 8000 });
             } else {
               buddy.react("angry", 1800);
-              showCard({ kind: "info", title: "Диктовка", sub: d.text ?? "ошибка", ms: 3500 });
+              showCard({ kind: "info", title: t("Диктовка"), sub: d.text ?? t("ошибка"), ms: 3500 });
             }
           }
         }),
@@ -497,17 +499,17 @@ export function App() {
           if (r.on) setRecording(Date.now());
           else {
             setRecording(null);
-            if (r.path) showCard({ kind: "capture", title: "Запись сохранена", sub: r.path.split(/[\\/]/).pop(), open: { reveal: r.path }, ms: 5000 });
-            else if (r.error) showCard({ kind: "info", title: "Запись экрана", sub: r.error, ms: 4000 });
+            if (r.path) showCard({ kind: "capture", title: t("Запись сохранена"), sub: r.path.split(/[\\/]/).pop(), open: { reveal: r.path }, ms: 5000 });
+            else if (r.error) showCard({ kind: "info", title: t("Запись экрана"), sub: r.error, ms: 4000 });
           }
         }),
         b.on("privacy", (p) => {
           // A card when a program starts using the microphone or the camera.
           const before = privacyRef.current;
-          const pretty = (a: string) => (/dark-island/i.test(a) ? "сам остров" : a.replace(/\.exe$/i, ""));
+          const pretty = (a: string) => (/dark-island/i.test(a) ? t("сам остров") : a.replace(/\.exe$/i, ""));
           const fresh = [
-            ...p.cam.filter((a) => !before.cam.includes(a)).map((a) => ["Камеру включил", pretty(a)]),
-            ...p.mic.filter((a) => !before.mic.includes(a)).map((a) => ["Микрофон слушает", pretty(a)]),
+            ...p.cam.filter((a) => !before.cam.includes(a)).map((a) => [t("Камеру включил"), pretty(a)]),
+            ...p.mic.filter((a) => !before.mic.includes(a)).map((a) => [t("Микрофон слушает"), pretty(a)]),
           ];
           if (fresh.length) showCard({ kind: "info", title: fresh[0][0], sub: fresh[0][1], ms: 3500 });
           privacyRef.current = p;
@@ -525,16 +527,16 @@ export function App() {
           );
         }),
         b.on("download_done", (d) =>
-          (buddy.react("happy", 1300), showCard)({ kind: "capture", title: "Загружено", sub: d.name, open: { reveal: d.path }, ms: 5000 }),
+          (buddy.react("happy", 1300), showCard)({ kind: "capture", title: t("Загружено"), sub: d.name, open: { reveal: d.path }, ms: 5000 }),
         ),
         b.on("mic_muted", (m) => {
           setPrivacy((p) => ({ ...p, micMuted: m }));
-          showCard({ kind: "info", title: "Микрофон", sub: m ? "выключен" : "включён" });
+          showCard({ kind: "info", title: t("Микрофон"), sub: m ? t("выключен") : t("включён") });
         }),
         b.on("vpn", (v) =>
           showCard({
             kind: "info",
-            title: v.on ? "VPN включён" : "VPN выключен",
+            title: v.on ? t("VPN включён") : t("VPN выключен"),
             sub: v.on ? [v.country, v.ip].filter(Boolean).join(" · ") || v.name || "" : "",
             ms: 2500,
           }),
@@ -575,23 +577,23 @@ export function App() {
           if (r.kind === "text" || r.kind === "qr") buddy.act("magnify", 4600);
           const first = r.text.split("\n")[0];
           if (r.kind === "shot")
-            showCard({ kind: "capture", title: "Снимок готов", sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
+            showCard({ kind: "capture", title: t("Снимок готов"), sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
           else if (r.kind === "text")
-            showCard({ kind: "capture", title: "Текст скопирован", sub: first, open: { translate: r.text }, ms: 6000 });
+            showCard({ kind: "capture", title: t("Текст скопирован"), sub: first, open: { translate: r.text }, ms: 6000 });
           else if (r.kind === "qr")
             showCard({
               kind: "capture",
-              title: "QR-код скопирован",
+              title: t("QR-код скопирован"),
               sub: first,
               open: /^https?:\/\//.test(r.text) ? { url: r.text } : undefined,
               ms: 5000,
             });
           else if (r.kind === "link")
-            showCard({ kind: "capture", title: "Ссылка скопирована", sub: r.text, open: { url: r.text }, ms: 5000 });
-          else if (r.kind === "color") showCard({ kind: "capture", title: "Цвет скопирован", sub: r.text, swatch: r.text, ms: 3000 });
+            showCard({ kind: "capture", title: t("Ссылка скопирована"), sub: r.text, open: { url: r.text }, ms: 5000 });
+          else if (r.kind === "color") showCard({ kind: "capture", title: t("Цвет скопирован"), sub: r.text, swatch: r.text, ms: 3000 });
           else {
             buddy.react("angry", 1800);
-            showCard({ kind: "info", title: "Снимок", sub: r.text });
+            showCard({ kind: "info", title: t("Снимок"), sub: r.text });
           }
         }),
         b.on("outside_click", () => {
@@ -637,7 +639,7 @@ export function App() {
   setThroughRef.current = () => {
     const on = !settings.through;
     setSetting({ through: on });
-    showCard({ kind: "info", title: "Сквозной режим", sub: on ? "включён" : "выключен" });
+    showCard({ kind: "info", title: t("Сквозной режим"), sub: on ? t("включён") : t("выключен") });
   };
 
   // Song lyrics, only for the song that plays and only when turned on.
@@ -671,7 +673,7 @@ export function App() {
       setSetting({ reminders: rest });
       chime();
       buddy.react("excited", 3000);
-      showCard({ kind: "reminder", title: "Напоминание", sub: due.text, sticky: true, reminder: due });
+      showCard({ kind: "reminder", title: t("Напоминание"), sub: due.text, sticky: true, reminder: due });
     };
     check();
     const id = window.setInterval(check, 15_000);
@@ -727,7 +729,7 @@ export function App() {
       const r = rainSoon(weather);
       if (r && Date.now() - rainShown.current > 3 * 3_600_000) {
         rainShown.current = Date.now();
-        showCard({ kind: "info", title: r.snow ? "Скоро снег" : "Скоро дождь", sub: `через ${r.minutes} мин`, ms: 4000 });
+        showCard({ kind: "info", title: r.snow ? t("Скоро снег") : t("Скоро дождь"), sub: t("через {0} мин", r.minutes), ms: 4000 });
       }
     };
     check();
@@ -762,9 +764,9 @@ export function App() {
   // An AI answer that came while you were elsewhere.
   useEffect(() => {
     const on = (e: Event) => {
-      const t = (e as CustomEvent<string>).detail.replace(/\s+/g, " ").trim();
+      const text = (e as CustomEvent<string>).detail.replace(/\s+/g, " ").trim();
       buddy.react("happy", 1500);
-      showCard({ kind: "capture", title: "ИИ ответил", sub: t.slice(0, 120), open: { tab: "ai" }, ms: 7000 });
+      showCard({ kind: "capture", title: t("ИИ ответил"), sub: text.slice(0, 120), open: { tab: "ai" }, ms: 7000 });
     };
     window.addEventListener("ai-answered", on);
     return () => window.removeEventListener("ai-answered", on);
@@ -773,7 +775,7 @@ export function App() {
   useEffect(() => {
     const on = (e: Event) => {
       const st = (e as CustomEvent<{ title: string; hint: string }>).detail;
-      showCard({ kind: "info", title: `Новая наклейка: ${st.title}`, sub: st.hint, ms: 4000 });
+      showCard({ kind: "info", title: t("Новая наклейка: {0}", st.title), sub: st.hint, ms: 4000 });
     };
     window.addEventListener("buddy-sticker", on);
     return () => window.removeEventListener("buddy-sticker", on);
@@ -795,8 +797,8 @@ export function App() {
       chime();
       showCard({
         kind: "info",
-        title: who === "user" ? "С днём рождения!" : `У ${buddy.look.name} день рождения!`,
-        sub: who === "user" ? `${buddy.look.name} испёк торт — наведи` : `Ему ${buddyAge()} — наведи`,
+        title: who === "user" ? t("С днём рождения!") : t("У {0} день рождения!", buddy.look.name),
+        sub: who === "user" ? t("{0} испёк торт — наведи", buddy.look.name) : t("Ему {0} — наведи", buddyAge()),
         open: { scene: "party" },
         ms: 15000,
       });
@@ -834,8 +836,8 @@ export function App() {
       const m = Math.round((Date.now() - activeSince.current) / 60_000);
       showCard({
         kind: "info",
-        title: `${buddy.look.name}: может, перерыв?`,
-        sub: `Уже ${m} мин за компьютером — наведи`,
+        title: t("{0}: может, перерыв?", buddy.look.name),
+        sub: t("Уже {0} мин за компьютером — наведи", m),
         open: { scene: "break", minutes: m },
         ms: 12000,
       });
@@ -843,10 +845,19 @@ export function App() {
     return () => clearInterval(id);
   }, [settings.breakReminder, settings.breakMinutes, away, showCard]);
 
+  // The Windows side (tray menu, messages) speaks the same language.
+  useEffect(() => {
+    api?.call("ui_lang", { lang });
+  }, [api]);
+  // The interface language changed in the settings: this window follows.
+  useEffect(() => {
+    const v = settings.uiLang as string | undefined;
+    if ((v === "auto" || v === "ru" || v === "en") && setLang(v)) location.reload();
+  }, [settings.uiLang]);
   // For screenshots and tests: window.dispatchEvent(new Event("debug-break")).
   useEffect(() => {
     const on = () =>
-      showCard({ kind: "info", title: `${buddy.look.name}: может, перерыв?`, sub: "Уже 50 мин за компьютером — наведи", open: { scene: "break", minutes: 50 }, ms: 12000 });
+      showCard({ kind: "info", title: t("{0}: может, перерыв?", buddy.look.name), sub: t("Уже 50 мин за компьютером — наведи"), open: { scene: "break", minutes: 50 }, ms: 12000 });
     window.addEventListener("debug-break", on);
     return () => window.removeEventListener("debug-break", on);
   }, [showCard]);
@@ -878,7 +889,7 @@ export function App() {
   onAgentRef.current = (e: AgentEvent) => {
     if (e.session === "test") {
       // "Проверить" in the settings: shown at once.
-      showCard({ kind: "agent", title: `${AGENT_NAMES[e.agent] ?? e.agent}: связь есть`, sub: e.detail, mood: "done", ms: 4000 });
+      showCard({ kind: "agent", title: t("{0}: связь есть", AGENT_NAMES[e.agent] ?? e.agent), sub: e.detail, mood: "done", ms: 4000 });
       return;
     }
     const name = AGENT_NAMES[e.agent ?? "claude"] ?? "Claude";
@@ -914,7 +925,7 @@ export function App() {
         cancel();
         clearAsk();
         stopWorking();
-        showCard({ kind: "agent", title: `${name} ждёт${where}`, sub: e.detail, mood: "ask", ms: 4000 });
+        showCard({ kind: "agent", title: t("{0} ждёт{1}", name, where), sub: e.detail, mood: "ask", ms: 4000 });
         break;
       case "done": {
         cancel();
@@ -926,7 +937,7 @@ export function App() {
             clearAsk();
             stopWorking();
             buddy.react("excited", 2200);
-            showCard({ kind: "agent", title: `${name} ответил${where}`, sub: detail || "Готово", mood: "done", ms: 6000 });
+            showCard({ kind: "agent", title: t("{0} ответил{1}", name, where), sub: detail || t("Готово"), mood: "done", ms: 6000 });
           }, quiet),
         };
         break;
@@ -1112,7 +1123,7 @@ export function App() {
         api?.call<{ wifi: boolean; bluetooth: boolean; dark: boolean }>("controls_get").then((c) => {
           const on = !c[id as "wifi" | "bluetooth" | "dark"];
           api?.call("controls_set", { what: id, on });
-          showCard({ kind: "info", title: id === "dark" ? "Тема" : id === "wifi" ? "Wi-Fi" : "Bluetooth", sub: on ? (id === "dark" ? "тёмная" : "включён") : id === "dark" ? "светлая" : "выключен" });
+          showCard({ kind: "info", title: id === "dark" ? t("Тема") : id === "wifi" ? "Wi-Fi" : "Bluetooth", sub: on ? (id === "dark" ? t("тёмная") : t("включён")) : id === "dark" ? t("светлая") : t("выключен") });
         });
       },
       close: () => {
@@ -1127,7 +1138,7 @@ export function App() {
       },
       remind: (r: Reminder) => {
         setSetting({ reminders: [...remRef.current, r].sort((a, b) => a.at - b.at) });
-        showCard({ kind: "info", title: "Напомню", sub: r.text, ms: 2000 });
+        showCard({ kind: "info", title: t("Напомню"), sub: r.text, ms: 2000 });
       },
     }),
     [api, showCard, setSetting],
@@ -1300,7 +1311,7 @@ export function App() {
       <div
         ref={dotsRef}
         className={`privacy ${mode === "tucked" || mode === "strip" || mode === "expanded" || mode === "command" ? "hide" : ""}`}
-        title={[...privacy.cam.map((a) => `Камера: ${a}`), ...privacy.mic.map((a) => `Микрофон: ${a}`)].join("\n")}
+        title={[...privacy.cam.map((a) => t("Камера: {0}", a)), ...privacy.mic.map((a) => t("Микрофон: {0}", a))].join("\n")}
       >
         {privacy.cam.length > 0 && <i className="cam" />}
         {privacy.mic.length > 0 && <i className={`mic ${privacy.micMuted ? "muted" : ""}`} />}
@@ -1417,7 +1428,7 @@ export function App() {
             onAsked={() => setAiAsk(null)}
             tool={aiTool}
             onTool={() => setAiTool(null)}
-            openSettings={() => api?.call("settings_open", { section: "ИИ" })}
+            openSettings={() => api?.call("settings_open", { section: t("ИИ") })}
           />,
         )}
         {frame(
@@ -1455,7 +1466,7 @@ export function App() {
             }
             onCopyColor={(c) => {
               navigator.clipboard?.writeText(c).catch(() => {});
-              showCard({ kind: "capture", title: "Цвет скопирован", sub: c, swatch: c, ms: 2500 });
+              showCard({ kind: "capture", title: t("Цвет скопирован"), sub: c, swatch: c, ms: 2500 });
             }}
           />,
         )}
@@ -1482,8 +1493,8 @@ export function App() {
           {scene?.kind === "party" && (
             <PartyScene
               key={party}
-              title={birthdayToday() === "buddy" ? `${buddy.look.name}у ${buddyAge()}!` : "С днём рождения!"}
-              sub={birthdayToday() === "buddy" ? "Спасибо, что ты со мной" : `${buddy.look.name} испёк тебе торт`}
+              title={birthdayToday() === "buddy" ? t("{0}у {1}!", buddy.look.name, buddyAge()) : t("С днём рождения!")}
+              sub={birthdayToday() === "buddy" ? t("Спасибо, что ты со мной") : t("{0} испёк тебе торт", buddy.look.name)}
               onClose={() => setScene(null)}
             />
           )}
@@ -1503,14 +1514,14 @@ export function App() {
 const FIT: Tab[] = ["home", "controls", "weather"];
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "home", label: "Главная", icon: <TabHome /> },
-  { id: "clip", label: "Буфер", icon: <TabClip /> },
-  { id: "shelf", label: "Полка", icon: <TabShelf /> },
-  { id: "note", label: "Заметка и таймер", icon: <TabNote /> },
-  { id: "weather", label: "Погода", icon: <TabWeather /> },
-  { id: "ai", label: "ИИ: чат и текст", icon: <TabAi /> },
-  { id: "controls", label: "Управление", icon: <TabControls /> },
-  { id: "settings", label: "Настройки", icon: <TabSettings /> },
+  { id: "home", label: t("Главная"), icon: <TabHome /> },
+  { id: "clip", label: t("Буфер"), icon: <TabClip /> },
+  { id: "shelf", label: t("Полка"), icon: <TabShelf /> },
+  { id: "note", label: t("Заметка и таймер"), icon: <TabNote /> },
+  { id: "weather", label: t("Погода"), icon: <TabWeather /> },
+  { id: "ai", label: t("ИИ: чат и текст"), icon: <TabAi /> },
+  { id: "controls", label: t("Управление"), icon: <TabControls /> },
+  { id: "settings", label: t("Настройки"), icon: <TabSettings /> },
 ];
 
 function Header({ battery, tab, setTab }: { battery: Battery | null; tab: Tab; setTab: (t: Tab) => void }) {
@@ -1561,17 +1572,17 @@ function TimerPill({ timer, pomo }: { timer: ReturnType<typeof useTimer>; pomo: 
     <div className="compact timer-pill">
       <Ring size={18} progress={timer.state.total ? left / timer.state.total : 0} color={pomo?.phase === "rest" ? "#7cbf5a" : pomo ? "#e0445e" : "#ff9f43"} />
       <Buddy size={22} mood={pomo?.phase === "work" ? "work" : null} />
-      {pomo && <span className="pomo-label">{pomo.phase === "work" ? `работа ${pomo.round}` : "отдых"}</span>}
+      {pomo && <span className="pomo-label">{pomo.phase === "work" ? t("работа {0}", pomo.round) : t("отдых")}</span>}
       <span className={`time ${timer.running ? "" : "paused"}`}>{fmtClock(left)}</span>
     </div>
   );
 }
 
 const TOUR: [string, string][] = [
-  ["Привет! Я {name}", "Живу в этом острове. Наведи на него курсор — он раскроется, уведи — свернётся."],
-  ["Вкладки", "Сверху: главная, буфер, полка, заметки, погода, ИИ, управление и настройки. Я буду прыгать за тобой."],
-  ["Горячие клавиши", "Ctrl+Alt+I — открыть остров, Alt+Space — командная строка, Ctrl+Alt+S — скриншот, Ctrl+Alt+V — буфер."],
-  ["Я питомец", "Гладь меня курсором, правый клик — покормить и поиграть. Наряды и альбом наклеек — в настройках."],
+  [t("Привет! Я {name}"), t("Живу в этом острове. Наведи на него курсор — он раскроется, уведи — свернётся.")],
+  [t("Вкладки"), t("Сверху: главная, буфер, полка, заметки, погода, ИИ, управление и настройки. Я буду прыгать за тобой.")],
+  [t("Горячие клавиши"), t("Ctrl+Alt+I — открыть остров, Alt+Space — командная строка, Ctrl+Alt+S — скриншот, Ctrl+Alt+V — буфер.")],
+  [t("Я питомец"), t("Гладь меня курсором, правый клик — покормить и поиграть. Наряды и альбом наклеек — в настройках.")],
 ];
 
 function CardView({
@@ -1603,11 +1614,10 @@ function CardView({
             </span>
             {!last && (
               <button className="text-btn" onClick={(e) => (e.stopPropagation(), onTour(null))}>
-                Пропустить
-              </button>
+                {t("Пропустить")}</button>
             )}
             <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onTour(i + 1))}>
-              {last ? "Понятно" : "Дальше"}
+              {last ? t("Понятно") : t("Дальше")}
             </button>
           </div>
         </div>
@@ -1621,17 +1631,15 @@ function CardView({
         <div className="rc-head">
           <Buddy size={28} mood="ask" />
           <div className="agent-text">
-            <div className="card-title">Напоминание</div>
+            <div className="card-title">{t("Напоминание")}</div>
             <div className="rc-text">{r.text}</div>
           </div>
         </div>
         <div className="ask-buttons">
           <button className="text-btn" onClick={(e) => (e.stopPropagation(), onSnooze(r))}>
-            Через 10 минут
-          </button>
+            {t("Через 10 минут")}</button>
           <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onDone())}>
-            Готово
-          </button>
+            {t("Готово")}</button>
         </div>
       </div>
     );
@@ -1651,7 +1659,7 @@ function CardView({
           {card.sub && <div className="agent-sub">{card.sub}</div>}
         </div>
         {card.open && (
-          <span className="card-open">{card.open.translate ? "Перевести" : card.open.reveal ? "Показать" : card.open.tab ? "Прочитать" : "Открыть"}</span>
+          <span className="card-open">{card.open.translate ? t("Перевести") : card.open.reveal ? t("Показать") : card.open.tab ? t("Прочитать") : t("Открыть")}</span>
         )}
       </div>
     );
@@ -1774,8 +1782,8 @@ function useClock(everyMs = 1000) {
   return now;
 }
 
-const timeFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-const dateFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" });
+const dateFmt = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" });
 
 function Idle({ battery, sleeping, weather, scale }: { battery: Battery | null; sleeping: boolean; weather: Weather | null; scale: number }) {
   const now = useClock();
@@ -1888,13 +1896,13 @@ function CompactMedia({
             <i style={{ width: `${progress * 100}%`, background: accent }} />
           </div>
         </div>
-        <button aria-label="Предыдущий" onClick={(e) => (e.stopPropagation(), api?.media("prev"))}>
+        <button aria-label={t("Предыдущий")} onClick={(e) => (e.stopPropagation(), api?.media("prev"))}>
           <Prev size={16} />
         </button>
-        <button aria-label="Пауза" onClick={(e) => (e.stopPropagation(), api?.media("toggle"))}>
+        <button aria-label={t("Пауза")} onClick={(e) => (e.stopPropagation(), api?.media("toggle"))}>
           {media.playing ? <Pause size={18} /> : <Play size={18} />}
         </button>
-        <button aria-label="Следующий" onClick={(e) => (e.stopPropagation(), api?.media("next"))}>
+        <button aria-label={t("Следующий")} onClick={(e) => (e.stopPropagation(), api?.media("next"))}>
           <Next size={16} />
         </button>
       </div>
@@ -1939,13 +1947,13 @@ function ObsPill({ obs }: { obs: { recording: boolean; streaming: boolean; pause
   const now = useClock(500);
   const s = Math.max(0, Math.floor((now.getTime() - obs.since) / 1000));
   const h = Math.floor(s / 3600);
-  const t = `${h ? `${h}:` : ""}${String(Math.floor(s / 60) % 60).padStart(h ? 2 : 1, "0")}:${String(s % 60).padStart(2, "0")}`;
+  const clock = `${h ? `${h}:` : ""}${String(Math.floor(s / 60) % 60).padStart(h ? 2 : 1, "0")}:${String(s % 60).padStart(2, "0")}`;
   return (
     <div className={`compact obs-pill ${obs.paused ? "paused" : ""}`} title="OBS Studio">
       <span className="obs-logo">OBS</span>
       {obs.streaming && <span className="obs-badge live">LIVE</span>}
-      {obs.recording && <span className={`obs-badge rec ${obs.paused ? "paused" : ""}`}>{obs.paused ? "ПАУЗА" : "REC"}</span>}
-      <span className="time">{t}</span>
+      {obs.recording && <span className={`obs-badge rec ${obs.paused ? "paused" : ""}`}>{obs.paused ? t("ПАУЗА") : "REC"}</span>}
+      <span className="time">{clock}</span>
     </div>
   );
 }
@@ -1953,7 +1961,7 @@ function ObsPill({ obs }: { obs: { recording: boolean; streaming: boolean; pause
 function DownloadPill({ list }: { list: { name: string; size: number; speed: number; total: number }[] }) {
   const first = list[0];
   if (!first) return null;
-  const mb = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} ГБ` : `${(b / (1 << 20)).toFixed(1)} МБ`);
+  const mb = (b: number) => (b >= 1 << 30 ? t("{0} ГБ", (b / (1 << 30)).toFixed(1)) : t("{0} МБ", (b / (1 << 20)).toFixed(1)));
   const pct = first.total > 0 ? Math.min(100, Math.floor((first.size / first.total) * 100)) : null;
   return (
     <div className="compact download-pill" style={pct !== null ? ({ "--dl": `${pct}%` } as React.CSSProperties) : undefined}>
@@ -1961,10 +1969,10 @@ function DownloadPill({ list }: { list: { name: string; size: number; speed: num
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd0ff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M12 4v11M7 10.5 12 15.5l5-5M5 20h14" />
       </svg>
-      <span className="dl-name">{list.length > 1 ? `Загрузок: ${list.length}` : first.name}</span>
+      <span className="dl-name">{list.length > 1 ? t("Загрузок: {0}", list.length) : first.name}</span>
       <span className="dl-size">
         {pct !== null ? `${pct}%` : mb(first.size)}
-        {first.speed > 0 ? ` · ${mb(first.speed)}/с` : ""}
+        {first.speed > 0 ? t(" · {0}/с", mb(first.speed)) : ""}
       </span>
     </div>
   );
@@ -2050,13 +2058,13 @@ function HomeTab({
             <span>{media.durationMs ? `-${fmtTime(media.durationMs - pos)}` : ""}</span>
           </div>
           <div className="controls">
-            <button aria-label="Предыдущий" onClick={() => api?.media("prev")}>
+            <button aria-label={t("Предыдущий")} onClick={() => api?.media("prev")}>
               <Prev size={26} />
             </button>
-            <button className="main" aria-label={media.playing ? "Пауза" : "Играть"} onClick={() => api?.media("toggle")}>
+            <button className="main" aria-label={media.playing ? t("Пауза") : t("Играть")} onClick={() => api?.media("toggle")}>
               {media.playing ? <Pause size={32} /> : <Play size={32} />}
             </button>
-            <button aria-label="Следующий" onClick={() => api?.media("next")}>
+            <button aria-label={t("Следующий")} onClick={() => api?.media("next")}>
               <Next size={26} />
             </button>
           </div>
@@ -2064,7 +2072,7 @@ function HomeTab({
       ) : (
         <div className="empty">
           <Note size={22} />
-          <span>Ничего не играет</span>
+          <span>{t("Ничего не играет")}</span>
         </div>
       )}
 
@@ -2082,12 +2090,12 @@ function appName(id: string) {
   const s = id.toLowerCase();
   const known: [string, string][] = [
     ["spotify", "Spotify"],
-    ["yandex", "Яндекс Музыка"],
+    ["yandex", t("Яндекс Музыка")],
     ["chrome", "Chrome"],
     ["msedge", "Edge"],
     ["firefox", "Firefox"],
     ["opera", "Opera"],
-    ["zunemusic", "Медиаплеер"],
+    ["zunemusic", t("Медиаплеер")],
     ["vlc", "VLC"],
     ["telegram", "Telegram"],
   ];
@@ -2103,7 +2111,7 @@ function AgentPill({ working }: { working: Record<string, AgentEvent & { at: num
     <div className="compact agent-pill">
       <Buddy size={24} mood="work" />
       <span className="agent-label">
-        {list.length > 1 ? `Агентов работает: ${list.length}` : `${name} работает`}
+        {list.length > 1 ? t("Агентов работает: {0}", list.length) : t("{0} работает", name)}
         {list.length === 1 && first.project ? <span className="agent-project"> · {first.project}</span> : null}
       </span>
       <span className="dots">
@@ -2129,18 +2137,16 @@ function AskCard({ ask, onAnswer }: { ask: AgentEvent; onAnswer: (allow: boolean
       <div className="ask-head">
         <Buddy size={28} mood="ask" />
         <div className="ask-title">
-          {name} просит разрешение{ask.project ? <span className="agent-project"> · {ask.project}</span> : null}
+          {name} {" "}{t("просит разрешение")}{ask.project ? <span className="agent-project"> · {ask.project}</span> : null}
         </div>
         <Ring size={20} progress={ask.seconds ? left / ask.seconds : 0} color="#d97757" />
       </div>
       <div className="ask-detail">{ask.detail}</div>
       <div className="ask-buttons">
         <button className="text-btn" onClick={(e) => (e.stopPropagation(), onAnswer(false))}>
-          Запретить
-        </button>
+          {t("Запретить")}</button>
         <button className="text-btn solid accent" onClick={(e) => (e.stopPropagation(), onAnswer(true))}>
-          Разрешить
-        </button>
+          {t("Разрешить")}</button>
       </div>
     </div>
   );
@@ -2148,12 +2154,12 @@ function AskCard({ ask, onAnswer }: { ask: AgentEvent; onAnswer: (allow: boolean
 
 function DictationPill({ state, level }: { state: string; level: number }) {
   return (
-    <div className="compact dictation-pill" title="Клик или Ctrl+Alt+D — закончить">
+    <div className="compact dictation-pill" title={t("Клик или Ctrl+Alt+D — закончить")}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff6b5e" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
         <rect x="9" y="3" width="6" height="11" rx="3" fill="#ff6b5e" />
         <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
       </svg>
-      <span className="dl-name">{state === "busy" ? "Распознаю…" : "Говори…"}</span>
+      <span className="dl-name">{state === "busy" ? t("Распознаю…") : t("Говори…")}</span>
       {state === "rec" && (
         <span className="level">
           {[0.5, 0.8, 1, 0.8, 0.5].map((k, i) => (
@@ -2169,12 +2175,12 @@ function RecordingPill({ since }: { since: number }) {
   const now = useClock(500);
   const s = Math.max(0, Math.floor((now.getTime() - since) / 1000));
   return (
-    <div className="compact recording-pill" title="Клик — остановить (Ctrl+Alt+R)">
+    <div className="compact recording-pill" title={t("Клик — остановить (Ctrl+Alt+R)")}>
       <span className="rec-dot" />
       <span className="time">
         {Math.floor(s / 60)}:{String(s % 60).padStart(2, "0")}
       </span>
-      <span className="muted">стоп</span>
+      <span className="muted">{t("стоп")}</span>
     </div>
   );
 }
@@ -2455,10 +2461,10 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
         <div className="buddy-menu" style={{ left: `calc(50% + ${Math.min(Math.max(pos.x - 160, -220), -110)}px)`, top: pos.y + (SIZE * 11) / 15 + 6 }} onClick={(e) => e.stopPropagation()}>
           {(
             [
-              ["Покормить", () => buddy.feed()],
-              ["Поиграть", () => buddy.play()],
-              [buddy.pet.asleep ? "Разбудить" : "Уложить спать", () => buddy.toggleSleep()],
-              ["Трюк", () => buddy.act(["flip", "spin", "dance", "juggle", "kite"][Math.floor(Math.random() * 5)], 2600)],
+              [t("Покормить"), () => buddy.feed()],
+              [t("Поиграть"), () => buddy.play()],
+              [buddy.pet.asleep ? t("Разбудить") : t("Уложить спать"), () => buddy.toggleSleep()],
+              [t("Трюк"), () => buddy.act(["flip", "spin", "dance", "juggle", "kite"][Math.floor(Math.random() * 5)], 2600)],
             ] as [string, () => void][]
           ).map(([label, f]) => (
             <button
@@ -2504,17 +2510,15 @@ function VolumeRow({
   const level = usePlayer ? (player ?? 0) : volume.muted ? 0 : volume.level;
   return (
     <div className="volume">
-      <button aria-label="Без звука" onClick={() => api?.muteToggle()}>
+      <button aria-label={t("Без звука")} onClick={() => api?.muteToggle()}>
         <Speaker level={volume.level} muted={volume.muted} />
       </button>
       {media && (
         <div className="segmented tiny">
           <button className={target === "pc" ? "on" : ""} onClick={() => setTarget("pc")}>
-            Компьютер
-          </button>
+            {t("Компьютер")}</button>
           <button className={target === "player" ? "on" : ""} onClick={() => setTarget("player")}>
-            Плеер
-          </button>
+            {t("Плеер")}</button>
         </div>
       )}
       <input
@@ -2536,7 +2540,7 @@ function VolumeRow({
           }
         }}
       />
-      <span className="num" title={usePlayer && player === null ? "Плеер не найден среди звуков Windows" : undefined}>
+      <span className="num" title={usePlayer && player === null ? t("Плеер не найден среди звуков Windows") : undefined}>
         {usePlayer && player === null ? "—" : Math.round(level * 100)}
       </span>
     </div>

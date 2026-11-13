@@ -108,3 +108,18 @@ describe("text tools", () => {
     expect(lighterModel(["gemini-3.8-flash"], "gemini-3.8-flash-lite")).toBeNull();
   });
 });
+
+describe("English reminders", () => {
+  const now = new Date(2026, 10, 13, 10, 0);
+  it("understands simple English phrases", () => {
+    const a = parseReminder("call mom tomorrow at 9", now)!;
+    expect(a.text).toBe("call mom");
+    expect(new Date(a.at).getDate()).toBe(14);
+    expect(new Date(a.at).getHours()).toBe(9);
+    const b = parseReminder("turn off the stove in 20 minutes", now)!;
+    expect(b.at - now.getTime()).toBe(20 * 60_000);
+    const c = parseReminder("pills every day at 11 pm", now)!;
+    expect(c.repeat?.time).toBe("23:00");
+    expect(parseReminder("позвонить маме завтра в 9", now)?.text).toBe("позвонить маме");
+  });
+});

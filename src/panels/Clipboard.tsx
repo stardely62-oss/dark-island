@@ -2,15 +2,16 @@ import { useMemo, useState } from "react";
 import type { Bridge, Clip } from "../ipc";
 import { PinIcon, TrashIcon } from "../components/Icons";
 
+import { t } from "../i18n";
 export function ago(at: number, now = Date.now()) {
   const s = Math.max(0, Math.round((now - at) / 1000));
-  if (s < 45) return "сейчас";
+  if (s < 45) return t("сейчас");
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин`;
+  if (m < 60) return t("{0} мин", m);
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч`;
+  if (h < 24) return t("{0} ч", h);
   const d = Math.round(h / 24);
-  return d < 7 ? `${d} дн` : new Date(at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return d < 7 ? t("{0} дн", d) : new Date(at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
 /**
@@ -39,26 +40,25 @@ export function ClipboardTab({
       <div className="tab-bar">
         <input
           className="search"
-          placeholder="Поиск в буфере"
+          placeholder={t("Поиск в буфере")}
           value={query}
           onFocus={onTypeStart}
           onChange={(e) => setQuery(e.target.value)}
         />
         {clips.some((c) => !c.pinned) && (
           <button className="text-btn" onClick={() => api?.call("clip_clear")}>
-            Очистить
-          </button>
+            {t("Очистить")}</button>
         )}
       </div>
       <div className="list">
         {shown.length === 0 && (
-          <div className="empty">{clips.length ? "Ничего не нашлось" : "Скопируй что-нибудь — оно появится здесь"}</div>
+          <div className="empty">{clips.length ? t("Ничего не нашлось") : t("Скопируй что-нибудь — оно появится здесь")}</div>
         )}
         {shown.map((c) => (
           <div
             key={c.id}
             className={`clip ${c.pinned ? "pinned" : ""}`}
-            title={c.kind === "text" ? "Вставить" : "Вставить картинку"}
+            title={c.kind === "text" ? t("Вставить") : t("Вставить картинку")}
             onClick={() => {
               api?.call("clip_use", { id: c.id, paste: true });
               onUsed();
@@ -68,7 +68,7 @@ export function ClipboardTab({
               <div className="clip-image">
                 {c.thumb && <img src={c.thumb} alt="" draggable={false} />}
                 <span>
-                  Картинка {c.w}×{c.h}
+                  {t("Картинка")}{" "}{c.w}×{c.h}
                 </span>
               </div>
             ) : (
@@ -78,7 +78,7 @@ export function ClipboardTab({
             <span className="actions">
               <button
                 className={c.pinned ? "on" : ""}
-                aria-label={c.pinned ? "Открепить" : "Закрепить"}
+                aria-label={c.pinned ? t("Открепить") : t("Закрепить")}
                 onClick={(e) => {
                   e.stopPropagation();
                   api?.call("clip_pin", { id: c.id });
@@ -87,7 +87,7 @@ export function ClipboardTab({
                 <PinIcon />
               </button>
               <button
-                aria-label="Удалить"
+                aria-label={t("Удалить")}
                 onClick={(e) => {
                   e.stopPropagation();
                   api?.call("clip_delete", { id: c.id });

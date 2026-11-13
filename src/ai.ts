@@ -2,17 +2,18 @@ import { useCallback, useEffect, useRef } from "react";
 import type { Bridge } from "./ipc";
 import type { Settings } from "./settings";
 
+import { t } from "./i18n";
 export type Provider = { id: string; protocol: "anthropic" | "openai"; base: string; model: string };
 
 /** Ready services; any other OpenAI-compatible address works through "custom". */
 export const PROVIDERS: { id: string; name: string; protocol: "anthropic" | "openai"; base: string; model: string; keyUrl?: string; note: string }[] = [
-  { id: "anthropic", name: "Claude", protocol: "anthropic", base: "https://api.anthropic.com/v1", model: "claude-opus-5-5", keyUrl: "https://platform.claude.com/settings/keys", note: "Anthropic, платно" },
-  { id: "groq", name: "Groq", protocol: "openai", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", keyUrl: "https://console.groq.com/keys", note: "есть бесплатный лимит, им же — диктовка" },
-  { id: "gemini", name: "Gemini", protocol: "openai", base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.8-flash", keyUrl: "https://aistudio.google.com/apikey", note: "бесплатный тариф AI Studio" },
-  { id: "openrouter", name: "OpenRouter", protocol: "openai", base: "https://openrouter.ai/api/v1", model: "openrouter/auto", keyUrl: "https://openrouter.ai/keys", note: "много моделей, есть бесплатные" },
-  { id: "deepseek", name: "DeepSeek", protocol: "openai", base: "https://api.deepseek.com/v1", model: "deepseek-chat", keyUrl: "https://platform.deepseek.com/api_keys", note: "платно" },
-  { id: "openai", name: "OpenAI", protocol: "openai", base: "https://api.openai.com/v1", model: "gpt-5", keyUrl: "https://platform.openai.com/api-keys", note: "платно" },
-  { id: "custom", name: "Свой адрес", protocol: "openai", base: "http://127.0.0.1:11434/v1", model: "", note: "любой OpenAI-совместимый сервер" },
+  { id: "anthropic", name: "Claude", protocol: "anthropic", base: "https://api.anthropic.com/v1", model: "claude-opus-5-5", keyUrl: "https://platform.claude.com/settings/keys", note: t("Anthropic, платно") },
+  { id: "groq", name: "Groq", protocol: "openai", base: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", keyUrl: "https://console.groq.com/keys", note: t("есть бесплатный лимит, им же — диктовка") },
+  { id: "gemini", name: "Gemini", protocol: "openai", base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.8-flash", keyUrl: "https://aistudio.google.com/apikey", note: t("бесплатный тариф AI Studio") },
+  { id: "openrouter", name: "OpenRouter", protocol: "openai", base: "https://openrouter.ai/api/v1", model: "openrouter/auto", keyUrl: "https://openrouter.ai/keys", note: t("много моделей, есть бесплатные") },
+  { id: "deepseek", name: "DeepSeek", protocol: "openai", base: "https://api.deepseek.com/v1", model: "deepseek-chat", keyUrl: "https://platform.deepseek.com/api_keys", note: t("платно") },
+  { id: "openai", name: "OpenAI", protocol: "openai", base: "https://api.openai.com/v1", model: "gpt-5", keyUrl: "https://platform.openai.com/api-keys", note: t("платно") },
+  { id: "custom", name: t("Свой адрес"), protocol: "openai", base: "http://127.0.0.1:11434/v1", model: "", note: t("любой OpenAI-совместимый сервер") },
 ];
 
 export const CLAUDE_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"];
@@ -51,7 +52,7 @@ export type AiMsg = { role: "user" | "assistant"; text: string; images?: string[
 
 /** What the model reads: attached documents go before the question. */
 export const msgText = (m: AiMsg) =>
-  m.docs?.length ? `${m.docs.map((d) => `<документ name="${d.name}">\n${d.text}\n</документ>`).join("\n\n")}\n\n${m.text}` : m.text;
+  m.docs?.length ? `${m.docs.map((d) => t("<документ name=\"{0}\">\n{1}\n</документ>", d.name, d.text)).join("\n\n")}\n\n${m.text}` : m.text;
 
 /** Runs a streamed request; `onText` gets the whole text so far. */
 export function useAi(api: Bridge | null) {
@@ -107,7 +108,7 @@ export function useAi(api: Bridge | null) {
           return;
         }
         // A retired model: pick a live one from the provider's list, save it and try once more.
-        if (err && !retried && !cancelled && /Нет такой модели|no longer available|not found|does not exist/i.test(err)) {
+        if (err && !retried && !cancelled && /Нет такой модели|No such model|no longer available|not found|does not exist/i.test(err)) {
           api
             ?.call<string[]>("ai_models", { provider })
             .then((list) => {

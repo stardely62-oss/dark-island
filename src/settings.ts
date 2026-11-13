@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Bridge } from "./ipc";
 
+import { t } from "./i18n";
 /** Defaults live here; Rust only stores what the user changed. */
 export const DEFAULTS = {
   stripOverWindows: true,
@@ -35,7 +36,7 @@ export const DEFAULTS = {
   buddyScale: 1.6,
   buddyColor: "#d97757",
   buddyHat: "none",
-  buddyName: "Клодик",
+  buddyName: t("Клодик"),
   obsEnabled: false,
   obsPort: "4455",
 };
@@ -52,7 +53,7 @@ export type Settings = typeof DEFAULTS & Record<string, unknown>;
 
 export const ENGINES: Record<string, { name: string; url: string }> = {
   google: { name: "Google", url: "https://www.google.com/search?q=%s" },
-  yandex: { name: "Яндекс", url: "https://yandex.ru/search/?text=%s" },
+  yandex: { name: t("Яндекс"), url: "https://yandex.ru/search/?text=%s" },
   duckduckgo: { name: "DuckDuckGo", url: "https://duckduckgo.com/?q=%s" },
   bing: { name: "Bing", url: "https://www.bing.com/search?q=%s" },
 };

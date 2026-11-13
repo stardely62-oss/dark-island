@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Buddy } from "./Buddy";
 import "./party.css";
 
+import { t } from "../i18n";
 const COLORS = ["#ff6f9c", "#ffd84a", "#7fd0ff", "#7cbf5a", "#c27ce0", "#ff9f43"];
 
 /** A pixel cake with three candles; the flames go out when he blows. */
@@ -94,11 +95,11 @@ export function PartyScene({ title, sub, onClose }: { title: string; sub: string
 }
 
 const MOVES: { cls: string; tip: string }[] = [
-  { cls: "mv-stretch", tip: "Потянись вверх — руки к потолку" },
-  { cls: "mv-bend", tip: "Наклоны в стороны, не торопись" },
-  { cls: "mv-squat", tip: "Пара приседаний — разгони кровь" },
-  { cls: "mv-look", tip: "Посмотри вдаль 20 секунд — глазам отдых" },
-  { cls: "mv-tea", tip: "И попей воды или чаю" },
+  { cls: "mv-stretch", tip: t("Потянись вверх — руки к потолку") },
+  { cls: "mv-bend", tip: t("Наклоны в стороны, не торопись") },
+  { cls: "mv-squat", tip: t("Пара приседаний — разгони кровь") },
+  { cls: "mv-look", tip: t("Посмотри вдаль 20 секунд — глазам отдых") },
+  { cls: "mv-tea", tip: t("И попей воды или чаю") },
 ];
 export const MOVE_MS = 3600;
 
@@ -121,8 +122,8 @@ export function BreakScene({
   return (
     <div className="brk">
       <div className="brk-head">
-        <b>Перерыв</b>
-        <span>ты за компьютером уже {minutes} мин</span>
+        <b>{t("Перерыв")}</b>
+        <span>{t("ты за компьютером уже")}{" "}{minutes} {" "}{t("мин")}</span>
       </div>
       <div className="brk-stage">
         <div className="brk-sun" aria-hidden />
@@ -150,11 +151,9 @@ export function BreakScene({
       </div>
       <div className="brk-actions">
         <button className="text-btn" onClick={onLater}>
-          Позже
-        </button>
+          {t("Позже")}</button>
         <button className="text-btn solid accent" onClick={onRest}>
-          Таймер 5 мин
-        </button>
+          {t("Таймер 5 мин")}</button>
       </div>
     </div>
   );

@@ -3,10 +3,11 @@ import type { Bridge } from "../ipc";
 import { describe, fmtTemp, shape, type Weather } from "../weather";
 import { WeatherIcon } from "../components/WeatherIcon";
 
+import { t, locale } from "../i18n";
 type Place = { name: string; full: string; lat: number; lon: number };
 
-const dayFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short" });
-const hourFmt = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit" });
+const dayFmt = new Intl.DateTimeFormat(locale, { weekday: "short" });
+const hourFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit" });
 
 /** The weather now, the next 24 hours and a week ahead, for a city picked by name. */
 export function WeatherTab({
@@ -42,15 +43,14 @@ export function WeatherTab({
         <div className="tab-bar">
           <input
             className="search"
-            placeholder="Город, например «Казань»"
+            placeholder={t("Город, например «Казань»")}
             value={q}
             onFocus={onTypeStart}
             onChange={(e) => setQ(e.target.value)}
           />
           {weather && (
             <button className="text-btn" onClick={() => setSearching(false)}>
-              Отмена
-            </button>
+              {t("Отмена")}</button>
           )}
         </div>
         <div className="list">
@@ -72,8 +72,8 @@ export function WeatherTab({
           {!found.length && (
             <div className="empty">
               {q.trim().length >= 2
-                ? "Ищу…"
-                : "Выбери город один раз — прогноз будет приходить от MET Norway. Город не определяется по адресу в сети."}
+                ? t("Ищу…")
+                : t("Выбери город один раз — прогноз будет приходить от MET Norway. Город не определяется по адресу в сети.")}
             </div>
           )}
         </div>
@@ -97,16 +97,14 @@ export function WeatherTab({
         </div>
         <div className="w-facts">
           <span>
-            <i>ветер</i> {Math.round(cur.wind)} м/с
+            <i>{t("ветер")}</i> {Math.round(cur.wind)} {" "}{t("м/с")}</span>
+          <span>
+            <i>{t("влажность")}</i> {Math.round(cur.humidity)}%
           </span>
           <span>
-            <i>влажность</i> {Math.round(cur.humidity)}%
-          </span>
-          <span>
-            <i>давление</i> {Math.round(cur.pressure * 0.750062)} мм
-          </span>
+            <i>{t("давление")}</i> {Math.round(cur.pressure * 0.750062)} {" "}{t("мм")}</span>
         </div>
-        <button className="w-city" title="Сменить город" onClick={() => setSearching(true)}>
+        <button className="w-city" title={t("Сменить город")} onClick={() => setSearching(true)}>
           {weather.city}
         </button>
       </div>
@@ -119,7 +117,7 @@ export function WeatherTab({
       >
         {hours.map((h, i) => (
           <div key={h.t} className="w-hour">
-            <span className="muted">{i === 0 ? "Сейчас" : hourFmt.format(h.t)}</span>
+            <span className="muted">{i === 0 ? t("Сейчас") : hourFmt.format(h.t)}</span>
             <WeatherIcon symbol={h.symbol} size={22} />
             <span>{fmtTemp(h.temp)}</span>
           </div>
@@ -128,7 +126,7 @@ export function WeatherTab({
       <div className="w-days">
         {days.map((day, i) => (
           <div key={day.t} className="w-day">
-            <span className="w-d-name">{i === 0 ? "Сегодня" : dayFmt.format(day.t)}</span>
+            <span className="w-d-name">{i === 0 ? t("Сегодня") : dayFmt.format(day.t)}</span>
             <WeatherIcon symbol={day.symbol} size={22} />
             <span>{fmtTemp(day.max)}</span>
             <span className="muted">{fmtTemp(day.min)}</span>

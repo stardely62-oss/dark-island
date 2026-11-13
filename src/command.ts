@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 // Parsing for the command bar: calculator, unit conversion, timer phrases,
 // system commands. Everything here is pure and runs in the browser.
 
@@ -162,12 +163,12 @@ export function timerPhrase(q: string): number | null {
 
 export type SystemCmd = { id: string; title: string; words: string[] };
 export const SYSTEM: SystemCmd[] = [
-  { id: "wifi", title: "Wi-Fi: включить или выключить", words: ["wifi", "wi-fi", "вайфай", "вай-фай"] },
-  { id: "bluetooth", title: "Bluetooth: включить или выключить", words: ["bluetooth", "блютуз", "блютус"] },
-  { id: "pomodoro", title: "Помодоро: 25 минут работы и перерыв", words: ["помодоро", "pomodoro", "помидор", "фокус"] },
-  { id: "dark", title: "Тема Windows: тёмная или светлая", words: ["тема", "theme", "dark", "тёмная", "темная"] },
-  { id: "lock", title: "Заблокировать компьютер", words: ["lock", "заблокировать", "блокировка"] },
-  { id: "sleep", title: "Сон", words: ["sleep", "сон", "спать"] },
-  { id: "settings", title: "Настройки острова", words: ["настройки", "settings"] },
-  { id: "clipboard", title: "История буфера", words: ["буфер", "clipboard", "clip"] },
+  { id: "wifi", title: t("Wi-Fi: включить или выключить"), words: ["wifi", "wi-fi", "вайфай", "вай-фай"] },
+  { id: "bluetooth", title: t("Bluetooth: включить или выключить"), words: ["bluetooth", "блютуз", "блютус"] },
+  { id: "pomodoro", title: t("Помодоро: 25 минут работы и перерыв"), words: ["помодоро", "pomodoro", "помидор", "фокус"] },
+  { id: "dark", title: t("Тема Windows: тёмная или светлая"), words: ["тема", "theme", "dark", "тёмная", "темная"] },
+  { id: "lock", title: t("Заблокировать компьютер"), words: ["lock", "заблокировать", "блокировка"] },
+  { id: "sleep", title: t("Сон"), words: ["sleep", "сон", "спать"] },
+  { id: "settings", title: t("Настройки острова"), words: ["настройки", "settings"] },
+  { id: "clipboard", title: t("История буфера"), words: ["буфер", "clipboard", "clip"] },
 ];

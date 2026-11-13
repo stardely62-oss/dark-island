@@ -3,6 +3,7 @@ import type { Bridge, ShelfItem } from "../ipc";
 import { CloseIcon, FileIcon, FolderIcon, TabShelf } from "../components/Icons";
 import { AppIcon } from "../components/AppIcon";
 
+import { t } from "../i18n";
 let dragIcon: string | null = null;
 /** The picture under the cursor while files are dragged out (PNG data URL). */
 function getDragIcon() {
@@ -27,7 +28,7 @@ function ext(name: string) {
 
 function size(b: number) {
   if (!b) return "";
-  const u = ["Б", "КБ", "МБ", "ГБ"];
+  const u = [t("Б"), t("КБ"), t("МБ"), t("ГБ")];
   let i = 0;
   while (b >= 1024 && i < u.length - 1) {
     b /= 1024;
@@ -74,26 +75,22 @@ export function ShelfTab({
           <>
             <span
               className="drag-all"
-              title="Потяни, чтобы перенести все файлы"
+              title={t("Потяни, чтобы перенести все файлы")}
               onPointerDown={(e) => down(e, items.map((i) => i.path))}
             >
-              <TabShelf size={15} /> {items.length} {plural(items.length)} · взять все
-            </span>
+              <TabShelf size={15} /> {items.length} {plural(items.length)} {" "}{t("· взять все")}</span>
             <span className="grow" />
             <button className="text-btn" onClick={() => api?.call<ShelfItem[]>("shelf_pick").then(setItems)}>
-              Добавить…
-            </button>
+              {t("Добавить…")}</button>
             <button className="text-btn" onClick={() => api?.call<ShelfItem[]>("shelf_clear").then(setItems)}>
-              Очистить
-            </button>
+              {t("Очистить")}</button>
           </>
         ) : (
           <>
-            <span className="hint">Брось файлы на остров — они подождут здесь</span>
+            <span className="hint">{t("Брось файлы на остров — они подождут здесь")}</span>
             <span className="grow" />
             <button className="text-btn solid" onClick={() => api?.call<ShelfItem[]>("shelf_pick").then(setItems)}>
-              Добавить файлы…
-            </button>
+              {t("Добавить файлы…")}</button>
           </>
         )}
       </div>
@@ -102,7 +99,7 @@ export function ShelfTab({
           <div
             key={it.path}
             className="tile"
-            title={`${it.path}\nДвойной клик — открыть, правый — показать в папке`}
+            title={t("{0}\nДвойной клик — открыть, правый — показать в папке", it.path)}
             onPointerDown={(e) => e.button === 0 && down(e, [it.path])}
             onDoubleClick={() => api?.call("open_path", { path: it.path })}
             onContextMenu={(e) => {
@@ -119,10 +116,10 @@ export function ShelfTab({
               fallback={it.dir ? <FolderIcon /> : <FileIcon ext={ext(it.name) || "file"} />}
             />
             <span className="name">{it.name}</span>
-            <span className="size">{it.dir ? "папка" : size(it.size)}</span>
+            <span className="size">{it.dir ? t("папка") : size(it.size)}</span>
             <button
               className="remove"
-              aria-label="Убрать с полки"
+              aria-label={t("Убрать с полки")}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => api?.call<ShelfItem[]>("shelf_remove", { path: it.path }).then(setItems)}
             >
@@ -130,7 +127,7 @@ export function ShelfTab({
             </button>
           </div>
         ))}
-        {dragOver && <div className="drop-hint">Отпусти — и файлы лягут на полку</div>}
+        {dragOver && <div className="drop-hint">{t("Отпусти — и файлы лягут на полку")}</div>}
       </div>
     </div>
   );
@@ -139,7 +136,7 @@ export function ShelfTab({
 function plural(n: number) {
   const m10 = n % 10;
   const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "файл";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "файла";
-  return "файлов";
+  if (m10 === 1 && m100 !== 11) return t("файл");
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return t("файла");
+  return t("файлов");
 }

@@ -1,4 +1,6 @@
 mod agents;
+#[macro_use]
+mod i18n;
 mod ai;
 mod capture;
 mod clip;
@@ -1295,6 +1297,21 @@ pub fn place_window(win: &WebviewWindow, shared: &Shared) {
     }
 }
 
+/// The tray menu's items, renamed when the interface language is known.
+static TRAY_ITEMS: std::sync::OnceLock<(MenuItem<tauri::Wry>, CheckMenuItem<tauri::Wry>, MenuItem<tauri::Wry>)> = std::sync::OnceLock::new();
+
+/// The island window says which language the interface is in.
+#[tauri::command]
+fn ui_lang(lang: String) {
+    let en = lang == "en";
+    i18n::set_en(en);
+    if let Some((settings, autostart, quit)) = TRAY_ITEMS.get() {
+        let _ = settings.set_text(i18n::tr("Настройки", "Settings"));
+        let _ = autostart.set_text(i18n::tr("Запускать вместе с Windows", "Start with Windows"));
+        let _ = quit.set_text(i18n::tr("Выход", "Quit"));
+    }
+}
+
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(
@@ -1307,6 +1324,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let settings = MenuItem::with_id(app, "settings", "Настройки", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let _ = TRAY_ITEMS.set((settings.clone(), autostart.clone(), quit.clone()));
     let menu = Menu::with_items(app, &[&settings, &autostart, &PredefinedMenuItem::separator(app)?, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main")
@@ -1426,6 +1444,7 @@ pub fn run() {
             bt_devices,
             bt_connect,
             vpn_status,
+            ui_lang,
             vpn_ip,
             doc_pick,
             launcher_hotkeys

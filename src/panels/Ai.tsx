@@ -5,34 +5,35 @@ import type { Settings } from "../settings";
 import { TabAi } from "../components/Icons";
 import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit, urlDec } from "../textTools";
 
+import { lang, t, locale } from "../i18n";
 const CHAT_KEY = "island.chat";
 const SYSTEM =
-  "Ты — помощник в маленькой панели на рабочем столе Windows. Отвечай по-русски, если к тебе обращаются по-русски. Пиши коротко и по делу: панель узкая. Без Markdown-таблиц.";
+  t("Ты — помощник в маленькой панели на рабочем столе Windows. Отвечай по-русски, если к тебе обращаются по-русски. Пиши коротко и по делу: панель узкая. Без Markdown-таблиц.");
 
 /** Where "Перевести" goes: auto is Russian ↔ English. */
 /** [value for the prompt, full name, short name, mark] */
 export const LANGS: [string, string, string, string][] = [
-  ["auto", "Авто (рус ↔ англ)", "Авто", "⇄"],
-  ["русский", "Русский", "Русский", "RU"],
-  ["английский", "Английский", "English", "EN"],
-  ["украинский", "Украинский", "Українська", "UA"],
-  ["немецкий", "Немецкий", "Deutsch", "DE"],
-  ["французский", "Французский", "Français", "FR"],
-  ["испанский", "Испанский", "Español", "ES"],
-  ["итальянский", "Итальянский", "Italiano", "IT"],
-  ["польский", "Польский", "Polski", "PL"],
-  ["турецкий", "Турецкий", "Türkçe", "TR"],
-  ["китайский", "Китайский", "中文", "ZH"],
-  ["японский", "Японский", "日本語", "JA"],
-  ["корейский", "Корейский", "한국어", "KO"],
-  ["казахский", "Казахский", "Қазақша", "KZ"],
-  ["португальский", "Португальский", "Português", "PT"],
-  ["арабский", "Арабский", "العربية", "AR"],
+  ["auto", t("Авто (рус ↔ англ)"), t("Авто"), "⇄"],
+  ["русский", t("Русский"), t("Русский"), "RU"],
+  ["английский", t("Английский"), "English", "EN"],
+  ["украинский", t("Украинский"), t("Українська"), "UA"],
+  ["немецкий", t("Немецкий"), "Deutsch", "DE"],
+  ["французский", t("Французский"), "Français", "FR"],
+  ["испанский", t("Испанский"), "Español", "ES"],
+  ["итальянский", t("Итальянский"), "Italiano", "IT"],
+  ["польский", t("Польский"), "Polski", "PL"],
+  ["турецкий", t("Турецкий"), "Türkçe", "TR"],
+  ["китайский", t("Китайский"), "中文", "ZH"],
+  ["японский", t("Японский"), "日本語", "JA"],
+  ["корейский", t("Корейский"), "한국어", "KO"],
+  ["казахский", t("Казахский"), t("Қазақша"), "KZ"],
+  ["португальский", t("Португальский"), "Português", "PT"],
+  ["арабский", t("Арабский"), "العربية", "AR"],
 ];
 const translatePrompt = (to: string) =>
   !to || to === "auto"
-    ? "Переведи: с русского на английский, с любого другого языка — на русский."
-    : `Переведи на ${to} язык (если текст уже на нём — на русский).`;
+    ? t("Переведи: с русского на английский, с любого другого языка — на русский.")
+    : t("Переведи на {0} язык (если текст уже на нём — на русский).", lang === "en" ? LANGS.find(([v]) => v === to)?.[1] ?? to : to);
 
 function loadChat(): AiMsg[] {
   try {
@@ -172,7 +173,7 @@ export function AiTab({
 
   const send = (text: string, imgs: string[] = images, files: AiDoc[] = docs) => {
     if ((!text.trim() && !files.length) || busy) return;
-    const ask = text.trim() || "Что в этом документе? Коротко перескажи главное.";
+    const ask = text.trim() || t("Что в этом документе? Коротко перескажи главное.");
     const next: AiMsg[] = [...msgs, { role: "user", text: ask, images: imgs, docs: files }];
     setMsgs([...next, { role: "assistant", text: "" }]);
     setInput("");
@@ -224,7 +225,7 @@ export function AiTab({
     try {
       setOut(f(src));
     } catch (e) {
-      setOut(e instanceof Error && /^Это не/.test(e.message) ? e.message : `Не получилось: ${e instanceof Error ? e.message : String(e)}`);
+      setOut(e instanceof Error && /^Это не/.test(e.message) ? e.message : t("Не получилось: {0}", e instanceof Error ? e.message : String(e)));
     }
   };
   const aiAction = (prompt: string, text = src) => {
@@ -233,12 +234,12 @@ export function AiTab({
     setOut("");
     run(
       provider,
-      "Ты редактор текста. Верни только результат, без пояснений и кавычек.",
+      t("Ты редактор текста. Верни только результат, без пояснений и кавычек."),
       [{ role: "user", text: `${prompt}\n\n${text}` }],
       (t) => setOut(t),
       (err) => {
         setToolBusy(false);
-        if (err) setOut(`Ошибка: ${err}`);
+        if (err) setOut(t("Ошибка: {0}", err));
       },
     );
   };
@@ -257,36 +258,32 @@ export function AiTab({
       <div className="tab-bar">
         <div className="segmented">
           <button className={view === "chat" ? "on" : ""} onClick={() => setView("chat")}>
-            Чат
-          </button>
+            {t("Чат")}</button>
           <button className={view === "text" ? "on" : ""} onClick={() => setView("text")}>
-            Текст
-          </button>
+            {t("Текст")}</button>
         </div>
         <span className="grow" />
         <span className="muted model-name" title={provider.base}>
-          {provider.model || "модель не выбрана"}
+          {provider.model || t("модель не выбрана")}
         </span>
         {view === "chat" && msgs.length > 0 && (
           <button className="text-btn" onClick={() => (stopRef.current?.(), setMsgs([]), setBusy(false))}>
-            Новый
-          </button>
+            {t("Новый")}</button>
         )}
       </div>
 
       {!hasKey && (
         <div className="ai-nokey">
-          <span className="grow">Нужен ключ ИИ — хранится только на этом компьютере</span>
+          <span className="grow">{t("Нужен ключ ИИ — хранится только на этом компьютере")}</span>
           <button className="text-btn solid accent" onClick={openSettings}>
-            Добавить ключ
-          </button>
+            {t("Добавить ключ")}</button>
         </div>
       )}
 
       {view === "chat" ? (
         <>
           <div className="chat list" ref={listRef}>
-            {msgs.length === 0 && <div className="empty">Спроси что угодно. Картинку можно вставить через Ctrl+V, документ — скрепкой.</div>}
+            {msgs.length === 0 && <div className="empty">{t("Спроси что угодно. Картинку можно вставить через Ctrl+V, документ — скрепкой.")}</div>}
             {msgs.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 {m.images?.map((u, k) => <img key={k} src={u} alt="" />)}
@@ -304,7 +301,7 @@ export function AiTab({
           {docs.length > 0 && (
             <div className="doc-row">
               {docs.map((d, k) => (
-                <button key={k} className="doc-chip" title={`${d.text.length.toLocaleString("ru")} знаков — убрать`} onClick={() => setDocs(docs.filter((_, j) => j !== k))}>
+                <button key={k} className="doc-chip" title={t("{0} знаков — убрать", d.text.length.toLocaleString(locale))} onClick={() => setDocs(docs.filter((_, j) => j !== k))}>
                   {DOC} {d.name}
                   <span className="x">×</span>
                 </button>
@@ -312,18 +309,18 @@ export function AiTab({
             </div>
           )}
           <div className="chat-input">
-            <button className="clip-btn" aria-label="Приложить документ" title="PDF, Word, Excel, PowerPoint или текст" onClick={attach}>
+            <button className="clip-btn" aria-label={t("Приложить документ")} title={t("PDF, Word, Excel, PowerPoint или текст")} onClick={attach}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="m20 11.5-8.3 8.3a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l8-8" />
               </svg>
             </button>
             {images.map((u, k) => (
-              <img key={k} className="attach" src={u} alt="" title="Убрать" onClick={() => setImages(images.filter((_, j) => j !== k))} />
+              <img key={k} className="attach" src={u} alt="" title={t("Убрать")} onClick={() => setImages(images.filter((_, j) => j !== k))} />
             ))}
             <textarea
               rows={1}
               value={input}
-              placeholder="Сообщение"
+              placeholder={t("Сообщение")}
               onFocus={onTypeStart}
               onChange={(e) => setInput(e.target.value)}
               onPaste={(e) => {
@@ -347,8 +344,8 @@ export function AiTab({
             />
             <button
               className={`mic-btn ${listening}`}
-              aria-label={listening ? "Закончить диктовку" : "Сказать голосом"}
-              title={listening === "busy" ? "Распознаю…" : listening ? "Нажми, когда закончишь" : "Сказать голосом"}
+              aria-label={listening ? t("Закончить диктовку") : t("Сказать голосом")}
+              title={listening === "busy" ? t("Распознаю…") : listening ? t("Нажми, когда закончишь") : t("Сказать голосом")}
               onClick={dictate}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -357,13 +354,13 @@ export function AiTab({
               </svg>
             </button>
             {busy ? (
-              <button className="send" aria-label="Остановить" onClick={() => (stopRef.current?.(), setBusy(false))}>
+              <button className="send" aria-label={t("Остановить")} onClick={() => (stopRef.current?.(), setBusy(false))}>
                 <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
                   <rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor" />
                 </svg>
               </button>
             ) : (
-              <button className="send" aria-label="Отправить" disabled={!input.trim() && !docs.length} onClick={() => send(input)}>
+              <button className="send" aria-label={t("Отправить")} disabled={!input.trim() && !docs.length} onClick={() => send(input)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M12 19V5M6 11l6-6 6 6" />
                 </svg>
@@ -373,22 +370,22 @@ export function AiTab({
         </>
       ) : (
         <div className="text-tools">
-          <textarea className="note small" value={src} placeholder="Текст (подставляется из буфера)" onFocus={onTypeStart} onChange={(e) => setSrc(e.target.value)} />
+          <textarea className="note small" value={src} placeholder={t("Текст (подставляется из буфера)")} onFocus={onTypeStart} onChange={(e) => setSrc(e.target.value)} />
           <div className="tool-chips">
             {(
               [
-                ["Раскладка", () => local(fixLayout)],
-                ["АБВ", () => local((s) => s.toUpperCase())],
-                ["абв", () => local((s) => s.toLowerCase())],
-                ["Аа", () => local(sentence)],
-                ["Аа Бб", () => local(title)],
-                ["Транслит", () => local(translit)],
-                ["JSON красиво", () => local(prettyJson)],
-                ["JSON в строку", () => local(minJson)],
+                [t("Раскладка"), () => local(fixLayout)],
+                [t("АБВ"), () => local((s) => s.toUpperCase())],
+                [t("абв"), () => local((s) => s.toLowerCase())],
+                [t("Аа"), () => local(sentence)],
+                [t("Аа Бб"), () => local(title)],
+                [t("Транслит"), () => local(translit)],
+                [t("JSON красиво"), () => local(prettyJson)],
+                [t("JSON в строку"), () => local(minJson)],
                 ["Base64", () => local(b64enc)],
-                ["из Base64", () => local(b64dec)],
+                [t("из Base64"), () => local(b64dec)],
                 ["URL", () => local(encodeURIComponent)],
-                ["из URL", () => local(urlDec)],
+                [t("из URL"), () => local(urlDec)],
               ] as [string, () => void][]
             ).map(([label, f]) => (
               <button key={label} className="chip" onClick={f}>
@@ -397,10 +394,10 @@ export function AiTab({
             ))}
             {(
               [
-                ["Исправить", "Исправь орфографию, пунктуацию и стиль, сохранив смысл и язык."],
-                ["Сократить", "Сократи текст вдвое, сохранив главное."],
-                ["Объяснить", "Объясни простыми словами, что здесь написано."],
-                ["Ответить", "Напиши короткий вежливый ответ на это сообщение, на его языке."],
+                [t("Исправить"), t("Исправь орфографию, пунктуацию и стиль, сохранив смысл и язык.")],
+                [t("Сократить"), t("Сократи текст вдвое, сохранив главное.")],
+                [t("Объяснить"), t("Объясни простыми словами, что здесь написано.")],
+                [t("Ответить"), t("Напиши короткий вежливый ответ на это сообщение, на его языке.")],
               ] as [string, string][]
             ).map(([label, prompt]) => (
               <button key={label} className="chip ai" disabled={toolBusy || !hasKey} onClick={() => aiAction(prompt)}>
@@ -410,19 +407,17 @@ export function AiTab({
           </div>
           <div className="tool-chips translate-row">
             <button className="chip ai" disabled={toolBusy || !hasKey} onClick={() => aiAction(translatePrompt(translateTo))}>
-              <TabAi size={11} /> Перевести
-            </button>
-            <span className="muted">на</span>
+              <TabAi size={11} /> {" "}{t("Перевести")}</button>
+            <span className="muted">{t("на")}</span>
             <button className={`chip lang-pick ${langOpen ? "on" : ""}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => setLangOpen((o) => !o)}>
-              {LANGS.find(([v]) => v === translateTo)?.[2] ?? "Авто"}
+              {LANGS.find(([v]) => v === translateTo)?.[2] ?? t("Авто")}
               <i className="caret" />
             </button>
           </div>
           {view === "text" && (
             <div className={`lang-pop ${langOpen ? "open" : ""}`} aria-hidden={!langOpen} onPointerDown={(e) => e.stopPropagation()}>
               <div className="lang-pop-head">
-                Переводить на
-                <button className="lang-x" onClick={() => setLangOpen(false)} aria-label="Закрыть">
+                {t("Переводить на")}<button className="lang-x" onClick={() => setLangOpen(false)} aria-label={t("Закрыть")}>
                   ×
                 </button>
               </div>
@@ -446,14 +441,12 @@ export function AiTab({
             </div>
           )}
           <div className="text-out">
-            <div className="out">{out || <span className="muted">Результат появится здесь</span>}</div>
+            <div className="out">{out || <span className="muted">{t("Результат появится здесь")}</span>}</div>
             <div className="out-actions">
               <button className="text-btn solid" disabled={!out} onClick={() => api?.call("paste_text", { text: out, paste: false })}>
-                Копировать
-              </button>
+                {t("Копировать")}</button>
               <button className="text-btn solid accent" disabled={!out} onClick={() => api?.call("paste_text", { text: out, paste: true })}>
-                Вставить
-              </button>
+                {t("Вставить")}</button>
             </div>
           </div>
         </div>

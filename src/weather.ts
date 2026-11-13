@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 // MET Norway symbol codes → an emoji and a few Russian words.
 
 export type Point = {
@@ -13,29 +14,29 @@ export type Point = {
 export type Weather = { city: string; points: Point[]; at: number };
 
 const BASE: Record<string, [string, string]> = {
-  clearsky: ["☀️", "ясно"],
-  fair: ["🌤️", "малооблачно"],
-  partlycloudy: ["⛅", "переменная облачность"],
-  cloudy: ["☁️", "облачно"],
-  fog: ["🌫️", "туман"],
-  lightrain: ["🌦️", "небольшой дождь"],
-  rain: ["🌧️", "дождь"],
-  heavyrain: ["🌧️", "ливень"],
-  lightrainshowers: ["🌦️", "кратковременный дождь"],
-  rainshowers: ["🌦️", "ливни"],
-  heavyrainshowers: ["🌧️", "сильные ливни"],
-  lightsleet: ["🌨️", "небольшой мокрый снег"],
-  sleet: ["🌨️", "мокрый снег"],
-  heavysleet: ["🌨️", "сильный мокрый снег"],
-  lightsleetshowers: ["🌨️", "мокрый снег"],
-  sleetshowers: ["🌨️", "мокрый снег"],
-  heavysleetshowers: ["🌨️", "мокрый снег"],
-  lightsnow: ["🌨️", "небольшой снег"],
-  snow: ["❄️", "снег"],
-  heavysnow: ["❄️", "снегопад"],
-  lightsnowshowers: ["🌨️", "небольшой снег"],
-  snowshowers: ["🌨️", "снег"],
-  heavysnowshowers: ["❄️", "снегопад"],
+  clearsky: ["☀️", t("ясно")],
+  fair: ["🌤️", t("малооблачно")],
+  partlycloudy: ["⛅", t("переменная облачность")],
+  cloudy: ["☁️", t("облачно")],
+  fog: ["🌫️", t("туман")],
+  lightrain: ["🌦️", t("небольшой дождь")],
+  rain: ["🌧️", t("дождь")],
+  heavyrain: ["🌧️", t("ливень")],
+  lightrainshowers: ["🌦️", t("кратковременный дождь")],
+  rainshowers: ["🌦️", t("ливни")],
+  heavyrainshowers: ["🌧️", t("сильные ливни")],
+  lightsleet: ["🌨️", t("небольшой мокрый снег")],
+  sleet: ["🌨️", t("мокрый снег")],
+  heavysleet: ["🌨️", t("сильный мокрый снег")],
+  lightsleetshowers: ["🌨️", t("мокрый снег")],
+  sleetshowers: ["🌨️", t("мокрый снег")],
+  heavysleetshowers: ["🌨️", t("мокрый снег")],
+  lightsnow: ["🌨️", t("небольшой снег")],
+  snow: ["❄️", t("снег")],
+  heavysnow: ["❄️", t("снегопад")],
+  lightsnowshowers: ["🌨️", t("небольшой снег")],
+  snowshowers: ["🌨️", t("снег")],
+  heavysnowshowers: ["❄️", t("снегопад")],
 };
 
 export function describe(symbol: string): { icon: string; text: string; night: boolean; wet: boolean } {
@@ -47,7 +48,7 @@ export function describe(symbol: string): { icon: string; text: string; night: b
   if (night && (base === "clearsky" || base === "fair")) icon = "🌙";
   if (thunder) {
     icon = "⛈️";
-    text = `${text}, гроза`;
+    text = t("{0}, гроза", text);
   }
   base = base.toLowerCase();
   return { icon, text, night, wet: /rain|sleet|snow/.test(base) };

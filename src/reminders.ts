@@ -1,3 +1,4 @@
+import { lang, locale, t } from "./i18n";
 // Reminders typed as one phrase: "позвонить маме завтра в 9",
 // "таблетки каждый день в 23:00", "через 20 минут выключить плиту".
 
@@ -18,6 +19,13 @@ const WEEKDAYS: [RegExp, number][] = [
   [/пятниц[а-яё]*/, 5],
   [/суббот[а-яё]*/, 6],
   [/воскресень[а-яё]*/, 0],
+  [/monday/, 1],
+  [/tuesday/, 2],
+  [/wednesday/, 3],
+  [/thursday/, 4],
+  [/friday/, 5],
+  [/saturday/, 6],
+  [/sunday/, 0],
 ];
 
 export function parseReminder(src: string, now = new Date()): Reminder | null {
@@ -29,16 +37,16 @@ export function parseReminder(src: string, now = new Date()): Reminder | null {
     s = s.slice(0, m.index) + " " + s.slice(m.index + m[0].length);
     return m;
   };
-  cut(/^ напомни(ть)?( мне)?,? /);
+  cut(/^ напомни(ть)?( мне)?,? /) ?? cut(/^ remind( me)?( to)?,? /);
 
   let repeat: Reminder["repeat"];
   let days: number[] | null = null;
-  if (cut(/ (каждый день|ежедневно|everyday) /)) days = [0, 1, 2, 3, 4, 5, 6];
-  else if (cut(/ по будням /)) days = [1, 2, 3, 4, 5];
-  else if (cut(/ по выходным /)) days = [0, 6];
+  if (cut(/ (каждый день|ежедневно|everyday|every day|daily) /)) days = [0, 1, 2, 3, 4, 5, 6];
+  else if (cut(/ (по будням|on weekdays|weekdays|every weekday) /)) days = [1, 2, 3, 4, 5];
+  else if (cut(/ (по выходным|on weekends|weekends|every weekend) /)) days = [0, 6];
   else {
     for (const [re, d] of WEEKDAYS) {
-      if (cut(new RegExp(` (каждый|каждую|каждое|по) ${re.source} `))) {
+      if (cut(new RegExp(` (каждый|каждую|каждое|по|every) ${re.source}s? `))) {
         days = [d];
         break;
       }
@@ -47,6 +55,17 @@ export function parseReminder(src: string, now = new Date()): Reminder | null {
 
   // "через 20 минут", "через полчаса", "через 2 часа"
   const rel = cut(/ через (\d+(?:[.,]\d+)?|полчаса|час|минуту)\s*(минут[а-яё]*|мин|час[а-яё]*|ч|секунд[а-яё]*|сек)? /);
+  // "in 20 minutes", "in half an hour", "in 2 hours"
+  const relEn = rel ? null : cut(/ in (\d+(?:[.,]\d+)?|half an hour|an hour|a minute)\s*(minutes?|mins?|hours?|hrs?|h|seconds?|secs?)? /);
+  if (relEn && !days) {
+    const w = relEn[1];
+    let n = w === "half an hour" ? 30 : w === "an hour" ? 60 : w === "a minute" ? 1 : Number(w.replace(",", "."));
+    const unit = relEn[2] ?? "min";
+    if (/^h/.test(unit)) n *= 60;
+    if (/^sec/.test(unit)) n /= 60;
+    const text = s.trim();
+    return text ? { id: id(), text, at: now.getTime() + n * 60_000 } : null;
+  }
   if (rel && !days) {
     let n = rel[1] === "полчаса" ? 30 : rel[1] === "час" ? 60 : rel[1] === "минуту" ? 1 : Number(rel[1].replace(",", "."));
     const unit = rel[2] ?? (rel[1] === "полчаса" || rel[1] === "час" || rel[1] === "минуту" ? "мин" : "мин");
@@ -57,13 +76,13 @@ export function parseReminder(src: string, now = new Date()): Reminder | null {
   }
 
   let dayOffset: number | null = null;
-  if (cut(/ послезавтра /)) dayOffset = 2;
-  else if (cut(/ завтра /)) dayOffset = 1;
-  else if (cut(/ сегодня /)) dayOffset = 0;
+  if (cut(/ (послезавтра|the day after tomorrow) /)) dayOffset = 2;
+  else if (cut(/ (завтра|tomorrow) /)) dayOffset = 1;
+  else if (cut(/ (сегодня|today|tonight) /)) dayOffset = 0;
   let weekday: number | null = null;
   if (dayOffset === null && !days) {
     for (const [re, d] of WEEKDAYS) {
-      if (cut(new RegExp(` во? ${re.source} `))) {
+      if (cut(new RegExp(` (?:во?|on|next) ${re.source} `))) {
         weekday = d;
         break;
       }
@@ -71,7 +90,7 @@ export function parseReminder(src: string, now = new Date()): Reminder | null {
   }
 
   // "в 9", "в 9:30", "в 21.15", "в 7 вечера", "к 18:00"
-  const t = cut(/ (?:в|к|at) (\d{1,2})(?:[:.](\d{2}))?\s*(утра|дня|вечера|ночи)? /) ?? cut(/ (\d{1,2}):(\d{2}) /);
+  const t = cut(/ (?:в|к|at|by) (\d{1,2})(?:[:.](\d{2}))?\s*(утра|дня|вечера|ночи|am|pm|a\.m\.|p\.m\.)? /) ?? cut(/ (\d{1,2}):(\d{2})\s*(am|pm)? /);
   let hh = 9;
   let mm = 0;
   const hasTime = !!t;
@@ -79,8 +98,8 @@ export function parseReminder(src: string, now = new Date()): Reminder | null {
     hh = Number(t[1]);
     mm = Number(t[2] ?? 0);
     const part = t[3];
-    if ((part === "вечера" || part === "дня") && hh < 12) hh += 12;
-    if (part === "ночи" && hh === 12) hh = 0;
+    if ((part === "вечера" || part === "дня" || part?.startsWith("p")) && hh < 12) hh += 12;
+    if ((part === "ночи" || part?.startsWith("a")) && hh === 12) hh = 0;
   }
   if (hh > 23 || mm > 59) return null;
   const text = s.trim().replace(/^[,.\s-]+|[,.\s-]+$/g, "");
@@ -115,17 +134,17 @@ export function nextRepeat(r: NonNullable<Reminder["repeat"]>, after = new Date(
 
 const id = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-const DAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+const DAY = () => (lang === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]);
 export function describeWhen(r: Reminder, now = new Date()) {
   const d = new Date(r.at);
-  const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
   if (r.repeat) {
-    const days = r.repeat.days.length === 7 ? "каждый день" : r.repeat.days.join() === "1,2,3,4,5" ? "по будням" : r.repeat.days.map((x) => DAY[x]).join(", ");
-    return `${days} в ${r.repeat.time}`;
+    const days = r.repeat.days.length === 7 ? t("каждый день") : r.repeat.days.join() === "1,2,3,4,5" ? t("по будням") : r.repeat.days.map((x) => DAY()[x]).join(", ");
+    return t("{0} в {1}", days, r.repeat.time);
   }
   const t0 = new Date(now);
   t0.setHours(0, 0, 0, 0);
   const diff = Math.floor((d.getTime() - t0.getTime()) / 86_400_000);
-  const day = diff === 0 ? "сегодня" : diff === 1 ? "завтра" : d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
-  return `${day} в ${time}`;
+  const day = diff === 0 ? t("сегодня") : diff === 1 ? t("завтра") : d.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
+  return t("{0} в {1}", day, time);
 }

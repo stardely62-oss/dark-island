@@ -108,16 +108,16 @@ fn error_text(code: u16, body: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or(body);
     let hint = match code {
-        401 | 403 => "Ключ не подошёл. ",
-        404 => "Нет такой модели или адреса. ",
-        429 => "Слишком много запросов или кончился лимит. ",
-        500 | 502 | 503 | 529 => "Сервис сейчас перегружен (это на их стороне). Остров уже пробовал повторить и взять модель полегче — подожди минуту или выбери другую модель. ",
+        401 | 403 => crate::i18n::tr("Ключ не подошёл. ", "The key didn't work. "),
+        404 => crate::i18n::tr("Нет такой модели или адреса. ", "No such model or address. "),
+        429 => crate::i18n::tr("Слишком много запросов или кончился лимит. ", "Too many requests or the limit ran out. "),
+        500 | 502 | 503 | 529 => crate::i18n::tr("Сервис сейчас перегружен (это на их стороне). Остров уже пробовал повторить и взять модель полегче — подожди минуту или выбери другую модель. ", "The service is overloaded right now (on their side). The island already retried and tried a lighter model — wait a minute or pick another model. "),
         _ => "",
     };
     let low = msg.to_lowercase();
     let blocked = ["location is not supported", "unsupported_country", "unsupported country", "not available in your country", "not available in your region", "request not allowed", "country, region, or territory"];
     let hint = if blocked.iter().any(|b| low.contains(b)) {
-        "Сервис недоступен из вашей страны — нужен VPN. Остров ходит через системный прокси Windows: включите в VPN режим «системный прокси» или TUN и повторите. "
+        crate::i18n::tr("Сервис недоступен из вашей страны — нужен VPN. Остров ходит через системный прокси Windows: включите в VPN режим «системный прокси» или TUN и повторите. ", "The service isn't available in your country — a VPN is needed. The island goes through the Windows system proxy: switch the VPN to “system proxy” or TUN mode and try again. ")
     } else {
         hint
     };
@@ -154,7 +154,7 @@ impl Runs {
 /// Streams a reply: "ai_delta" events with text, then one "ai_done".
 pub fn chat(app: AppHandle, keys: &Keys, runs: &Runs, id: String, p: Provider, system: String, msgs: Vec<Msg>) {
     let Some(key) = keys.get(&p.id) else {
-        let _ = app.emit_to("island", "ai_done", Done { id, error: Some("Нет ключа: добавь его в настройках ИИ".into()) });
+        let _ = app.emit_to("island", "ai_done", Done { id, error: Some(crate::i18n::tr("Нет ключа: добавь его в настройках ИИ", "No key: add it in the AI settings").into()) });
         return;
     };
     let stop = Arc::new(AtomicBool::new(false));
@@ -212,7 +212,7 @@ fn claude_stream(
         .header("anthropic-beta", "server-side-fallback-2026-07-01")
         .header("content-type", "application/json")
         .send_json(&body)
-        .map_err(|e| format!("Нет связи с Anthropic: {e}"))?;
+        .map_err(|e| L!("Нет связи с Anthropic: {e}", "No connection to Anthropic: {e}"))?;
     let code = resp.status().as_u16();
     if code != 200 {
         let text = resp.body_mut().read_to_string().unwrap_or_default();
@@ -237,11 +237,11 @@ fn claude_stream(
             }
             Some("message_delta") => {
                 if v.pointer("/delta/stop_reason").and_then(Value::as_str) == Some("refusal") {
-                    return Err("Модель отказалась отвечать на этот запрос".into());
+                    return Err(crate::i18n::tr("Модель отказалась отвечать на этот запрос", "The model declined to answer this request").into());
                 }
             }
             Some("error") => {
-                return Err(v.pointer("/error/message").and_then(Value::as_str).unwrap_or("Ошибка").to_string());
+                return Err(v.pointer("/error/message").and_then(Value::as_str).unwrap_or(crate::i18n::tr("Ошибка", "Error")).to_string());
             }
             Some("message_stop") => break,
             _ => {}
@@ -279,7 +279,7 @@ fn openai_stream(
         .header("Authorization", format!("Bearer {key}"))
         .header("content-type", "application/json")
         .send_json(&body)
-        .map_err(|e| format!("Нет связи с сервисом: {e}"))?;
+        .map_err(|e| L!("Нет связи с сервисом: {e}", "No connection to the service: {e}"))?;
     let code = resp.status().as_u16();
     if code != 200 {
         let text = resp.body_mut().read_to_string().unwrap_or_default();
@@ -309,7 +309,7 @@ fn openai_stream(
 
 /// Model ids the key can use.
 pub fn models(keys: &Keys, p: &Provider) -> Result<Vec<String>, String> {
-    let key = keys.get(&p.id).ok_or("Нет ключа")?;
+    let key = keys.get(&p.id).ok_or(crate::i18n::tr("Нет ключа", "No key"))?;
     let agent = stream_agent(&p.base);
     let mut resp = if p.protocol == "anthropic" {
         agent
@@ -343,7 +343,7 @@ pub fn models(keys: &Keys, p: &Provider) -> Result<Vec<String>, String> {
 
 /// Sends a WAV recording to a Whisper-compatible endpoint and returns the text.
 pub fn transcribe(keys: &Keys, key_id: &str, base: &str, model: &str, wav: Vec<u8>, lang: &str) -> Result<String, String> {
-    let key = keys.get(key_id).ok_or("Нет ключа для распознавания речи")?;
+    let key = keys.get(key_id).ok_or(crate::i18n::tr("Нет ключа для распознавания речи", "No key for speech recognition"))?;
     let boundary = format!("----dark-island-{}", wav.len());
     let mut body = Vec::new();
     let mut field = |name: &str, value: &str| {
@@ -365,7 +365,7 @@ pub fn transcribe(keys: &Keys, key_id: &str, base: &str, model: &str, wav: Vec<u
         .header("Authorization", format!("Bearer {key}"))
         .header("content-type", format!("multipart/form-data; boundary={boundary}"))
         .send(&body[..])
-        .map_err(|e| format!("Нет связи с сервисом: {e}"))?;
+        .map_err(|e| L!("Нет связи с сервисом: {e}", "No connection to the service: {e}"))?;
     let code = resp.status().as_u16();
     let text = resp.body_mut().read_to_string().unwrap_or_default();
     if code != 200 {
@@ -401,7 +401,7 @@ pub fn wav(samples: &[i16], rate: u32) -> Vec<u8> {
 
 /// Uploads a PNG to ImgBB or Imgur with the user's key and returns its link.
 pub fn upload(keys: &Keys, service: &str, png: &[u8]) -> Result<String, String> {
-    let key = keys.get(service).ok_or("Нет ключа сервиса картинок: добавь его в настройках")?;
+    let key = keys.get(service).ok_or(crate::i18n::tr("Нет ключа сервиса картинок: добавь его в настройках", "No image service key: add it in the settings"))?;
     let b64 = B64.encode(png);
     let agent = stream_agent("https://api.imgbb.com");
     let (mut resp, path) = match service {
@@ -420,7 +420,7 @@ pub fn upload(keys: &Keys, service: &str, png: &[u8]) -> Result<String, String> 
                 .map_err(|e| e.to_string())?,
             "/data/link",
         ),
-        _ => return Err("Сервис не выбран".into()),
+        _ => return Err(crate::i18n::tr("Сервис не выбран", "No service chosen").into()),
     };
     let code = resp.status().as_u16();
     let text = resp.body_mut().read_to_string().unwrap_or_default();
@@ -428,5 +428,5 @@ pub fn upload(keys: &Keys, service: &str, png: &[u8]) -> Result<String, String> 
         return Err(error_text(code, &text));
     }
     let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    v.pointer(path).and_then(Value::as_str).map(str::to_string).ok_or_else(|| "Сервис не вернул ссылку".into())
+    v.pointer(path).and_then(Value::as_str).map(str::to_string).ok_or_else(|| crate::i18n::tr("Сервис не вернул ссылку", "The service returned no link").into())
 }

@@ -5,6 +5,7 @@ import { ENGINES } from "../settings";
 import { AppIcon } from "../components/AppIcon";
 import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
+import { t } from "../i18n";
 export type AppEntry = { Name: string; AppID: string };
 
 type Result = { key: string; icon: string; title: string; sub: string; run: () => void; app?: string };
@@ -76,7 +77,7 @@ export function CommandBar({
           key: "shell",
           icon: "shell",
           title: cmd,
-          sub: ps ? "Выполнить в PowerShell" : "Выполнить в командной строке",
+          sub: ps ? t("Выполнить в PowerShell") : t("Выполнить в командной строке"),
           run: () => api?.call("run_shell", { cmd, powershell: ps }),
         });
       return out;
@@ -85,18 +86,18 @@ export function CommandBar({
     const v = calc(text);
     if (v !== null) {
       const s = fmtNumber(v);
-      out.push({ key: "calc", icon: "calc", title: s, sub: "Enter — скопировать результат", run: () => copy(s.replace(",", ".")) });
+      out.push({ key: "calc", icon: "calc", title: s, sub: t("Enter — скопировать результат"), run: () => copy(s.replace(",", ".")) });
     }
     const conv = convert(text);
-    if (conv) out.push({ key: "conv", icon: "conv", title: conv.text, sub: "Enter — скопировать", run: () => copy(conv.value) });
+    if (conv) out.push({ key: "conv", icon: "conv", title: conv.text, sub: t("Enter — скопировать"), run: () => copy(conv.value) });
     const ms = timerPhrase(text);
     if (ms) {
       const min = ms / 60_000;
       out.push({
         key: "timer",
         icon: "timer",
-        title: `Таймер на ${min >= 1 ? `${fmtNumber(+min.toFixed(2))} мин` : `${ms / 1000} с`}`,
-        sub: "Запустить",
+        title: t("Таймер на {0}", min >= 1 ? `${fmtNumber(+min.toFixed(2))} мин` : `${ms / 1000} с`),
+        sub: t("Запустить"),
         run: () => actions.startTimer(ms),
       });
     }
@@ -104,13 +105,13 @@ export function CommandBar({
     if (/^напомни/i.test(text)) {
       const r = parseReminder(text);
       if (r)
-        out.push({ key: "remind", icon: "remind", title: `${r.text} — ${describeWhen(r)}`, sub: "Напомнить", run: () => actions.remind(r) });
+        out.push({ key: "remind", icon: "remind", title: `${r.text} — ${describeWhen(r)}`, sub: t("Напомнить"), run: () => actions.remind(r) });
     }
 
     const f = fold(text);
     for (const c of SYSTEM) {
       if (c.words.some((w) => w.startsWith(f) || f === w)) {
-        out.push({ key: `sys-${c.id}`, icon: "sys", title: c.title, sub: "Команда", run: () => actions.system(c.id) });
+        out.push({ key: `sys-${c.id}`, icon: "sys", title: c.title, sub: t("Команда"), run: () => actions.system(c.id) });
       }
     }
 
@@ -130,7 +131,7 @@ export function CommandBar({
         icon: a.Name.slice(0, 1).toUpperCase(),
         app: a.AppID,
         title: a.Name,
-        sub: "Программа",
+        sub: t("Программа"),
         run: () => api?.call("app_launch", { id: a.AppID }),
       });
     }
@@ -141,7 +142,7 @@ export function CommandBar({
     const ai = {
       key: "ai",
       icon: "ai",
-      title: `Спросить ИИ: «${text}»`,
+      title: t("Спросить ИИ: «{0}»", text),
       sub: "Tab",
       run: () => actions.ask(text),
     };
@@ -150,7 +151,7 @@ export function CommandBar({
     out.push({
       key: "web",
       icon: "web",
-      title: `Найти «${text}»`,
+      title: t("Найти «{0}»", text),
       sub: e.name,
       run: () => api?.call("open_url", { url: e.url.replace("%s", encodeURIComponent(text)) }),
     });
@@ -178,7 +179,7 @@ export function CommandBar({
         <input
           ref={input}
           value={q}
-          placeholder="Программа, 2+2, 5 км в милях, таймер 10 мин, > команда"
+          placeholder={t("Программа, 2+2, 5 км в милях, таймер 10 мин, > команда")}
           spellCheck={false}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {

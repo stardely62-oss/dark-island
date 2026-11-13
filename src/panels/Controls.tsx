@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Bridge } from "../ipc";
 
+import { t } from "../i18n";
 type Controls = { wifi: boolean | null; ssid: string | null; bluetooth: boolean | null; dark: boolean };
 
 const line = (body: React.ReactNode) => (
@@ -21,14 +22,14 @@ const POWER = line(<><path d="M12 3v8.5" /><path d="M6.5 6.8a7.5 7.5 0 1 0 11 0"
 
 /** Wi-Fi, Bluetooth and the dark theme in one press; lock, sleep, restart, shut down. */
 const TOOLS: [string, string, React.ReactNode][] = [
-  ["area", "Снимок области", line(<><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /></>)],
-  ["full", "Снимок экрана", line(<><rect x="3" y="4.5" width="18" height="12.5" rx="1.5" /><path d="M9 20.5h6" /></>)],
-  ["record", "Запись экрана", line(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.2" fill="currentColor" /></>)],
-  ["ocr", "Текст с экрана", line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
-  ["qr", "QR-код", line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
-  ["color", "Пипетка", line(<><path d="m14.5 6.5 3 3M16 5l3 3-9.5 9.5H6.5v-3Z" /><path d="M6.5 17.5 4 20" /></>)],
-  ["voice", "Голос в текст", line(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /><path d="M2.5 9v3M21.5 9v3" /></>)],
-  ["pomodoro", "Помодоро", line(<><circle cx="12" cy="13.5" r="7" /><path d="M12 10v3.5l2.5 1.5M9.5 3.5h5M12 3.5v3" /></>)],
+  ["area", t("Снимок области"), line(<><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /></>)],
+  ["full", t("Снимок экрана"), line(<><rect x="3" y="4.5" width="18" height="12.5" rx="1.5" /><path d="M9 20.5h6" /></>)],
+  ["record", t("Запись экрана"), line(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.2" fill="currentColor" /></>)],
+  ["ocr", t("Текст с экрана"), line(<><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M9 9h6M12 9v7" /></>)],
+  ["qr", t("QR-код"), line(<><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 14h2v2M20 14v6h-6v-2M17 17h0" /></>)],
+  ["color", t("Пипетка"), line(<><path d="m14.5 6.5 3 3M16 5l3 3-9.5 9.5H6.5v-3Z" /><path d="M6.5 17.5 4 20" /></>)],
+  ["voice", t("Голос в текст"), line(<><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /><path d="M2.5 9v3M21.5 9v3" /></>)],
+  ["pomodoro", t("Помодоро"), line(<><circle cx="12" cy="13.5" r="7" /><path d="M12 10v3.5l2.5 1.5M9.5 3.5h5M12 3.5v3" /></>)],
 ];
 
 export function ControlsTab({
@@ -137,7 +138,7 @@ export function ControlsTab({
     <button
       className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
       disabled={on === null || on === undefined}
-      title={what === "vpn" ? (vpn ? "Нажми — покажу и скопирую IP" : "VPN включается и выключается в самой VPN-программе") : `${title}: ${sub}`}
+      title={what === "vpn" ? (vpn ? t("Нажми — покажу и скопирую IP") : t("VPN включается и выключается в самой VPN-программе")) : `${title}: ${sub}`}
       onClick={() =>
         what === "mic" ? onMic() : what === "vpn" ? copyIp() : what === "through" ? onThrough(!through) : toggle(what, !on)
       }
@@ -157,7 +158,7 @@ export function ControlsTab({
       {id === "color" && lastColor && (
         <i
           className="last-color"
-          title={`${lastColor} — скопировать`}
+          title={t("{0} — скопировать", lastColor)}
           style={{ background: lastColor }}
           onClick={(e) => {
             e.stopPropagation();
@@ -173,52 +174,50 @@ export function ControlsTab({
     <div className="tab-controls">
       <div className="segmented ctl-switch">
         <button className={view === "system" ? "on" : ""} onClick={() => pickView("system")}>
-          Система
-        </button>
+          {t("Система")}</button>
         <button className={view === "tools" ? "on" : ""} onClick={() => pickView("tools")}>
-          Инструменты
-        </button>
+          {t("Инструменты")}</button>
       </div>
       {view === "system" ? (
         <>
           <div className="ctl-grid">
-            {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? "нет адаптера" : c?.wifi ? c?.ssid || "включён" : "выключен")}
+            {tile("wifi", WIFI, "Wi-Fi", c?.wifi, c?.wifi === null ? t("нет адаптера") : c?.wifi ? c?.ssid || t("включён") : t("выключен"))}
             <div className="tile-wrap">
-              {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? "нет адаптера" : c?.bluetooth ? "включён" : "выключен")}
+              {tile("bluetooth", BT, "Bluetooth", c?.bluetooth, c?.bluetooth === null ? t("нет адаптера") : c?.bluetooth ? t("включён") : t("выключен"))}
               {c?.bluetooth && (
-                <button className={`tile-more ${btOpen ? "on" : ""}`} title="Устройства" onClick={() => setBtOpen(!btOpen)}>
+                <button className={`tile-more ${btOpen ? "on" : ""}`} title={t("Устройства")} onClick={() => setBtOpen(!btOpen)}>
                   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
                     <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
               )}
             </div>
-            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, !vpn ? "выключен" : ipShown ? (ip ? `${ip[0]} · ${ip[1]}` : "узнаю IP…") : vpn)}
-            {tile("dark", MOON, "Тема", c?.dark ?? false, c?.dark ? "тёмная" : "светлая")}
+            {tile("vpn", SHIELD, "VPN", vpn === undefined ? false : !!vpn, !vpn ? t("выключен") : ipShown ? (ip ? `${ip[0]} · ${ip[1]}` : t("узнаю IP…")) : vpn)}
+            {tile("dark", MOON, t("Тема"), c?.dark ?? false, c?.dark ? t("тёмная") : t("светлая"))}
             {tile(
               "mic",
               MIC,
-              "Микрофон",
+              t("Микрофон"),
               !micMuted,
-              micMuted ? "выключен" : micUsers.length ? `слушает ${micUsers.map((a) => a.replace(/\.exe$/i, "")).join(", ")}` : "включён",
+              micMuted ? t("выключен") : micUsers.length ? t("слушает {0}", micUsers.map((a) => a.replace(/\.exe$/i, "")).join(", ")) : t("включён"),
             )}
-            {tile("through", THROUGH, "Сквозной", through, through ? "клики насквозь" : "выключен")}
+            {tile("through", THROUGH, t("Сквозной"), through, through ? t("клики насквозь") : t("выключен"))}
           </div>
           {btOpen ? (
             <BtDevices api={api} />
           ) : (
             <>
-              <div className="ctl-label">Питание</div>
+              <div className="ctl-label">{t("Питание")}</div>
               <div className="power-row">
                 {[
-                  ["lock", LOCK, "Блокировка", false],
-                  ["sleep", SLEEP, "Сон", false],
-                  ["restart", RESTART, "Перезагрузка", true],
-                  ["shutdown", POWER, "Выключение", true],
+                  ["lock", LOCK, t("Блокировка"), false],
+                  ["sleep", SLEEP, t("Сон"), false],
+                  ["restart", RESTART, t("Перезагрузка"), true],
+                  ["shutdown", POWER, t("Выключение"), true],
                 ].map(([id, icon, label, confirm]) => (
                   <button key={id as string} className={`power-btn ${armed === id ? "armed" : ""}`} onClick={() => power(id as string, confirm as boolean)}>
                     {icon as React.ReactNode}
-                    <span>{armed === id ? "Ещё раз" : (label as string)}</span>
+                    <span>{armed === id ? t("Ещё раз") : (label as string)}</span>
                   </button>
                 ))}
               </div>
@@ -227,9 +226,9 @@ export function ControlsTab({
         </>
       ) : (
         <>
-          <div className="ctl-label">Экран</div>
+          <div className="ctl-label">{t("Экран")}</div>
           <div className="tools-row screen">{TOOLS.filter(([id]) => SCREEN.includes(id)).map(toolBtn)}</div>
-          <div className="ctl-label">Голос и время</div>
+          <div className="ctl-label">{t("Голос и время")}</div>
           <div className="tools-row extra">{TOOLS.filter(([id]) => !SCREEN.includes(id)).map(toolBtn)}</div>
         </>
       )}
@@ -262,8 +261,8 @@ function BtDevices({ api }: { api: Bridge | null }) {
   };
   return (
     <div className="bt-list">
-      {list === null && <div className="hint-line">Ищу устройства…</div>}
-      {list?.length === 0 && <div className="hint-line">Нет сопряжённых устройств</div>}
+      {list === null && <div className="hint-line">{t("Ищу устройства…")}</div>}
+      {list?.length === 0 && <div className="hint-line">{t("Нет сопряжённых устройств")}</div>}
       {list?.map((d) => (
         <div key={d.container} className={`bt-row ${d.connected ? "on" : ""}`}>
           <span className="bt-dot" />
@@ -271,15 +270,14 @@ function BtDevices({ api }: { api: Bridge | null }) {
           {d.battery !== null && <span className="bt-battery">{d.battery}%</span>}
           {d.audio && (
             <button className="text-btn solid" disabled={busy === d.container} onClick={() => toggle(d)}>
-              {busy === d.container ? "…" : d.connected ? "Отключить" : "Подключить"}
+              {busy === d.container ? "…" : d.connected ? t("Отключить") : t("Подключить")}
             </button>
           )}
         </div>
       ))}
       {err && <div className="set-error">{err}</div>}
       <button className="text-btn" onClick={() => api?.call("open_windows_settings", { page: "bluetooth" })}>
-        Параметры Bluetooth
-      </button>
+        {t("Параметры Bluetooth")}</button>
     </div>
   );
 }

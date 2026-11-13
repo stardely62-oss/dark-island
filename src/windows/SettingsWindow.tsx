@@ -4,6 +4,7 @@ import { applyTheme, useSettings } from "../settings";
 import { SettingsTab } from "../panels/Settings";
 import { buddy } from "../components/Buddy";
 
+import { t } from "../i18n";
 /**
  * The settings in a window of their own: sections on the left, the chosen
  * one on the right. Changes go to the island at once.
@@ -22,7 +23,7 @@ export function SettingsWindow() {
         life: settings.buddyLife,
         color: settings.buddyColor,
         hat: settings.buddyHat,
-        name: settings.buddyName || "Клодик",
+        name: settings.buddyName || t("Клодик"),
         sounds: false,
       }),
     [settings.buddyLife, settings.buddyColor, settings.buddyHat, settings.buddyName],

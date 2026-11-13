@@ -12,6 +12,7 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { Liquid } from "../liquid";
 import { setSounds, sfx } from "./buddySounds";
+import { t } from "../i18n";
 export { sfx };
 
 const C = "#d97757";
@@ -110,7 +111,7 @@ export type BuddyLook = {
   /** Something is playing: no sleeping through music. */
   playing: boolean;
 };
-let look: BuddyLook = { life: true, color: C, hat: "none", name: "Клодик", weather: "", birthday: "", music: false, playing: false };
+let look: BuddyLook = { life: true, color: C, hat: "none", name: t("Клодик"), weather: "", birthday: "", music: false, playing: false };
 
 // ------------------------------------------------------------------ the pet ----
 
@@ -181,22 +182,22 @@ export const buddyAge = () => new Date().getFullYear() - new Date(pet.born).getF
 
 export type Sticker = { id: string; title: string; hint: string; icon: string; color: string };
 export const STICKERS: Sticker[] = [
-  { id: "first", title: "Знакомство", hint: "Познакомиться", icon: "★", color: "#ffd84a" },
-  { id: "feed10", title: "Сытый", hint: "Покормить 10 раз", icon: "●", color: "#c98a4b" },
-  { id: "pet25", title: "Любимчик", hint: "Погладить 25 раз", icon: "♥", color: "#ff6f9c" },
-  { id: "play10", title: "Игрок", hint: "Поиграть 10 раз", icon: "◓", color: "#ff8fb4" },
-  { id: "furious", title: "Не тронь!", hint: "Довести его до бешенства", icon: "!", color: "#ff4d3d" },
-  { id: "dizzy5", title: "Карусель", hint: "Закружить ему голову 5 раз", icon: "@", color: "#c27ce0" },
-  { id: "fashion", title: "Модник", hint: "Примерить 5 нарядов", icon: "♛", color: "#f5c451" },
-  { id: "owl", title: "Ночная сова", hint: "Заглянуть к нему с 2 до 4 ночи", icon: "☾", color: "#6f8dff" },
-  { id: "lark", title: "Жаворонок", hint: "Заглянуть к нему с 5 до 7 утра", icon: "☼", color: "#ffb347" },
-  { id: "week", title: "Неделя вместе", hint: "7 дней вместе", icon: "7", color: "#7cbf5a" },
-  { id: "month", title: "Месяц вместе", hint: "30 дней вместе", icon: "30", color: "#4fb3c8" },
-  { id: "friends", title: "Лучшие друзья", hint: "Набрать 10 сердечек", icon: "♥♥", color: "#ff5f93" },
-  { id: "focus4", title: "Фокус", hint: "Пройти 4 помидора подряд", icon: "◷", color: "#e0445e" },
-  { id: "rest", title: "Перерыв", hint: "Отдохнуть, когда он попросит", icon: "≈", color: "#9fd8ff" },
-  { id: "gamer", title: "Удачи!", hint: "Он проводил тебя в игру", icon: "►", color: "#59a85c" },
-  { id: "bday", title: "Праздник", hint: "Отметить день рождения", icon: "✦", color: "#ff9f43" },
+  { id: "first", title: t("Знакомство"), hint: t("Познакомиться"), icon: "★", color: "#ffd84a" },
+  { id: "feed10", title: t("Сытый"), hint: t("Покормить 10 раз"), icon: "●", color: "#c98a4b" },
+  { id: "pet25", title: t("Любимчик"), hint: t("Погладить 25 раз"), icon: "♥", color: "#ff6f9c" },
+  { id: "play10", title: t("Игрок"), hint: t("Поиграть 10 раз"), icon: "◓", color: "#ff8fb4" },
+  { id: "furious", title: t("Не тронь!"), hint: t("Довести его до бешенства"), icon: "!", color: "#ff4d3d" },
+  { id: "dizzy5", title: t("Карусель"), hint: t("Закружить ему голову 5 раз"), icon: "@", color: "#c27ce0" },
+  { id: "fashion", title: t("Модник"), hint: t("Примерить 5 нарядов"), icon: "♛", color: "#f5c451" },
+  { id: "owl", title: t("Ночная сова"), hint: t("Заглянуть к нему с 2 до 4 ночи"), icon: "☾", color: "#6f8dff" },
+  { id: "lark", title: t("Жаворонок"), hint: t("Заглянуть к нему с 5 до 7 утра"), icon: "☼", color: "#ffb347" },
+  { id: "week", title: t("Неделя вместе"), hint: t("7 дней вместе"), icon: "7", color: "#7cbf5a" },
+  { id: "month", title: t("Месяц вместе"), hint: t("30 дней вместе"), icon: "30", color: "#4fb3c8" },
+  { id: "friends", title: t("Лучшие друзья"), hint: t("Набрать 10 сердечек"), icon: "♥♥", color: "#ff5f93" },
+  { id: "focus4", title: t("Фокус"), hint: t("Пройти 4 помидора подряд"), icon: "◷", color: "#e0445e" },
+  { id: "rest", title: t("Перерыв"), hint: t("Отдохнуть, когда он попросит"), icon: "≈", color: "#9fd8ff" },
+  { id: "gamer", title: t("Удачи!"), hint: t("Он проводил тебя в игру"), icon: "►", color: "#59a85c" },
+  { id: "bday", title: t("Праздник"), hint: t("Отметить день рождения"), icon: "✦", color: "#ff9f43" },
 ];
 
 const DAY = 86_400_000;
@@ -249,28 +250,28 @@ function seasonalHat() {
   return "none";
 }
 export const HATS: [string, string][] = [
-  ["none", "Без"],
-  ["cap", "Кепка"],
-  ["beanie", "Шапка"],
-  ["bow", "Бантик"],
-  ["crown", "Корона"],
-  ["tophat", "Цилиндр"],
-  ["party", "Колпак"],
-  ["headphones", "Наушники"],
-  ["glasses", "Очки"],
-  ["flower", "Цветок"],
-  ["santa", "Дед Мороз"],
-  ["witch", "Ведьма"],
+  ["none", t("Без")],
+  ["cap", t("Кепка")],
+  ["beanie", t("Шапка")],
+  ["bow", t("Бантик")],
+  ["crown", t("Корона")],
+  ["tophat", t("Цилиндр")],
+  ["party", t("Колпак")],
+  ["headphones", t("Наушники")],
+  ["glasses", t("Очки")],
+  ["flower", t("Цветок")],
+  ["santa", t("Дед Мороз")],
+  ["witch", t("Ведьма")],
 ];
 export const COLORS: [string, string][] = [
-  ["#d97757", "Терракота"],
-  ["#e8a13a", "Мёд"],
-  ["#7cbf5a", "Мох"],
-  ["#4fb3c8", "Море"],
-  ["#6f8dff", "Сирень"],
-  ["#c27ce0", "Слива"],
-  ["#ff7fa8", "Зефир"],
-  ["#9aa0a6", "Графит"],
+  ["#d97757", t("Терракота")],
+  ["#e8a13a", t("Мёд")],
+  ["#7cbf5a", t("Мох")],
+  ["#4fb3c8", t("Море")],
+  ["#6f8dff", t("Сирень")],
+  ["#c27ce0", t("Слива")],
+  ["#ff7fa8", t("Зефир")],
+  ["#9aa0a6", t("Графит")],
 ];
 
 /** "work" or "rest" while a pomodoro runs: he works with you, then rests. */

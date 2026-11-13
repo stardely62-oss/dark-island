@@ -4,6 +4,7 @@ import type { Shortcut } from "../settings";
 import { AppIcon } from "../components/AppIcon";
 import { hopTo } from "../components/Buddy";
 
+import { t } from "../i18n";
 type App = { Name: string; AppID: string };
 
 /** All shortcuts, groups opened up. */
@@ -144,7 +145,7 @@ export function Launcher({
     if (onto.kind === "group") {
       setItems(rest.map((i) => (i.target === onto.target ? { ...i, items: [...(i.items ?? []), s] } : i)));
     } else {
-      const g: Shortcut = { name: "Группа", kind: "group", target: `group:${Date.now()}`, items: [onto, s] };
+      const g: Shortcut = { name: t("Группа"), kind: "group", target: `group:${Date.now()}`, items: [onto, s] };
       setItems(rest.map((i) => (i.target === onto.target ? g : i)));
     }
   };
@@ -186,7 +187,7 @@ export function Launcher({
         <input
           className="search"
           autoFocus
-          placeholder={group ? `В «${group.name}»: программа, сайт или папка` : "Программа, сайт или папка"}
+          placeholder={group ? t("В «{0}»: программа, сайт или папка", group.name) : t("Программа, сайт или папка")}
           value={q}
           onFocus={onTypeStart}
           onChange={(e) => setQ(e.target.value)}
@@ -210,12 +211,11 @@ export function Launcher({
                 })
               }
             >
-              Добавить {isPath ? "папку" : "сайт"}
+              {t("Добавить")}{" "}{isPath ? t("папку") : t("сайт")}
             </button>
           )}
           <button className="text-btn" onClick={() => setAdding(false)}>
-            Отмена
-          </button>
+            {t("Отмена")}</button>
         </div>
       </div>
     );
@@ -239,14 +239,14 @@ export function Launcher({
             onFocus={onTypeStart}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             onBlur={(e) => {
-              const name = e.target.value.trim() || "Группа";
+              const name = e.target.value.trim() || t("Группа");
               setItems(update(menu.target, (s) => ({ ...s, name })));
             }}
           />
         ) : (
           <button
             className={`text-btn solid hotkey-btn ${recording ? "accent" : ""} ${bad ? "bad" : ""}`}
-            title={bad ? "Это сочетание уже занято другой программой" : "Сочетание, которое открывает ярлык откуда угодно"}
+            title={bad ? t("Это сочетание уже занято другой программой") : t("Сочетание, которое открывает ярлык откуда угодно")}
             onClick={() => {
               onTypeStart();
               setRecording(true);
@@ -267,7 +267,7 @@ export function Launcher({
               setRecording(false);
             }}
           >
-            {recording ? "Нажми сочетание…" : menu.hotkey ? keyLabel(menu.hotkey) : "Клавиша"}
+            {recording ? t("Нажми сочетание…") : menu.hotkey ? keyLabel(menu.hotkey) : t("Клавиша")}
           </button>
         )}
         {inGroup && (
@@ -279,8 +279,7 @@ export function Launcher({
               close();
             }}
           >
-            Вынуть
-          </button>
+            {t("Вынуть")}</button>
         )}
         <button
           className="text-btn solid danger"
@@ -290,11 +289,9 @@ export function Launcher({
             close();
           }}
         >
-          Убрать
-        </button>
+          {t("Убрать")}</button>
         <button className="text-btn" onClick={close}>
-          Готово
-        </button>
+          {t("Готово")}</button>
       </div>
     );
   }
@@ -302,7 +299,7 @@ export function Launcher({
   return (
     <div className={`launcher ${group ? "in-group" : ""}`} ref={row}>
       {inside && (
-        <button className="launch-item back" title={group ? `Назад · ${group.name}` : "Назад"} onClick={() => setOpenGroup(null)}>
+        <button className="launch-item back" title={group ? t("Назад · {0}", group.name) : t("Назад")} onClick={() => setOpenGroup(null)}>
           <svg width="10" height="12" viewBox="0 0 10 12" aria-hidden>
             <path d="M7 1.5 2.5 6 7 10.5" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -313,7 +310,7 @@ export function Launcher({
           key={s.target}
           data-target={group ? undefined : s.target}
           className={`launch-item ${drag?.over === s.target ? "drop-on" : ""} ${drag?.s.target === s.target ? "dragging" : ""}`}
-          title={`${s.name}${s.hotkey ? ` · ${keyLabel(s.hotkey)}` : ""}\n${group ? "Правый клик — клавиша, вынуть, убрать" : s.kind === "group" ? "Правый клик — переименовать или убрать" : "Перетащи на другой ярлык — будет группа\nПравый клик — клавиша или убрать"}`}
+          title={`${s.name}${s.hotkey ? ` · ${keyLabel(s.hotkey)}` : ""}\n${group ? t("Правый клик — клавиша, вынуть, убрать") : s.kind === "group" ? t("Правый клик — переименовать или убрать") : t("Перетащи на другой ярлык — будет группа\nПравый клик — клавиша или убрать")}`}
           onPointerDown={(e) => {
             if (e.button !== 0 || group) return;
             press.current = { s, x: e.clientX, y: e.clientY, moved: false };
@@ -332,22 +329,22 @@ export function Launcher({
           }}
         >
           <ShortcutIcon api={api} s={s} size={26} />
-          {s.hotkey && failed.includes(s.hotkey) && <span className="launch-warn" title="Сочетание занято" />}
+          {s.hotkey && failed.includes(s.hotkey) && <span className="launch-warn" title={t("Сочетание занято")} />}
         </button>
       ))}
       {overflow && openGroup !== MORE && (
-        <button className="launch-item more" title={`Ещё ${hidden}`} onClick={() => setOpenGroup(MORE)}>
+        <button className="launch-item more" title={t("Ещё {0}", hidden)} onClick={() => setOpenGroup(MORE)}>
           +{hidden}
         </button>
       )}
       {roomForMore && (
-        <button className={`launch-item add ${items.length ? "" : "wide"}`} title={group ? "Добавить в группу" : "Добавить ярлык"} onClick={() => setAdding(true)}>
+        <button className={`launch-item add ${items.length ? "" : "wide"}`} title={group ? t("Добавить в группу") : t("Добавить ярлык")} onClick={() => setAdding(true)}>
           <span className="launch-icon">
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
               <path d="M6 1.5v9M1.5 6h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </span>
-          {!items.length && <span className="launch-name">Добавить ярлык</span>}
+          {!items.length && <span className="launch-name">{t("Добавить ярлык")}</span>}
         </button>
       )}
       {drag && (

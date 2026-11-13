@@ -5,42 +5,43 @@ import { CLAUDE_MODELS, PROVIDERS, providerOf } from "../ai";
 import { Buddy, COLORS, HATS, STICKERS, buddy, usePet } from "../components/Buddy";
 import { comboOf, keyLabel } from "./Launcher";
 
+import { langSetting, setLang, t } from "../i18n";
 /** How to connect each AI service, step by step. */
 const AI_HOWTO: Record<string, { steps: string[]; note: string }> = {
   anthropic: {
-    steps: ["Открой platform.claude.com и войди", "Settings → API Keys → Create Key", "Скопируй ключ (sk-ant-…) и вставь в поле «Ключ» ниже"],
-    note: "Платно: нужен баланс на счёте. Лучшее качество ответов.",
+    steps: [t("Открой platform.claude.com и войди"), "Settings → API Keys → Create Key", t("Скопируй ключ (sk-ant-…) и вставь в поле «Ключ» ниже")],
+    note: t("Платно: нужен баланс на счёте. Лучшее качество ответов."),
   },
   groq: {
-    steps: ["Открой console.groq.com и войди (можно через Google)", "API Keys → Create API Key", "Вставь ключ ниже — он же подойдёт для диктовки Whisper"],
-    note: "Бесплатно с дневным лимитом. Очень быстро.",
+    steps: [t("Открой console.groq.com и войди (можно через Google)"), "API Keys → Create API Key", t("Вставь ключ ниже — он же подойдёт для диктовки Whisper")],
+    note: t("Бесплатно с дневным лимитом. Очень быстро."),
   },
   gemini: {
     steps: [
-      "Открой aistudio.google.com/apikey → Create API key",
-      "Вставь ключ ниже и нажми «Список», чтобы выбрать модель, например `gemini-3.8-flash`",
+      t("Открой aistudio.google.com/apikey → Create API key"),
+      t("Вставь ключ ниже и нажми «Список», чтобы выбрать модель, например `gemini-3.8-flash`"),
     ],
-    note: "Бесплатный тариф с лимитами. Если модель сняли с поддержки, остров сам выберет похожую.",
+    note: t("Бесплатный тариф с лимитами. Если модель сняли с поддержки, остров сам выберет похожую."),
   },
   openrouter: {
-    steps: ["Открой openrouter.ai и войди", "Keys → Create Key", "Вставь ключ ниже; бесплатные модели — с «:free» в названии (кнопка «Список»)"],
-    note: "Сотни моделей через один ключ, есть бесплатные.",
+    steps: [t("Открой openrouter.ai и войди"), "Keys → Create Key", t("Вставь ключ ниже; бесплатные модели — с «:free» в названии (кнопка «Список»)")],
+    note: t("Сотни моделей через один ключ, есть бесплатные."),
   },
   deepseek: {
-    steps: ["Открой platform.deepseek.com", "API keys → Create new API key", "Пополни баланс и вставь ключ ниже"],
-    note: "Платно, но дёшево.",
+    steps: [t("Открой platform.deepseek.com"), "API keys → Create new API key", t("Пополни баланс и вставь ключ ниже")],
+    note: t("Платно, но дёшево."),
   },
   openai: {
-    steps: ["Открой platform.openai.com/api-keys", "Create new secret key", "Пополни баланс (Billing) и вставь ключ ниже"],
-    note: "Платно.",
+    steps: [t("Открой platform.openai.com/api-keys"), "Create new secret key", t("Пополни баланс (Billing) и вставь ключ ниже")],
+    note: t("Платно."),
   },
   custom: {
     steps: [
-      "Ollama: поставь с ollama.com, в терминале — `ollama pull llama3.2`",
-      "Адрес: `http://127.0.0.1:11434/v1`, модель: `llama3.2`, ключ — любой текст",
-      "LM Studio: Developer → Start Server, адрес `http://127.0.0.1:1234/v1`",
+      t("Ollama: поставь с ollama.com, в терминале — `ollama pull llama3.2`"),
+      t("Адрес: `http://127.0.0.1:11434/v1`, модель: `llama3.2`, ключ — любой текст"),
+      t("LM Studio: Developer → Start Server, адрес `http://127.0.0.1:1234/v1`"),
     ],
-    note: "Модель работает на твоём компьютере: бесплатно и без интернета, но нужен мощный компьютер.",
+    note: t("Модель работает на твоём компьютере: бесплатно и без интернета, но нужен мощный компьютер."),
   },
 };
 
@@ -63,9 +64,9 @@ function HowtoText({ text, api }: { text: string; api: Bridge | null }) {
         if (p.startsWith("`")) {
           const v = p.slice(1, -1);
           return (
-            <span key={i} className="howto-code" title="Скопировать" onClick={() => copy(v)}>
+            <span key={i} className="howto-code" title={t("Скопировать")} onClick={() => copy(v)}>
               {v}
-              <i>{copied === v ? "скопировано" : "копировать"}</i>
+              <i>{copied === v ? t("скопировано") : t("копировать")}</i>
             </span>
           );
         }
@@ -73,10 +74,10 @@ function HowtoText({ text, api }: { text: string; api: Bridge | null }) {
           const url = /^https?:/.test(p) ? p : `https://${p}`;
           return (
             <span key={i} className="howto-link">
-              <a onClick={() => api?.call("open_url", { url })} title="Открыть в браузере">
+              <a onClick={() => api?.call("open_url", { url })} title={t("Открыть в браузере")}>
                 {p}
               </a>
-              <i title="Скопировать адрес" onClick={() => copy(url)}>
+              <i title={t("Скопировать адрес")} onClick={() => copy(url)}>
                 {copied === url ? "✓" : "⧉"}
               </i>
             </span>
@@ -95,10 +96,10 @@ type Conn = { claude: boolean; codex: boolean; codex_busy: boolean; opencode: bo
 /** "сигнал 3 мин назад" / "сигналов ещё не было". */
 function seenText(conn: Conn | null, id: string) {
   const s = conn?.seen?.[id];
-  if (s === undefined) return "сигналов с запуска острова ещё не было";
-  if (s < 60) return "последний сигнал только что";
-  if (s < 3600) return `последний сигнал ${Math.round(s / 60)} мин назад`;
-  return `последний сигнал ${Math.round(s / 3600)} ч назад`;
+  if (s === undefined) return t("сигналов с запуска острова ещё не было");
+  if (s < 60) return t("последний сигнал только что");
+  if (s < 3600) return t("последний сигнал {0} мин назад", Math.round(s / 60));
+  return t("последний сигнал {0} ч назад", Math.round(s / 3600));
 }
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -151,7 +152,7 @@ function SlowRange({
     setV(null);
   };
   return (
-    <Row title={title} sub={v !== null && v !== value ? `${label(shown)} — отпусти, чтобы применить` : label(shown)}>
+    <Row title={title} sub={v !== null && v !== value ? t("{0} — отпусти, чтобы применить", label(shown)) : label(shown)}>
       <input
         className="range"
         type="range"
@@ -199,7 +200,7 @@ export function SettingsTab({
   const [q, setQ] = useState("");
   /** The open section (by its place in the list); a search looks through all of them. */
   const [section, setSection] = useState(0);
-  const groups = ["Остров", settings.buddyName || "Клодик", "ИИ и голос", "Экран", "Звук", "Разное", "Сеть", "О программе"];
+  const groups = [t("Остров"), settings.buddyName || t("Клодик"), t("ИИ и голос"), t("Экран"), t("Звук"), t("Разное"), t("Сеть"), t("О программе")];
   // One section at a time; a search shows matching rows from all of them
   // (a section without matches hides its title).
   useEffect(() => {
@@ -296,11 +297,11 @@ export function SettingsTab({
   const provider = providerOf(settings);
   const preset = PROVIDERS.find((p) => p.id === provider.id) ?? PROVIDERS[0];
   const keyRow = ({ id, title, sub, url, adv }: { id: string; title: string; sub?: string; url?: string; adv?: boolean }) => (
-    <Row adv={adv} title={title} sub={keyStatus[id] ? "Ключ сохранён (зашифрован Windows)" : sub}>
+    <Row adv={adv} title={title} sub={keyStatus[id] ? t("Ключ сохранён (зашифрован Windows)") : sub}>
       <input
         className="search set-input"
         type="password"
-        placeholder={keyStatus[id] ? "••••••••" : "вставь ключ"}
+        placeholder={keyStatus[id] ? "••••••••" : t("вставь ключ")}
         value={keyDraft[id] ?? ""}
         onFocus={onTypeStart}
         onChange={(e) => setKeyDraft({ ...keyDraft, [id]: e.target.value })}
@@ -313,8 +314,7 @@ export function SettingsTab({
       />
       {url && !keyStatus[id] && (
         <button className="text-btn solid" onClick={() => api?.call("open_url", { url })}>
-          Получить
-        </button>
+          {t("Получить")}</button>
       )}
     </Row>
   );
@@ -331,11 +331,11 @@ export function SettingsTab({
 
   const [testMsg, setTestMsg] = useState<Record<string, string>>({});
   const test = (which: string) => {
-    setTestMsg((m) => ({ ...m, [which]: "проверяю…" }));
+    setTestMsg((m) => ({ ...m, [which]: t("проверяю…") }));
     api
       ?.call("agents_test", { which })
       .then(() => {
-        setTestMsg((m) => ({ ...m, [which]: "связь есть — на острове должна была появиться карточка" }));
+        setTestMsg((m) => ({ ...m, [which]: t("связь есть — на острове должна была появиться карточка") }));
         api?.call<Conn>("agents_connections").then(setConn);
       })
       .catch((e) => setTestMsg((m) => ({ ...m, [which]: String(e) })));
@@ -343,8 +343,7 @@ export function SettingsTab({
   const testBtn = (which: string, on?: boolean) =>
     on ? (
       <button className="text-btn" onClick={() => test(which)}>
-        Проверить
-      </button>
+        {t("Проверить")}</button>
     ) : null;
   const connect = (which: "claude" | "codex" | "opencode", on: boolean, replace = false) => {
     setErr(null);
@@ -357,7 +356,7 @@ export function SettingsTab({
   return (
     <div className="tab-settings list" ref={listRef}>
       <div className="set-tools">
-        <input className="search" placeholder="Поиск по настройкам" value={q} onFocus={onTypeStart} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} />
+        <input className="search" placeholder={t("Поиск по настройкам")} value={q} onFocus={onTypeStart} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} />
         {!q && (
           <div className="set-jump">
             {groups.map((g, i) => (
@@ -365,70 +364,84 @@ export function SettingsTab({
                 {g.replace(/\s*\(.*\)$/, "")}
               </button>
             ))}
-            <label className="set-all" title="Показать редкие и тонкие настройки">
+            <label className="set-all" title={t("Показать редкие и тонкие настройки")}>
               <Toggle on={!!settings.settingsAll} onChange={(v) => set({ settingsAll: v })} />
-              Все настройки
-            </label>
+              {t("Все настройки")}</label>
           </div>
         )}
       </div>
-      <div className="set-group" data-tab="0">Остров</div>
-      <Row adv title="Линия над окнами" sub="Если окно заходит под остров (вкладки браузера), он становится тонкой линией">
+      <div className="set-group" data-tab="0">{t("Остров")}</div>
+      <Row title="Язык интерфейса · Language" sub={t("Как в Windows — по языку системы")}>
+        <Segmented
+          value={langSetting()}
+          options={[
+            ["auto", t("Как в Windows")],
+            ["ru", "Русский"],
+            ["en", "English"],
+          ]}
+          onChange={(v) => {
+            const lang = v as "auto" | "ru" | "en";
+            set({ uiLang: lang });
+            if (setLang(lang)) window.setTimeout(() => location.reload(), 150);
+          }}
+        />
+      </Row>
+      <Row adv title={t("Линия над окнами")} sub={t("Если окно заходит под остров (вкладки браузера), он становится тонкой линией")}>
         <Toggle on={settings.stripOverWindows} onChange={(v) => set({ stripOverWindows: v })} />
       </Row>
-      <Row title="Прятаться в играх" sub="В полноэкранных играх острова нет совсем">
+      <Row title={t("Прятаться в играх")} sub={t("В полноэкранных играх острова нет совсем")}>
         <Toggle on={settings.hideInGames} onChange={(v) => set({ hideInGames: v })} />
       </Row>
-      <Row title="Карточки событий">
+      <Row title={t("Карточки событий")}>
         <Segmented
           value={settings.cardLength}
           options={[
-            ["short", "Коротко"],
-            ["normal", "Обычно"],
-            ["long", "Дольше"],
+            ["short", t("Коротко")],
+            ["normal", t("Обычно")],
+            ["long", t("Дольше")],
           ]}
           onChange={(v) => set({ cardLength: v })}
         />
       </Row>
 
       <Row
-        title="Важные уведомления"
-        sub="Загрузки, ответы ИИ и агентов, напоминания, таймер, уведомления Windows. «Поверх всего» — и в играх (в окне без рамки; в исключительном полноэкранном режиме Windows не даёт рисовать поверх)"
+        title={t("Важные уведомления")}
+        sub={t("Загрузки, ответы ИИ и агентов, напоминания, таймер, уведомления Windows. «Поверх всего» — и в играх (в окне без рамки; в исключительном полноэкранном режиме Windows не даёт рисовать поверх)")}
       >
         <Segmented
           value={settings.cardsOver}
           options={[
-            ["all", "Поверх всего"],
-            ["apps", "Кроме игр"],
-            ["desktop", "Только на свободном экране"],
+            ["all", t("Поверх всего")],
+            ["apps", t("Кроме игр")],
+            ["desktop", t("Только на свободном экране")],
           ]}
           onChange={(v) => set({ cardsOver: v })}
         />
       </Row>
-      <Row title="Автоскрытие" sub="Остров уходит за край и возвращается, если задержать курсор у самого верха">
+      <Row title={t("Автоскрытие")} sub={t("Остров уходит за край и возвращается, если задержать курсор у самого верха")}>
         <Toggle on={!!settings.autoHide} onChange={(v) => set({ autoHide: v })} />
       </Row>
-      <Row adv title="Прятаться в программах" sub="Имена exe через запятую: остров уходит, пока одна из них впереди">
+      <Row adv title={t("Прятаться в программах")} sub={t("Имена exe через запятую: остров уходит, пока одна из них впереди")}>
         <input className="search set-input" value={hideFor} onFocus={onTypeStart} onChange={(e) => setHideFor(e.target.value)} onBlur={() => set({ hideForApps: list(hideFor) })} />
       </Row>
-      <Row title="Сквозной режим" sub="Свёрнутый остров пропускает клики и не раскрывается под курсором (Ctrl+Alt+T)">
+      <Row title={t("Сквозной режим")} sub={t("Свёрнутый остров пропускает клики и не раскрывается под курсором (Ctrl+Alt+T)")}>
         <Toggle on={!!settings.through} onChange={(v) => set({ through: v })} />
       </Row>
 
-      <div className="set-group" data-tab="0">Вид</div>
-      <Row title="Тема острова">
+      <div className="set-group" data-tab="0">{t("Вид")}</div>
+      <Row title={t("Тема острова")}>
         <Segmented
           value={(settings.islandTheme as string) ?? "dark"}
           options={[
-            ["dark", "Тёмная"],
-            ["light", "Светлая"],
-            ["system", "Как в Windows"],
+            ["dark", t("Тёмная")],
+            ["light", t("Светлая")],
+            ["system", t("Как в Windows")],
           ]}
           onChange={(v) => set({ islandTheme: v })}
         />
       </Row>
       <SlowRange
-        title="Размер"
+        title={t("Размер")}
         value={(settings.islandScale as number) ?? 1}
         min={0.8}
         max={2}
@@ -436,23 +449,23 @@ export function SettingsTab({
         label={(v) => `${Math.round(v * 100)}%`}
         onCommit={(v) => set({ islandScale: v })}
       />
-      <Row adv title="Прозрачность свёрнутого" sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
+      <Row adv title={t("Прозрачность свёрнутого")} sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
         <input className="range" type="range" min={0.3} max={1} step={0.05} value={(settings.pillOpacity as number) ?? 1} onChange={(e) => set({ pillOpacity: Number(e.target.value) })} />
       </Row>
-      <Row adv title="Прозрачность открытого" sub={`${Math.round(((settings.openOpacity as number) ?? 1) * 100)}%`}>
+      <Row adv title={t("Прозрачность открытого")} sub={`${Math.round(((settings.openOpacity as number) ?? 1) * 100)}%`}>
         <input className="range" type="range" min={0.5} max={1} step={0.05} value={(settings.openOpacity as number) ?? 1} onChange={(e) => set({ openOpacity: Number(e.target.value) })} />
       </Row>
       {monitors.length > 1 && (
-        <Row title="Монитор">
+        <Row title={t("Монитор")}>
           <Segmented
             value={String((settings.islandMonitor as number) ?? -1)}
-            options={[["-1", "Основной"], ...monitors.map((m) => [String(m.index), `${m.index + 1}: ${m.width}×${m.height}`] as [string, string])]}
+            options={[["-1", t("Основной")], ...monitors.map((m) => [String(m.index), `${m.index + 1}: ${m.width}×${m.height}`] as [string, string])]}
             onChange={(v) => set({ islandMonitor: Number(v) })}
           />
         </Row>
       )}
       <SlowRange
-        title="Сдвиг вдоль края"
+        title={t("Сдвиг вдоль края")}
         value={(settings.islandOffset as number) ?? 0}
         min={-800}
         max={800}
@@ -461,9 +474,9 @@ export function SettingsTab({
         onCommit={(v) => set({ islandOffset: v })}
       />
 
-      <div className="set-group" data-tab="1">{settings.buddyName || "Клодик"}</div>
+      <div className="set-group" data-tab="1">{settings.buddyName || t("Клодик")}</div>
       <div className="set-row buddy-card">
-        <div className="buddy-stage" title="Наведи, погладь, покрути колесо, кликни дважды">
+        <div className="buddy-stage" title={t("Наведи, погладь, покрути колесо, кликни дважды")}>
           <Buddy size={64} />
         </div>
         <div className="buddy-side">
@@ -471,22 +484,22 @@ export function SettingsTab({
             className="search set-input buddy-name"
             defaultValue={settings.buddyName}
             maxLength={20}
-            placeholder="Имя"
+            placeholder={t("Имя")}
             onFocus={onTypeStart}
-            onBlur={(e) => set({ buddyName: e.target.value.trim() || "Клодик" })}
+            onBlur={(e) => set({ buddyName: e.target.value.trim() || t("Клодик") })}
           />
           <div className="buddy-tricks">
             {(
               [
-                ["paper", "Бумаги"],
-                ["magnify", "Лупа"],
-                ["coffee", "Кофе"],
-                ["read", "Книга"],
-                ["laptop", "Ноутбук"],
-                ["water", "Цветок"],
-                ["juggle", "Жонглировать"],
-                ["kite", "Змей"],
-                ["dance", "Танец"],
+                ["paper", t("Бумаги")],
+                ["magnify", t("Лупа")],
+                ["coffee", t("Кофе")],
+                ["read", t("Книга")],
+                ["laptop", t("Ноутбук")],
+                ["water", t("Цветок")],
+                ["juggle", t("Жонглировать")],
+                ["kite", t("Змей")],
+                ["dance", t("Танец")],
               ] as [string, string][]
             ).map(([id, label]) => (
               <button key={id} className="chip" disabled={!settings.buddyLife} onClick={() => buddy.act(id, 4600)}>
@@ -499,33 +512,29 @@ export function SettingsTab({
       <div className="set-row pet-row">
         <div className="set-text">
           <div className="set-title">
-            Дружба <span className="pet-hearts">{"♥".repeat(pet.hearts)}<i>{"♥".repeat(10 - pet.hearts)}</i></span>
+            {t("Дружба")}{" "}<span className="pet-hearts">{"♥".repeat(pet.hearts)}<i>{"♥".repeat(10 - pet.hearts)}</i></span>
           </div>
           <div className="set-sub">
-            {pet.asleep ? "Спит в колпаке — не шуми" : pet.hungry ? "Проголодался и мечтает о печеньке" : "Сыт и доволен"}. Гладь, корми и играй — дружба растёт.
-            Правый клик по нему в острове — то же меню.
-          </div>
+            {pet.asleep ? t("Спит в колпаке — не шуми") : pet.hungry ? t("Проголодался и мечтает о печеньке") : t("Сыт и доволен")}{t(". Гладь, корми и играй — дружба растёт. Правый клик по нему в острове — то же меню.")}</div>
         </div>
         <div className="pet-buttons">
           <button className={`text-btn solid ${pet.hungry ? "accent" : ""}`} onClick={() => buddy.feed()}>
-            Покормить
-          </button>
+            {t("Покормить")}</button>
           <button className="text-btn solid" onClick={() => buddy.play()}>
-            Поиграть
-          </button>
+            {t("Поиграть")}</button>
           <button className="text-btn solid" onClick={() => buddy.toggleSleep()}>
-            {pet.asleep ? "Разбудить" : "Спать"}
+            {pet.asleep ? t("Разбудить") : t("Спать")}
           </button>
         </div>
       </div>
       <div className="look-label">
-        Альбом наклеек · {Object.keys(buddy.stickers).length} из {STICKERS.length}
+        {t("Альбом наклеек ·")}{" "}{Object.keys(buddy.stickers).length} {" "}{t("из")}{" "}{STICKERS.length}
       </div>
       <div className="sticker-grid">
         {STICKERS.map((st) => {
           const got = buddy.stickers[st.id];
           return (
-            <div key={st.id} className={`sticker ${got ? "" : "locked"}`} title={got ? `Получена ${new Date(got).toLocaleDateString("ru")}` : st.hint}>
+            <div key={st.id} className={`sticker ${got ? "" : "locked"}`} title={got ? t("Получена {0}", new Date(got).toLocaleDateString("ru")) : st.hint}>
               <i style={{ "--st": st.color } as React.CSSProperties}>{got ? st.icon : "?"}</i>
               <b>{st.title}</b>
               <small>{st.hint}</small>
@@ -533,7 +542,7 @@ export function SettingsTab({
           );
         })}
       </div>
-      <Row title="Твой день рождения" sub={`${settings.buddyName || "Клодик"} поздравит и испечёт торт`}>
+      <Row title={t("Твой день рождения")} sub={t("{0} поздравит и испечёт торт", settings.buddyName || "Клодик")}>
         <select
           className="search set-input select narrow"
           value={(settings.userBirthday as string)?.split("-")[1] ?? ""}
@@ -557,22 +566,22 @@ export function SettingsTab({
             set({ userBirthday: e.target.value ? `${e.target.value}-${d}` : "" });
           }}
         >
-          <option value="">не указан</option>
-          {["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"].map((name, i) => (
+          <option value="">{t("не указан")}</option>
+          {[t("января"),t("февраля"),t("марта"),t("апреля"),t("мая"),t("июня"),t("июля"),t("августа"),t("сентября"),t("октября"),t("ноября"),t("декабря")].map((name, i) => (
             <option key={name} value={String(i + 1).padStart(2, "0")}>
               {name}
             </option>
           ))}
         </select>
       </Row>
-      <Row title="Звать на перерыв" sub="Если долго сидишь за компьютером без отдыха; во время помодоро молчит">
+      <Row title={t("Звать на перерыв")} sub={t("Если долго сидишь за компьютером без отдыха; во время помодоро молчит")}>
         {settings.breakReminder && (
           <Segmented
             value={String(settings.breakMinutes)}
             options={[
-              ["30", "30 мин"],
-              ["50", "50 мин"],
-              ["90", "1,5 ч"],
+              ["30", t("30 мин")],
+              ["50", t("50 мин")],
+              ["90", t("1,5 ч")],
             ]}
             onChange={(v) => set({ breakMinutes: Number(v) })}
           />
@@ -580,22 +589,22 @@ export function SettingsTab({
         <Toggle on={settings.breakReminder} onChange={(v) => set({ breakReminder: v })} />
       </Row>
       <Row
-        title="Живёт своей жизнью"
+        title={t("Живёт своей жизнью")}
         sub={
           settings.buddyLife
-            ? "Сам находит себе дела, гуляет по вкладкам, одевается по погоде и к праздникам, голодает, если не кормить"
-            : "Сидит на своём месте и следит за курсором"
+            ? t("Сам находит себе дела, гуляет по вкладкам, одевается по погоде и к праздникам, голодает, если не кормить")
+            : t("Сидит на своём месте и следит за курсором")
         }
       >
         <Toggle on={settings.buddyLife} onChange={(v) => set({ buddyLife: v })} />
       </Row>
-      <Row title="Звуки" sub="Тихие 8-битные пищалки: прыжки, еда, поглаживание, удивление">
+      <Row title={t("Звуки")} sub={t("Тихие 8-битные пищалки: прыжки, еда, поглаживание, удивление")}>
         <Toggle on={settings.buddySounds} onChange={(v) => set({ buddySounds: v })} />
       </Row>
-      <Row title="Размер" sub={`${Math.round(settings.buddyScale * 100)}%`}>
+      <Row title={t("Размер")} sub={`${Math.round(settings.buddyScale * 100)}%`}>
         <input className="range" type="range" min={1} max={2} step={0.1} value={settings.buddyScale} onChange={(e) => set({ buddyScale: Number(e.target.value) })} />
       </Row>
-      <div className="look-label">Цвет</div>
+      <div className="look-label">{t("Цвет")}</div>
       <div className="look-grid">
         {COLORS.map(([c, name]) => (
           <button key={c} className={`look-tile ${settings.buddyColor === c ? "on" : ""}`} title={name} onClick={() => set({ buddyColor: c })}>
@@ -604,7 +613,7 @@ export function SettingsTab({
           </button>
         ))}
       </div>
-      <div className="look-label">Наряд</div>
+      <div className="look-label">{t("Наряд")}</div>
       <div className="look-grid">
         {HATS.map(([id, label]) => (
           <button key={id} className={`look-tile ${settings.buddyHat === id ? "on" : ""}`} onClick={() => set({ buddyHat: id })}>
@@ -614,8 +623,8 @@ export function SettingsTab({
         ))}
       </div>
 
-      <div className="set-group" data-tab="2">ИИ</div>
-      <Row title="Сервис" sub={preset.note}>
+      <div className="set-group" data-tab="2">{t("ИИ")}</div>
+      <Row title={t("Сервис")} sub={preset.note}>
         <select className="search set-input select" value={provider.id} onChange={(e) => set({ aiProvider: e.target.value })}>
           {PROVIDERS.map((p) => (
             <option key={p.id} value={p.id}>
@@ -626,7 +635,7 @@ export function SettingsTab({
       </Row>
       {AI_HOWTO[provider.id] && (
         <details className="howto" open={!keyStatus[provider.id]}>
-          <summary>Как подключить {preset.name}</summary>
+          <summary>{t("Как подключить")}{" "}{preset.name}</summary>
           <ol>
             {AI_HOWTO[provider.id].steps.map((st) => (
               <li key={st}>
@@ -636,23 +645,19 @@ export function SettingsTab({
           </ol>
           {provider.id !== "custom" && (
             <div className="howto-note howto-vpn">
-              Из России и ряда других стран многие нейросети (Claude, OpenAI, Gemini и другие) работают только через VPN. Включи VPN
-              (сервер в США или Европе) в режиме «системный прокси» или TUN — остров сам пойдёт через него. Ошибка «location is not
-              supported», «unsupported country» или «Request not allowed» значит, что запрос прошёл мимо VPN: попробуй режим TUN.
-            </div>
+              {t("Из России и ряда других стран многие нейросети (Claude, OpenAI, Gemini и другие) работают только через VPN. Включи VPN (сервер в США или Европе) в режиме «системный прокси» или TUN — остров сам пойдёт через него. Ошибка «location is not supported», «unsupported country» или «Request not allowed» значит, что запрос прошёл мимо VPN: попробуй режим TUN.")}</div>
           )}
           <div className="howto-note">
-            {AI_HOWTO[provider.id].note} Ключ шифруется Windows и уходит только в сам сервис. Чат — вкладка ✦ на острове или Ctrl+Alt+A; вопрос можно задать и в командной строке (Alt+Space).
-          </div>
+            {AI_HOWTO[provider.id].note} {" "}{t("Ключ шифруется Windows и уходит только в сам сервис. Чат — вкладка ✦ на острове или Ctrl+Alt+A; вопрос можно задать и в командной строке (Alt+Space).")}</div>
         </details>
       )}
-      {keyRow({ id: provider.id, title: `Ключ ${preset.name}`, sub: "Хранится только на этом компьютере", url: preset.keyUrl })}
+      {keyRow({ id: provider.id, title: t("Ключ {0}", preset.name), sub: t("Хранится только на этом компьютере"), url: preset.keyUrl })}
       {provider.id === "custom" && (
-        <Row adv title="Адрес" sub="OpenAI-совместимый, например Ollama или LM Studio">
+        <Row adv title={t("Адрес")} sub={t("OpenAI-совместимый, например Ollama или LM Studio")}>
           <input className="search set-input" defaultValue={provider.base} onFocus={onTypeStart} onBlur={(e) => set({ [`aiBase_${provider.id}`]: e.target.value })} />
         </Row>
       )}
-      <Row title="Модель" sub={modelErr ?? undefined}>
+      <Row title={t("Модель")} sub={modelErr ?? undefined}>
         <input
           className="search set-input"
           list="ai-models"
@@ -676,17 +681,16 @@ export function SettingsTab({
               .catch((e) => setModelErr(String(e)));
           }}
         >
-          Список
-        </button>
+          {t("Список")}</button>
       </Row>
 
-      <div className="set-group" data-tab="2">Голос в текст</div>
+      <div className="set-group" data-tab="2">{t("Голос в текст")}</div>
       <Row
-        title="Чем распознавать"
+        title={t("Чем распознавать")}
         sub={
           settings.sttService === "windows"
-            ? "Распознавание Windows: без ключа и регистрации. Нужно включить «Распознавание речи в сети» и языковой пакет речи"
-            : "Whisper — точнее, особенно на длинных фразах; ключ тот же, что для ИИ этого сервиса"
+            ? t("Распознавание Windows: без ключа и регистрации. Нужно включить «Распознавание речи в сети» и языковой пакет речи")
+            : t("Whisper — точнее, особенно на длинных фразах; ключ тот же, что для ИИ этого сервиса")
         }
       >
         <Segmented
@@ -700,36 +704,35 @@ export function SettingsTab({
         />
       </Row>
       {settings.sttService === "windows" && (
-        <Row adv title="Параметры речи Windows" sub="Если диктовка пишет, что выключена, — включи там распознавание в сети">
+        <Row adv title={t("Параметры речи Windows")} sub={t("Если диктовка пишет, что выключена, — включи там распознавание в сети")}>
           <button className="text-btn solid" onClick={() => api?.call("open_windows_settings", { page: "speech" })}>
-            Открыть
-          </button>
+            {t("Открыть")}</button>
         </Row>
       )}
       {settings.sttService !== "windows" &&
         !keyStatus[settings.sttService] &&
         keyRow({
           id: settings.sttService,
-          title: "Ключ для диктовки",
+          title: t("Ключ для диктовки"),
           url: PROVIDERS.find((p) => p.id === settings.sttService)?.keyUrl,
         })}
-      <Row title="Язык">
+      <Row title={t("Язык")}>
         <Segmented
           value={(settings.sttLang as string) ?? "ru"}
           options={[
-            ["ru", "Русский"],
+            ["ru", t("Русский")],
             ["en", "English"],
-            ["", "Авто"],
+            ["", t("Авто")],
           ]}
           onChange={(v) => set({ sttLang: v })}
         />
       </Row>
-      <Row adv title="Сразу вставлять в окно" sub="Иначе текст только в буфере">
+      <Row adv title={t("Сразу вставлять в окно")} sub={t("Иначе текст только в буфере")}>
         <Toggle on={settings.dictationPaste !== false} onChange={(v) => set({ dictationPaste: v })} />
       </Row>
 
-      <div className="set-group" data-tab="3">Запись экрана (Ctrl+Alt+R)</div>
-      <Row title="Формат" sub="Файлы в «Видео → Dark Island»; GIF — 12 кадров в секунду, без звука">
+      <div className="set-group" data-tab="3">{t("Запись экрана (Ctrl+Alt+R)")}</div>
+      <Row title={t("Формат")} sub={t("Файлы в «Видео → Dark Island»; GIF — 12 кадров в секунду, без звука")}>
         <Segmented
           value={settings.recordFormat}
           options={[
@@ -740,19 +743,19 @@ export function SettingsTab({
         />
       </Row>
       {settings.recordFormat !== "gif" && (
-        <Row adv title="Звук в записи">
+        <Row adv title={t("Звук в записи")}>
           <Segmented
             value={settings.recordSound}
             options={[
-              ["none", "Без звука"],
-              ["system", "Компьютер"],
-              ["mic", "Микрофон"],
+              ["none", t("Без звука")],
+              ["system", t("Компьютер")],
+              ["mic", t("Микрофон")],
             ]}
             onChange={(v) => set({ recordSound: v })}
           />
         </Row>
       )}
-      {settings.recordFormat !== "gif" && <Row adv title="Кадров в секунду" sub="H.264">
+      {settings.recordFormat !== "gif" && <Row adv title={t("Кадров в секунду")} sub="H.264">
         <Segmented
           value={String((settings.recordFps as number) ?? 30)}
           options={[
@@ -762,19 +765,19 @@ export function SettingsTab({
           onChange={(v) => set({ recordFps: Number(v) })}
         />
       </Row>}
-      <Row adv title="Качество">
+      <Row adv title={t("Качество")}>
         <Segmented
           value={(settings.recordQuality as string) ?? "normal"}
           options={[
-            ["normal", "Обычное"],
-            ["high", "Высокое"],
+            ["normal", t("Обычное")],
+            ["high", t("Высокое")],
           ]}
           onChange={(v) => set({ recordQuality: v })}
         />
       </Row>
 
-      <div className="set-group" data-tab="3">Ссылка на скриншот</div>
-      <Row adv title="Сервис" sub="Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается">
+      <div className="set-group" data-tab="3">{t("Ссылка на скриншот")}</div>
+      <Row adv title={t("Сервис")} sub={t("Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается")}>
         <Segmented
           value={(settings.uploadService as string) ?? "imgbb"}
           options={[
@@ -785,14 +788,14 @@ export function SettingsTab({
         />
       </Row>
       {keyRow({adv: true, id: (settings.uploadService as string) ?? "imgbb",
-        title: (settings.uploadService as string) === "imgur" ? "Client ID Imgur" : "Ключ ImgBB",
+        title: (settings.uploadService as string) === "imgur" ? "Client ID Imgur" : t("Ключ ImgBB"),
         url: (settings.uploadService as string) === "imgur" ? "https://api.imgur.com/oauth2/addclient" : "https://api.imgbb.com/",
       })}
 
-      <div className="set-group" data-tab="4">Звук</div>
-      <Row adv title="Громкость острова" sub="Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается">
+      <div className="set-group" data-tab="4">{t("Звук")}</div>
+      <Row adv title={t("Громкость острова")} sub={t("Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается")}>
         <select className="search set-input select" value={(settings.volumeDevice as string) ?? ""} onChange={(e) => set({ volumeDevice: e.target.value })}>
-          <option value="">Как в Windows</option>
+          <option value="">{t("Как в Windows")}</option>
           {devices.outputs.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
@@ -800,9 +803,9 @@ export function SettingsTab({
           ))}
         </select>
       </Row>
-      <Row adv title="Микрофон острова" sub="Что выключает кнопка микрофона и откуда пишет диктовка">
+      <Row adv title={t("Микрофон острова")} sub={t("Что выключает кнопка микрофона и откуда пишет диктовка")}>
         <select className="search set-input select" value={(settings.micDevice as string) ?? ""} onChange={(e) => set({ micDevice: e.target.value })}>
-          <option value="">Все (диктовка — с основного)</option>
+          <option value="">{t("Все (диктовка — с основного)")}</option>
           {devices.inputs.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
@@ -811,41 +814,41 @@ export function SettingsTab({
         </select>
       </Row>
 
-      <div className="set-group" data-tab="4">Музыка</div>
-      <Row title="Пилюля во время музыки" sub="«Текст» и «Только слова» — когда включён текст песни и он нашёлся">
+      <div className="set-group" data-tab="4">{t("Музыка")}</div>
+      <Row title={t("Пилюля во время музыки")} sub={t("«Текст» и «Только слова» — когда включён текст песни и он нашёлся")}>
         <Segmented
           value={settings.musicPill as string}
           options={[
-            ["compact", "Обычная"],
-            ["wide", "Широкая"],
-            ["player", "Плеер"],
-            ["lyrics", "Текст"],
-            ["line", "Только слова"],
+            ["compact", t("Обычная")],
+            ["wide", t("Широкая")],
+            ["player", t("Плеер")],
+            ["lyrics", t("Текст")],
+            ["line", t("Только слова")],
           ]}
           onChange={(v) => set({ musicPill: v as "compact" })}
         />
       </Row>
-      <Row title="Текст песни" sub="Строка, которая звучит сейчас; тексты из открытой базы LRCLIB, только для играющей песни">
+      <Row title={t("Текст песни")} sub={t("Строка, которая звучит сейчас; тексты из открытой базы LRCLIB, только для играющей песни")}>
         <Toggle on={!!settings.lyrics} onChange={(v) => set({ lyrics: v })} />
       </Row>
 
-      <div className="set-group" data-tab="5">Погода</div>
-      <Row title="Температура на острове" sub="Город выбирается на вкладке «Погода»">
+      <div className="set-group" data-tab="5">{t("Погода")}</div>
+      <Row title={t("Температура на острове")} sub={t("Город выбирается на вкладке «Погода»")}>
         <Toggle on={!!settings.weatherOnPill} onChange={(v) => set({ weatherOnPill: v })} />
       </Row>
-      <Row title="Предупреждать о дожде и снеге" sub="Примерно за час">
+      <Row title={t("Предупреждать о дожде и снеге")} sub={t("Примерно за час")}>
         <Toggle on={!!settings.rainWarning} onChange={(v) => set({ rainWarning: v })} />
       </Row>
 
-      <div className="set-group" data-tab="5">Уведомления Windows</div>
+      <div className="set-group" data-tab="5">{t("Уведомления Windows")}</div>
       <Row
-        title="Показывать на острове"
+        title={t("Показывать на острове")}
         sub={
           !settings.showNotifications
-            ? "Сообщения других программ карточкой; клик открывает программу"
+            ? t("Сообщения других программ карточкой; клик открывает программу")
             : access === "allowed"
-              ? "Доступ есть"
-              : "Нужно разрешить доступ к уведомлениям в Параметрах Windows"
+              ? t("Доступ есть")
+              : t("Нужно разрешить доступ к уведомлениям в Параметрах Windows")
         }
       >
         {settings.showNotifications && access !== "allowed" && (
@@ -858,55 +861,53 @@ export function SettingsTab({
               })
             }
           >
-            Разрешить
-          </button>
+            {t("Разрешить")}</button>
         )}
         <Toggle on={!!settings.showNotifications} onChange={(v) => set({ showNotifications: v })} />
       </Row>
-      <Row adv title="Не показывать от программ" sub="Части названий через запятую">
+      <Row adv title={t("Не показывать от программ")} sub={t("Части названий через запятую")}>
         <input className="search set-input" value={muted} onFocus={onTypeStart} onChange={(e) => setMuted(e.target.value)} onBlur={() => set({ notifyMuted: list(muted).map((x) => x.toLowerCase()) })} />
       </Row>
 
-      <div className="set-group" data-tab="6">Сеть</div>
-      <Row adv title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, когда VPN включается; видно на плитке VPN в «Управлении»">
+      <div className="set-group" data-tab="6">{t("Сеть")}</div>
+      <Row adv title={t("Страна и IP при включении VPN")} sub={t("Один запрос к ipwho.is, когда VPN включается; видно на плитке VPN в «Управлении»")}>
         <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
-      <Row title="VPN" sub="Остров только показывает, включён ли VPN и какой у тебя IP (нажми на плитку — скопируется). Включать и выключать — в самой VPN-программе">
+      <Row title="VPN" sub={t("Остров только показывает, включён ли VPN и какой у тебя IP (нажми на плитку — скопируется). Включать и выключать — в самой VPN-программе")}>
         {null}
       </Row>
 
       <div className="set-group" data-tab="3">OBS Studio</div>
-      <Row adv title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">
+      <Row adv title={t("Показывать запись и эфир")} sub={t("Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить")}>
         <Toggle on={!!settings.obsEnabled} onChange={(v) => set({ obsEnabled: v })} />
       </Row>
       {settings.obsEnabled && (
         <>
-          <Row adv title="Порт">
+          <Row adv title={t("Порт")}>
             <input className="search set-input narrow" defaultValue={settings.obsPort} onFocus={onTypeStart} onBlur={(e) => set({ obsPort: e.target.value.trim() || "4455" })} />
           </Row>
-          {keyRow({ adv: true, id: "obs", title: "Пароль сервера", sub: "Если в OBS включена аутентификация" })}
+          {keyRow({ adv: true, id: "obs", title: t("Пароль сервера"), sub: t("Если в OBS включена аутентификация") })}
         </>
       )}
 
-      <div className="set-group" data-tab="2">ИИ-агенты в терминале</div>
+      <div className="set-group" data-tab="2">{t("ИИ-агенты в терминале")}</div>
       <details className="howto">
-        <summary>Как это работает</summary>
+        <summary>{t("Как это работает")}</summary>
         <ol>
-          <li>Нажми «Подключить» у своего агента — остров пропишет ему, куда сообщать (копия исходного файла сохранится рядом)</li>
-          <li>Перезапусти агента: настройки он читает только при запуске</li>
-          <li>Нажми «Проверить» — на острове должна появиться карточка «связь есть»</li>
+          <li>{t("Нажми «Подключить» у своего агента — остров пропишет ему, куда сообщать (копия исходного файла сохранится рядом)")}</li>
+          <li>{t("Перезапусти агента: настройки он читает только при запуске")}</li>
+          <li>{t("Нажми «Проверить» — на острове должна появиться карточка «связь есть»")}</li>
         </ol>
         <div className="howto-note">
-          На острове видно только важное: вопрос о разрешении с кнопками «Разрешить / Запретить» (30 секунд, потом вопрос остаётся в терминале) и итоговый ответ.
-        </div>
+          {t("На острове видно только важное: вопрос о разрешении с кнопками «Разрешить / Запретить» (30 секунд, потом вопрос остаётся в терминале) и итоговый ответ.")}</div>
       </details>
       <Row
         title="Claude Code"
-        sub={testMsg.claude ?? (conn?.claude ? `Подключён: работа, вопросы и конец ответа; ${seenText(conn, "claude")}. Новые сессии подхватят сразу` : "Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом")}
+        sub={testMsg.claude ?? (conn?.claude ? t("Подключён: работа, вопросы и конец ответа; {0}. Новые сессии подхватят сразу", seenText(conn, "claude")) : t("Остров добавит свои хуки в ~/.claude/settings.json, копия файла останется рядом"))}
       >
         {testBtn("claude", conn?.claude)}
         <button className="text-btn solid" onClick={() => connect("claude", !conn?.claude)}>
-          {conn?.claude ? "Отключить" : "Подключить"}
+          {conn?.claude ? t("Отключить") : t("Подключить")}
         </button>
       </Row>
       <Row
@@ -914,49 +915,48 @@ export function SettingsTab({
         sub={
           testMsg.codex ??
           (conn?.codex && !conn?.codex_hooks
-            ? "Ответы приходят, но хука для вопросов о разрешении нет — нажми «Починить» и перезапусти Codex"
+            ? t("Ответы приходят, но хука для вопросов о разрешении нет — нажми «Починить» и перезапусти Codex")
             : conn?.codex
-            ? `Подключён: вопросы о разрешении (с кнопками) и итоговые ответы; ${seenText(conn, "codex")}. Перезапусти Codex после подключения`
+            ? t("Подключён: вопросы о разрешении (с кнопками) и итоговые ответы; {0}. Перезапусти Codex после подключения", seenText(conn, "codex"))
             : conn?.codex_busy
-              ? "У Codex уже стоит другая программа уведомлений (notify), а он умеет только одну. «Заменить» — остров встанет вместо неё; старая строка останется в config.toml и вернётся при отключении"
-              : "Остров добавит notify в ~/.codex/config.toml")
+              ? t("У Codex уже стоит другая программа уведомлений (notify), а он умеет только одну. «Заменить» — остров встанет вместо неё; старая строка останется в config.toml и вернётся при отключении")
+              : t("Остров добавит notify в ~/.codex/config.toml"))
         }
       >
         {testBtn("codex", conn?.codex)}
         {conn?.codex && !conn?.codex_hooks && (
           <button className="text-btn solid accent" onClick={() => connect("codex", true, true)}>
-            Починить
-          </button>
+            {t("Починить")}</button>
         )}
         <button className="text-btn solid" onClick={() => connect("codex", !conn?.codex, !conn?.codex && conn?.codex_busy)}>
-          {conn?.codex ? "Отключить" : conn?.codex_busy ? "Заменить" : "Подключить"}
+          {conn?.codex ? t("Отключить") : conn?.codex_busy ? t("Заменить") : t("Подключить")}
         </button>
       </Row>
       <Row
         title="opencode"
-        sub={testMsg.opencode ?? (conn?.opencode ? `Подключён: работа, вопросы и конец ответа; ${seenText(conn, "opencode")}` : "Остров положит свой плагин в ~/.config/opencode — перезапусти opencode после подключения")}
+        sub={testMsg.opencode ?? (conn?.opencode ? t("Подключён: работа, вопросы и конец ответа; {0}", seenText(conn, "opencode")) : t("Остров положит свой плагин в ~/.config/opencode — перезапусти opencode после подключения"))}
       >
         {testBtn("opencode", conn?.opencode)}
         <button className="text-btn solid" onClick={() => connect("opencode", !conn?.opencode)}>
-          {conn?.opencode ? "Отключить" : "Подключить"}
+          {conn?.opencode ? t("Отключить") : t("Подключить")}
         </button>
       </Row>
       {err && <div className="set-error">{err}</div>}
-      <Row title="Показывать агентов на острове">
+      <Row title={t("Показывать агентов на острове")}>
         <Toggle on={settings.agents} onChange={(v) => set({ agents: v })} />
       </Row>
-      <Row adv title="Показывать, пока агент работает" sub="Клодик печатает в пилюле всё время работы. Выключено — только вопросы и итоговый ответ">
+      <Row adv title={t("Показывать, пока агент работает")} sub={t("Клодик печатает в пилюле всё время работы. Выключено — только вопросы и итоговый ответ")}>
         <Toggle on={!!settings.agentsWorking} onChange={(v) => set({ agentsWorking: v })} />
       </Row>
-      <Row adv title="Отвечать на разрешения с острова" sub="30 секунд на ответ, потом вопрос уходит в терминал">
+      <Row adv title={t("Отвечать на разрешения с острова")} sub={t("30 секунд на ответ, потом вопрос уходит в терминал")}>
         <Toggle on={settings.agentsAnswer} onChange={(v) => set({ agentsAnswer: v })} />
       </Row>
 
-      <div className="set-group" data-tab="5">Буфер обмена</div>
-      <Row title="Записывать историю">
+      <div className="set-group" data-tab="5">{t("Буфер обмена")}</div>
+      <Row title={t("Записывать историю")}>
         <Toggle on={settings.clipboardHistory} onChange={(v) => set({ clipboardHistory: v })} />
       </Row>
-      <Row adv title="Не записывать из программ" sub="Имена exe через запятую, например keepass, 1password">
+      <Row adv title={t("Не записывать из программ")} sub={t("Имена exe через запятую, например keepass, 1password")}>
         <input
           className="search set-input"
           value={skip}
@@ -973,16 +973,16 @@ export function SettingsTab({
         />
       </Row>
 
-      <div className="set-group" data-tab="3">Скриншоты</div>
-      <Row adv title="Сохранять в папку" sub="Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда">
+      <div className="set-group" data-tab="3">{t("Скриншоты")}</div>
+      <Row adv title={t("Сохранять в папку")} sub={t("Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда")}>
         <Toggle on={settings.screenshotSave !== false} onChange={(v) => set({ screenshotSave: v })} />
       </Row>
-      <Row adv title="Показывать остров на скриншотах" sub="И в записи экрана, и на трансляциях">
+      <Row adv title={t("Показывать остров на скриншотах")} sub={t("И в записи экрана, и на трансляциях")}>
         <Toggle on={settings.showInCaptures === true} onChange={(v) => set({ showInCaptures: v })} />
       </Row>
 
-      <div className="set-group" data-tab="5">Поиск в командной строке</div>
-      <Row title="Поисковик">
+      <div className="set-group" data-tab="5">{t("Поиск в командной строке")}</div>
+      <Row title={t("Поисковик")}>
         <Segmented
           value={settings.searchEngine}
           options={Object.entries(ENGINES).map(([k, v]) => [k, v.name] as [string, string])}
@@ -990,14 +990,14 @@ export function SettingsTab({
         />
       </Row>
 
-      <div className="set-group" data-tab="7">Проверка</div>
+      <div className="set-group" data-tab="7">{t("Проверка")}</div>
       <div className="set-row check-run">
         <div className="set-text">
-          <div className="set-title">Проверить всё на этом компьютере</div>
-          <div className="set-sub">Горячие клавиши, звук и микрофон, распознавание текста и речи, ключи, Wi-Fi и Bluetooth, уведомления, сеть, агенты, OBS, Steam</div>
+          <div className="set-title">{t("Проверить всё на этом компьютере")}</div>
+          <div className="set-sub">{t("Горячие клавиши, звук и микрофон, распознавание текста и речи, ключи, Wi-Fi и Bluetooth, уведомления, сеть, агенты, OBS, Steam")}</div>
         </div>
         <button className="text-btn solid accent" disabled={checking} onClick={runCheck}>
-          {checking ? "Проверяю…" : checks ? "Ещё раз" : "Проверить"}
+          {checking ? t("Проверяю…") : checks ? t("Ещё раз") : t("Проверить")}
         </button>
       </div>
       {checks && (
@@ -1005,39 +1005,37 @@ export function SettingsTab({
           {checks.map((c, i) => (
             <div key={i} className={`check-item ${c.status}`}>
               <i>{c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✕"}</i>
-              <span className="check-group">{c.group}</span>
-              <b>{c.title}</b>
+              <span className="check-group">{t(c.group)}</span>
+              <b>{t(c.title)}</b>
               <span className="check-detail">{c.detail}</span>
             </div>
           ))}
         </div>
       )}
-      <div className="set-group" data-tab="7">Данные и версия</div>
-      <Row adv title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
+      <div className="set-group" data-tab="7">{t("Данные и версия")}</div>
+      <Row adv title={t("Настройки в файл")} sub={dataMsg ?? t("Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают")}>
         <button
           className="text-btn solid"
           onClick={() =>
             api
               ?.call<string | null>("settings_export")
-              .then((p) => p && setDataMsg(`Сохранено: ${p}`))
+              .then((p) => p && setDataMsg(t("Сохранено: {0}", p)))
               .catch((e) => setDataMsg(String(e)))
           }
         >
-          Сохранить
-        </button>
+          {t("Сохранить")}</button>
         <button
           className="text-btn solid"
           onClick={() =>
             api
               ?.call<Record<string, unknown> | null>("settings_import")
-              .then((v) => v && setDataMsg("Настройки загружены"))
+              .then((v) => v && setDataMsg(t("Настройки загружены")))
               .catch((e) => setDataMsg(String(e)))
           }
         >
-          Загрузить
-        </button>
+          {t("Загрузить")}</button>
       </Row>
-      <Row adv title="Сбросить настройки" sub={resetArmed ? "Нажми ещё раз — всё вернётся как после установки" : "Ключи, подключения агентов и Клодик-питомец останутся"}>
+      <Row adv title={t("Сбросить настройки")} sub={resetArmed ? t("Нажми ещё раз — всё вернётся как после установки") : t("Ключи, подключения агентов и Клодик-питомец останутся")}>
         <button
           className={`text-btn solid ${resetArmed ? "danger" : ""}`}
           onClick={() => {
@@ -1047,28 +1045,27 @@ export function SettingsTab({
               return;
             }
             setResetArmed(false);
-            api?.call("settings_reset").then(() => setDataMsg("Настройки сброшены"));
+            api?.call("settings_reset").then(() => setDataMsg(t("Настройки сброшены")));
           }}
         >
-          {resetArmed ? "Точно сбросить" : "Сбросить"}
+          {resetArmed ? t("Точно сбросить") : t("Сбросить")}
         </button>
       </Row>
       <Row
-        title="Обновления"
+        title={t("Обновления")}
         sub={
           updateErr
             ? updateErr
             : !update
-            ? "Остров сам ничего не скачивает: кнопка только сравнит версию с последним релизом на GitHub"
+            ? t("Остров сам ничего не скачивает: кнопка только сравнит версию с последним релизом на GitHub")
             : update.newer
-              ? `Есть версия ${update.latest} (у тебя ${update.current})`
-              : `У тебя последняя версия — ${update.current}`
+              ? t("Есть версия {0} (у тебя {1})", update.latest, update.current)
+              : t("У тебя последняя версия — {0}", update.current)
         }
       >
         {update?.newer ? (
           <button className="text-btn solid accent" onClick={() => api?.call("open_url", { url: update.url })}>
-            Открыть релиз
-          </button>
+            {t("Открыть релиз")}</button>
         ) : (
           <button
             className="text-btn solid"
@@ -1079,33 +1076,29 @@ export function SettingsTab({
                 .catch((e) => setUpdateErr(String(e)))
             }
           >
-            Проверить
-          </button>
+            {t("Проверить")}</button>
         )}
       </Row>
 
-      <Row title="Знакомство" sub="Короткий тур по острову, как при первом запуске">
+      <Row title={t("Знакомство")} sub={t("Короткий тур по острову, как при первом запуске")}>
         <button className="text-btn solid" onClick={() => api?.call("tour_start")}>
-          Показать снова
-        </button>
+          {t("Показать снова")}</button>
       </Row>
 
-      <div className="set-group" data-tab="7">Если что-то не работает</div>
-      <Row adv title="Журнал" sub="Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось">
+      <div className="set-group" data-tab="7">{t("Если что-то не работает")}</div>
+      <Row adv title={t("Журнал")} sub={t("Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось")}>
         <button className="text-btn solid" onClick={() => api?.call("diag_open")}>
-          Открыть
-        </button>
+          {t("Открыть")}</button>
       </Row>
 
-      <div className="set-group" data-tab="7">Горячие клавиши</div>
+      <div className="set-group" data-tab="7">{t("Горячие клавиши")}</div>
       <div className="set-sub keys-hint">
-        Нажми на сочетание и затем новые клавиши. Backspace — выключить, «Сброс» — как было. Красным — занято другой программой.
-      </div>
+        {t("Нажми на сочетание и затем новые клавиши. Backspace — выключить, «Сброс» — как было. Красным — занято другой программой.")}</div>
       {hotkeys.map((h) => (
         <div key={h.action} className={`set-row hotkey-row ${h.taken ? "taken" : ""}`}>
           <div className="set-text">
-            <div className="set-title">{h.title}</div>
-            {h.taken && <div className="set-sub bad-text">занято другой программой — выбери другое</div>}
+            <div className="set-title">{t(h.title)}</div>
+            {h.taken && <div className="set-sub bad-text">{t("занято другой программой — выбери другое")}</div>}
           </div>
           <button
             className={`text-btn solid hotkey-btn ${recordingKey === h.action ? "accent" : ""}`}
@@ -1135,12 +1128,11 @@ export function SettingsTab({
               api?.call<Hotkey[]>("hotkey_set", { action: h.action, combo: k }).then((l) => l && setHotkeys(l));
             }}
           >
-            {recordingKey === h.action ? "Нажми сочетание…" : h.combo ? keyLabel(h.combo) : "выключено"}
+            {recordingKey === h.action ? t("Нажми сочетание…") : h.combo ? keyLabel(h.combo) : t("выключено")}
           </button>
           {h.combo !== h.default && (
             <button className="text-btn" onClick={() => api?.call<Hotkey[]>("hotkey_set", { action: h.action, combo: null }).then((l) => l && setHotkeys(l))}>
-              Сброс
-            </button>
+              {t("Сброс")}</button>
           )}
         </div>
       ))}

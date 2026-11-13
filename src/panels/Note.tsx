@@ -4,6 +4,7 @@ import { CloseIcon, Pause, Play, ResetIcon, Ring } from "../components/Icons";
 import { fmtClock, remaining, type useTimer } from "../timer";
 import { describeWhen, parseReminder, type Reminder } from "../reminders";
 
+import { t } from "../i18n";
 const PRESETS = [1, 3, 5, 10, 15, 25];
 
 /** A note that saves itself, and a timer beside it. */
@@ -49,17 +50,16 @@ export function NoteTab({
       <div className="note-col">
         <div className="segmented">
           <button className={view === "note" ? "on" : ""} onClick={() => setView("note")}>
-            Заметка
-          </button>
+            {t("Заметка")}</button>
           <button className={view === "remind" ? "on" : ""} onClick={() => setView("remind")}>
-            Напоминания{reminders.length ? ` · ${reminders.length}` : ""}
+            {t("Напоминания")}{reminders.length ? ` · ${reminders.length}` : ""}
           </button>
         </div>
         {view === "remind" ? (
           <div className="reminders">
             <input
               className="search"
-              placeholder="позвонить маме завтра в 9"
+              placeholder={t("позвонить маме завтра в 9")}
               value={phrase}
               onFocus={onTypeStart}
               onChange={(e) => setPhrase(e.target.value)}
@@ -74,8 +74,8 @@ export function NoteTab({
               {phrase.trim()
                 ? parsed
                   ? `${parsed.text} — ${describeWhen(parsed)} · Enter`
-                  : "Не понял, когда: «завтра в 9», «через 20 минут», «каждый день в 23:00»"
-                : "Одной фразой: что и когда"}
+                  : t("Не понял, когда: «завтра в 9», «через 20 минут», «каждый день в 23:00»")
+                : t("Одной фразой: что и когда")}
             </div>
             <div className="list">
               {reminders.map((r) => (
@@ -83,7 +83,7 @@ export function NoteTab({
                   <div className="clip-text">{r.text}</div>
                   <span className="meta">{describeWhen(r)}</span>
                   <span className="actions">
-                    <button aria-label="Удалить" onClick={() => setReminders(reminders.filter((x) => x.id !== r.id))}>
+                    <button aria-label={t("Удалить")} onClick={() => setReminders(reminders.filter((x) => x.id !== r.id))}>
                       <CloseIcon size={11} />
                     </button>
                   </span>
@@ -94,7 +94,7 @@ export function NoteTab({
         ) : (
       <textarea
         className="note"
-        placeholder="Заметка: всё, что напишешь, сохранится само"
+        placeholder={t("Заметка: всё, что напишешь, сохранится само")}
         value={text ?? ""}
         disabled={text === null}
         spellCheck={false}
@@ -111,7 +111,7 @@ export function NoteTab({
       <div className="timer">
         <div
           className="timer-face"
-          title={timer.active ? "" : "Колесо мыши — минуты"}
+          title={timer.active ? "" : t("Колесо мыши — минуты")}
           onWheel={(e) => {
             if (timer.active) return;
             e.stopPropagation();
@@ -135,21 +135,21 @@ export function NoteTab({
         <div className="timer-ctl">
           <button
             className="main"
-            aria-label={timer.running ? "Пауза" : "Старт"}
+            aria-label={timer.running ? t("Пауза") : t("Старт")}
             onClick={() => (timer.running ? timer.pause() : timer.active ? timer.resume() : timer.start(pick * 60_000))}
           >
             {timer.running ? <Pause size={20} /> : <Play size={20} />}
           </button>
-          <button aria-label="Сбросить" disabled={!timer.active} onClick={timer.reset}>
+          <button aria-label={t("Сбросить")} disabled={!timer.active} onClick={timer.reset}>
             <ResetIcon />
           </button>
         </div>
         <button
           className={`chip pomo-btn ${pomo ? "on" : ""}`}
-          title="25 минут работы, 5 минут отдыха; каждый четвёртый перерыв — 15. Клодик работает и отдыхает вместе с тобой"
+          title={t("25 минут работы, 5 минут отдыха; каждый четвёртый перерыв — 15. Клодик работает и отдыхает вместе с тобой")}
           onClick={() => onPomodoro(!pomo)}
         >
-          {pomo ? (pomo.phase === "work" ? `Помидор ${pomo.round} · стоп` : "Отдых · стоп") : "Помодоро"}
+          {pomo ? (pomo.phase === "work" ? t("Помидор {0} · стоп", pomo.round) : t("Отдых · стоп")) : t("Помодоро")}
         </button>
       </div>
     </div>

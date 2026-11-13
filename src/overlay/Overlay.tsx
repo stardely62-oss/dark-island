@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./overlay.css";
 
+import { t } from "../i18n";
 type Mode = "area" | "full" | "ocr" | "qr" | "color" | "record";
 type Tool = "arrow" | "rect" | "marker" | "text" | "blur";
 type Pt = { x: number; y: number };
@@ -49,7 +50,7 @@ function mockFrame(): Promise<HTMLImageElement> {
   g.fillRect(c.width * 0.18, c.height * 0.2, c.width * 0.42, c.height * 0.5);
   g.fillStyle = "#222";
   g.font = `${28 * devicePixelRatio}px Segoe UI, sans-serif`;
-  ["Отчёт за ноябрь", "Выручка выросла на 12%", "Пароль: hunter2"].forEach((t, i) =>
+  [t("Отчёт за ноябрь"), t("Выручка выросла на 12%"), t("Пароль: hunter2")].forEach((t, i) =>
     g.fillText(t, c.width * 0.21, c.height * 0.3 + i * 48 * devicePixelRatio),
   );
   const img = new Image();
@@ -406,14 +407,13 @@ export function Overlay() {
       {phase === "select" && (
         <div className="ov-hint">
           {mode === "ocr"
-            ? "Выдели текст"
+            ? t("Выдели текст")
             : mode === "qr"
-              ? "Выдели QR-код"
+              ? t("Выдели QR-код")
               : mode === "record"
-                ? "Запись экрана: выдели область · клик — весь экран"
-                : "Выдели область · клик — весь экран"}{" "}
-          · Esc — отмена
-        </div>
+                ? t("Запись экрана: выдели область · клик — весь экран")
+                : t("Выдели область · клик — весь экран")}{" "}
+          {t("· Esc — отмена")}</div>
       )}
       {phase === "select" && drag && (
         <div className="ov-size" style={{ left: mouse.x / dpr + 14, top: mouse.y / dpr + 14 }}>
@@ -448,11 +448,11 @@ export function Overlay() {
         <div className="ov-bar" style={{ top: barTop, left: barLeft }} onPointerDown={(e) => e.stopPropagation()}>
           {(
             [
-              ["arrow", "Стрелка (1)", <path key="a" d="M5 19 19 5M10 5h9v9" />],
-              ["rect", "Рамка (2)", <rect key="r" x="4" y="6" width="16" height="12" rx="2" />],
-              ["marker", "Маркер (3)", <path key="m" d="m14 4 6 6-9 9H5v-6Z" />],
-              ["text", "Текст (4)", <path key="t" d="M5 6V4h14v2M12 4v16M9 20h6" />],
-              ["blur", "Скрыть (5)", <path key="b" d="M4 4h5v5H4zM15 4h5v5h-5zM9.5 9.5h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5z" />],
+              ["arrow", t("Стрелка (1)"), <path key="a" d="M5 19 19 5M10 5h9v9" />],
+              ["rect", t("Рамка (2)"), <rect key="r" x="4" y="6" width="16" height="12" rx="2" />],
+              ["marker", t("Маркер (3)"), <path key="m" d="m14 4 6 6-9 9H5v-6Z" />],
+              ["text", t("Текст (4)"), <path key="t" d="M5 6V4h14v2M12 4v16M9 20h6" />],
+              ["blur", t("Скрыть (5)"), <path key="b" d="M4 4h5v5H4zM15 4h5v5h-5zM9.5 9.5h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5z" />],
             ] as [Tool, string, React.ReactNode][]
           ).map(([id, label, icon]) => (
             <button key={id} className={tool === id ? "on" : ""} title={label} onClick={() => setTool(id)}>
@@ -466,28 +466,24 @@ export function Overlay() {
             <button key={c} className={`swatch ${color === c ? "on" : ""}`} style={{ background: c }} title={c} onClick={() => setColor(c)} />
           ))}
           <span className="ov-sep" />
-          <button title="Отменить (Ctrl+Z)" disabled={!shapes.length} onClick={() => setShapes((s) => s.slice(0, -1))}>
+          <button title={t("Отменить (Ctrl+Z)")} disabled={!shapes.length} onClick={() => setShapes((s) => s.slice(0, -1))}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 14 4 9l5-5" />
               <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
             </svg>
           </button>
-          <button className="txt" title="Распознать текст" onClick={() => finish("ocr")}>
-            Текст
-          </button>
-          <button className="txt" title="Прочитать QR-код" onClick={() => finish("qr")}>
+          <button className="txt" title={t("Распознать текст")} onClick={() => finish("ocr")}>
+            {t("Текст")}</button>
+          <button className="txt" title={t("Прочитать QR-код")} onClick={() => finish("qr")}>
             QR
           </button>
-          <button className="txt" title="Загрузить и скопировать ссылку" onClick={() => finish("upload")}>
-            Ссылка
-          </button>
-          <button className="txt" title="Сохранить (Ctrl+S)" onClick={() => finish("save")}>
-            Сохранить
-          </button>
-          <button className="txt main" title="Копировать (Enter)" onClick={() => finish("copy")}>
-            Копировать
-          </button>
-          <button title="Закрыть (Esc)" onClick={cancel}>
+          <button className="txt" title={t("Загрузить и скопировать ссылку")} onClick={() => finish("upload")}>
+            {t("Ссылка")}</button>
+          <button className="txt" title={t("Сохранить (Ctrl+S)")} onClick={() => finish("save")}>
+            {t("Сохранить")}</button>
+          <button className="txt main" title={t("Копировать (Enter)")} onClick={() => finish("copy")}>
+            {t("Копировать")}</button>
+          <button title={t("Закрыть (Esc)")} onClick={cancel}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
               <path d="m6 6 12 12M18 6 6 18" />
             </svg>
@@ -548,8 +544,7 @@ function Magnifier({ img, at, pick, dpr }: { img: HTMLImageElement; at: Pt; pick
       </div>
       <div className="ov-loupe-hex" style={{ left: x, top: below ? y + size / 2 + 8 : y - size / 2 - 34 }}>
         <span style={{ background: c ?? "#000" }} />
-        {c} · клик — копировать · Esc — отмена
-      </div>
+        {c} {" "}{t("· клик — копировать · Esc — отмена")}</div>
     </>
   );
 }
