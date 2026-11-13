@@ -109,9 +109,10 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
   );
 }
 
-function Row({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+/** A setting; `adv` ones show only with "Все настройки" on (or in a search). */
+function Row({ title, sub, adv, children }: { title: string; sub?: string; adv?: boolean; children: React.ReactNode }) {
   return (
-    <div className="set-row">
+    <div className={`set-row ${adv ? "adv" : ""}`}>
       <div className="set-text">
         <div className="set-title">{title}</div>
         {sub && <div className="set-sub">{sub}</div>}
@@ -205,22 +206,27 @@ export function SettingsTab({
     const root = listRef.current;
     if (!root) return;
     const f = q.trim().toLowerCase();
+    const all = !!settings.settingsAll;
     let group: HTMLElement | null = null;
     let gi = -1;
     let any = false;
     // gi: the tab this group belongs to.
-    const close = () => group && (group.style.display = (f && !any) || (!f && gi !== section) ? "none" : "");
+    const close = () => group && (group.style.display = !any || (!f && gi !== section) ? "none" : "");
     for (const el of root.querySelectorAll<HTMLElement>(":scope > *")) {
       if (el.classList.contains("set-tools")) continue;
       if (el.classList.contains("set-group")) {
         close();
         group = el;
         gi = Number(el.dataset.tab ?? 0);
-        any = !f || (el.textContent ?? "").toLowerCase().includes(f);
-        el.dataset.match = any ? "1" : "";
+        const named = !!f && (el.textContent ?? "").toLowerCase().includes(f);
+        any = false;
+        el.dataset.match = named ? "1" : "";
         continue;
       }
-      const hit = f ? group?.dataset.match === "1" || (el.textContent ?? "").toLowerCase().includes(f) : gi === section;
+      // In the short list, advanced rows stay out (a search finds them all the same).
+      const hit = f
+        ? group?.dataset.match === "1" || (el.textContent ?? "").toLowerCase().includes(f)
+        : gi === section && (all || !el.classList.contains("adv"));
       el.style.display = hit ? "" : "none";
       if (hit) any = true;
     }
@@ -289,8 +295,8 @@ export function SettingsTab({
   }, [api, visible]);
   const provider = providerOf(settings);
   const preset = PROVIDERS.find((p) => p.id === provider.id) ?? PROVIDERS[0];
-  const keyRow = ({ id, title, sub, url }: { id: string; title: string; sub?: string; url?: string }) => (
-    <Row title={title} sub={keyStatus[id] ? "Ключ сохранён (зашифрован Windows)" : sub}>
+  const keyRow = ({ id, title, sub, url, adv }: { id: string; title: string; sub?: string; url?: string; adv?: boolean }) => (
+    <Row adv={adv} title={title} sub={keyStatus[id] ? "Ключ сохранён (зашифрован Windows)" : sub}>
       <input
         className="search set-input"
         type="password"
@@ -359,11 +365,15 @@ export function SettingsTab({
                 {g.replace(/\s*\(.*\)$/, "")}
               </button>
             ))}
+            <label className="set-all" title="Показать редкие и тонкие настройки">
+              <Toggle on={!!settings.settingsAll} onChange={(v) => set({ settingsAll: v })} />
+              Все настройки
+            </label>
           </div>
         )}
       </div>
       <div className="set-group" data-tab="0">Остров</div>
-      <Row title="Линия над окнами" sub="Если окно заходит под остров (вкладки браузера), он становится тонкой линией">
+      <Row adv title="Линия над окнами" sub="Если окно заходит под остров (вкладки браузера), он становится тонкой линией">
         <Toggle on={settings.stripOverWindows} onChange={(v) => set({ stripOverWindows: v })} />
       </Row>
       <Row title="Прятаться в играх" sub="В полноэкранных играх острова нет совсем">
@@ -398,7 +408,7 @@ export function SettingsTab({
       <Row title="Автоскрытие" sub="Остров уходит за край и возвращается, если задержать курсор у самого верха">
         <Toggle on={!!settings.autoHide} onChange={(v) => set({ autoHide: v })} />
       </Row>
-      <Row title="Прятаться в программах" sub="Имена exe через запятую: остров уходит, пока одна из них впереди">
+      <Row adv title="Прятаться в программах" sub="Имена exe через запятую: остров уходит, пока одна из них впереди">
         <input className="search set-input" value={hideFor} onFocus={onTypeStart} onChange={(e) => setHideFor(e.target.value)} onBlur={() => set({ hideForApps: list(hideFor) })} />
       </Row>
       <Row title="Сквозной режим" sub="Свёрнутый остров пропускает клики и не раскрывается под курсором (Ctrl+Alt+T)">
@@ -426,10 +436,10 @@ export function SettingsTab({
         label={(v) => `${Math.round(v * 100)}%`}
         onCommit={(v) => set({ islandScale: v })}
       />
-      <Row title="Прозрачность свёрнутого" sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
+      <Row adv title="Прозрачность свёрнутого" sub={`${Math.round(((settings.pillOpacity as number) ?? 1) * 100)}%`}>
         <input className="range" type="range" min={0.3} max={1} step={0.05} value={(settings.pillOpacity as number) ?? 1} onChange={(e) => set({ pillOpacity: Number(e.target.value) })} />
       </Row>
-      <Row title="Прозрачность открытого" sub={`${Math.round(((settings.openOpacity as number) ?? 1) * 100)}%`}>
+      <Row adv title="Прозрачность открытого" sub={`${Math.round(((settings.openOpacity as number) ?? 1) * 100)}%`}>
         <input className="range" type="range" min={0.5} max={1} step={0.05} value={(settings.openOpacity as number) ?? 1} onChange={(e) => set({ openOpacity: Number(e.target.value) })} />
       </Row>
       {monitors.length > 1 && (
@@ -638,7 +648,7 @@ export function SettingsTab({
       )}
       {keyRow({ id: provider.id, title: `Ключ ${preset.name}`, sub: "Хранится только на этом компьютере", url: preset.keyUrl })}
       {provider.id === "custom" && (
-        <Row title="Адрес" sub="OpenAI-совместимый, например Ollama или LM Studio">
+        <Row adv title="Адрес" sub="OpenAI-совместимый, например Ollama или LM Studio">
           <input className="search set-input" defaultValue={provider.base} onFocus={onTypeStart} onBlur={(e) => set({ [`aiBase_${provider.id}`]: e.target.value })} />
         </Row>
       )}
@@ -690,7 +700,7 @@ export function SettingsTab({
         />
       </Row>
       {settings.sttService === "windows" && (
-        <Row title="Параметры речи Windows" sub="Если диктовка пишет, что выключена, — включи там распознавание в сети">
+        <Row adv title="Параметры речи Windows" sub="Если диктовка пишет, что выключена, — включи там распознавание в сети">
           <button className="text-btn solid" onClick={() => api?.call("open_windows_settings", { page: "speech" })}>
             Открыть
           </button>
@@ -714,7 +724,7 @@ export function SettingsTab({
           onChange={(v) => set({ sttLang: v })}
         />
       </Row>
-      <Row title="Сразу вставлять в окно" sub="Иначе текст только в буфере">
+      <Row adv title="Сразу вставлять в окно" sub="Иначе текст только в буфере">
         <Toggle on={settings.dictationPaste !== false} onChange={(v) => set({ dictationPaste: v })} />
       </Row>
 
@@ -730,7 +740,7 @@ export function SettingsTab({
         />
       </Row>
       {settings.recordFormat !== "gif" && (
-        <Row title="Звук в записи">
+        <Row adv title="Звук в записи">
           <Segmented
             value={settings.recordSound}
             options={[
@@ -742,7 +752,7 @@ export function SettingsTab({
           />
         </Row>
       )}
-      {settings.recordFormat !== "gif" && <Row title="Кадров в секунду" sub="H.264">
+      {settings.recordFormat !== "gif" && <Row adv title="Кадров в секунду" sub="H.264">
         <Segmented
           value={String((settings.recordFps as number) ?? 30)}
           options={[
@@ -752,7 +762,7 @@ export function SettingsTab({
           onChange={(v) => set({ recordFps: Number(v) })}
         />
       </Row>}
-      <Row title="Качество">
+      <Row adv title="Качество">
         <Segmented
           value={(settings.recordQuality as string) ?? "normal"}
           options={[
@@ -764,7 +774,7 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="3">Ссылка на скриншот</div>
-      <Row title="Сервис" sub="Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается">
+      <Row adv title="Сервис" sub="Кнопка «Ссылка» на панели снимка; пока ключа нет, ничего не загружается">
         <Segmented
           value={(settings.uploadService as string) ?? "imgbb"}
           options={[
@@ -774,13 +784,13 @@ export function SettingsTab({
           onChange={(v) => set({ uploadService: v })}
         />
       </Row>
-      {keyRow({id: (settings.uploadService as string) ?? "imgbb",
+      {keyRow({adv: true, id: (settings.uploadService as string) ?? "imgbb",
         title: (settings.uploadService as string) === "imgur" ? "Client ID Imgur" : "Ключ ImgBB",
         url: (settings.uploadService as string) === "imgur" ? "https://api.imgur.com/oauth2/addclient" : "https://api.imgbb.com/",
       })}
 
       <div className="set-group" data-tab="4">Звук</div>
-      <Row title="Громкость острова" sub="Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается">
+      <Row adv title="Громкость острова" sub="Чью громкость регулируют колесо и ползунок; сам звук никуда не переключается">
         <select className="search set-input select" value={(settings.volumeDevice as string) ?? ""} onChange={(e) => set({ volumeDevice: e.target.value })}>
           <option value="">Как в Windows</option>
           {devices.outputs.map((d) => (
@@ -790,7 +800,7 @@ export function SettingsTab({
           ))}
         </select>
       </Row>
-      <Row title="Микрофон острова" sub="Что выключает кнопка микрофона и откуда пишет диктовка">
+      <Row adv title="Микрофон острова" sub="Что выключает кнопка микрофона и откуда пишет диктовка">
         <select className="search set-input select" value={(settings.micDevice as string) ?? ""} onChange={(e) => set({ micDevice: e.target.value })}>
           <option value="">Все (диктовка — с основного)</option>
           {devices.inputs.map((d) => (
@@ -853,12 +863,12 @@ export function SettingsTab({
         )}
         <Toggle on={!!settings.showNotifications} onChange={(v) => set({ showNotifications: v })} />
       </Row>
-      <Row title="Не показывать от программ" sub="Части названий через запятую">
+      <Row adv title="Не показывать от программ" sub="Части названий через запятую">
         <input className="search set-input" value={muted} onFocus={onTypeStart} onChange={(e) => setMuted(e.target.value)} onBlur={() => set({ notifyMuted: list(muted).map((x) => x.toLowerCase()) })} />
       </Row>
 
       <div className="set-group" data-tab="6">Сеть</div>
-      <Row title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, когда VPN включается; видно на плитке VPN в «Управлении»">
+      <Row adv title="Страна и IP при включении VPN" sub="Один запрос к ipwho.is, когда VPN включается; видно на плитке VPN в «Управлении»">
         <Toggle on={!!settings.vpnCountry} onChange={(v) => set({ vpnCountry: v })} />
       </Row>
       <Row title="VPN" sub="Остров только показывает, включён ли VPN и какой у тебя IP (нажми на плитку — скопируется). Включать и выключать — в самой VPN-программе">
@@ -866,15 +876,15 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="3">OBS Studio</div>
-      <Row title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">
+      <Row adv title="Показывать запись и эфир" sub="Через obs-websocket: в OBS — Инструменты → Настройки WebSocket-сервера, включить">
         <Toggle on={!!settings.obsEnabled} onChange={(v) => set({ obsEnabled: v })} />
       </Row>
       {settings.obsEnabled && (
         <>
-          <Row title="Порт">
+          <Row adv title="Порт">
             <input className="search set-input narrow" defaultValue={settings.obsPort} onFocus={onTypeStart} onBlur={(e) => set({ obsPort: e.target.value.trim() || "4455" })} />
           </Row>
-          {keyRow({ id: "obs", title: "Пароль сервера", sub: "Если в OBS включена аутентификация" })}
+          {keyRow({ adv: true, id: "obs", title: "Пароль сервера", sub: "Если в OBS включена аутентификация" })}
         </>
       )}
 
@@ -935,10 +945,10 @@ export function SettingsTab({
       <Row title="Показывать агентов на острове">
         <Toggle on={settings.agents} onChange={(v) => set({ agents: v })} />
       </Row>
-      <Row title="Показывать, пока агент работает" sub="Клодик печатает в пилюле всё время работы. Выключено — только вопросы и итоговый ответ">
+      <Row adv title="Показывать, пока агент работает" sub="Клодик печатает в пилюле всё время работы. Выключено — только вопросы и итоговый ответ">
         <Toggle on={!!settings.agentsWorking} onChange={(v) => set({ agentsWorking: v })} />
       </Row>
-      <Row title="Отвечать на разрешения с острова" sub="30 секунд на ответ, потом вопрос уходит в терминал">
+      <Row adv title="Отвечать на разрешения с острова" sub="30 секунд на ответ, потом вопрос уходит в терминал">
         <Toggle on={settings.agentsAnswer} onChange={(v) => set({ agentsAnswer: v })} />
       </Row>
 
@@ -946,7 +956,7 @@ export function SettingsTab({
       <Row title="Записывать историю">
         <Toggle on={settings.clipboardHistory} onChange={(v) => set({ clipboardHistory: v })} />
       </Row>
-      <Row title="Не записывать из программ" sub="Имена exe через запятую, например keepass, 1password">
+      <Row adv title="Не записывать из программ" sub="Имена exe через запятую, например keepass, 1password">
         <input
           className="search set-input"
           value={skip}
@@ -964,10 +974,10 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="3">Скриншоты</div>
-      <Row title="Сохранять в папку" sub="Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда">
+      <Row adv title="Сохранять в папку" sub="Изображения → Screenshots → Dark Island; в буфер снимок попадает всегда">
         <Toggle on={settings.screenshotSave !== false} onChange={(v) => set({ screenshotSave: v })} />
       </Row>
-      <Row title="Показывать остров на скриншотах" sub="И в записи экрана, и на трансляциях">
+      <Row adv title="Показывать остров на скриншотах" sub="И в записи экрана, и на трансляциях">
         <Toggle on={settings.showInCaptures === true} onChange={(v) => set({ showInCaptures: v })} />
       </Row>
 
@@ -1003,7 +1013,7 @@ export function SettingsTab({
         </div>
       )}
       <div className="set-group" data-tab="7">Данные и версия</div>
-      <Row title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
+      <Row adv title="Настройки в файл" sub={dataMsg ?? "Перенести на другой компьютер или сохранить на всякий случай. Ключи ИИ и подключения агентов в файл не попадают"}>
         <button
           className="text-btn solid"
           onClick={() =>
@@ -1027,7 +1037,7 @@ export function SettingsTab({
           Загрузить
         </button>
       </Row>
-      <Row title="Сбросить настройки" sub={resetArmed ? "Нажми ещё раз — всё вернётся как после установки" : "Ключи, подключения агентов и Клодик-питомец останутся"}>
+      <Row adv title="Сбросить настройки" sub={resetArmed ? "Нажми ещё раз — всё вернётся как после установки" : "Ключи, подключения агентов и Клодик-питомец останутся"}>
         <button
           className={`text-btn solid ${resetArmed ? "danger" : ""}`}
           onClick={() => {
@@ -1081,7 +1091,7 @@ export function SettingsTab({
       </Row>
 
       <div className="set-group" data-tab="7">Если что-то не работает</div>
-      <Row title="Журнал" sub="Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось">
+      <Row adv title="Журнал" sub="Полка, микрофон и другие системные действия пишут сюда, что произошло — пришли его, если что-то сломалось">
         <button className="text-btn solid" onClick={() => api?.call("diag_open")}>
           Открыть
         </button>
