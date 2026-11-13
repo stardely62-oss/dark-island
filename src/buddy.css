@@ -620,7 +620,8 @@
 }
 
 /* ---- leaving and coming back to the pill ---- */
-.buddy.re-away {
+/* "away": only the pill's Клодик hides while his copy climbs off the screen */
+.pill-buddy .buddy.re-away {
   opacity: 0;
 }
 .buddy.re-plop {
@@ -1963,4 +1964,30 @@
   0%, 70% { opacity: 0; }
   72%, 80% { opacity: 1; }
   82%, 100% { opacity: 0; }
+}
+
+/* hats that move */
+.buddy .bd-halo {
+  animation: bd-halo 2.4s ease-in-out infinite;
+}
+@keyframes bd-halo {
+  50% { transform: translateY(-0.6px); opacity: 0.8; }
+}
+.buddy .bd-prop {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: bd-prop 0.35s linear infinite;
+}
+@keyframes bd-prop {
+  50% { transform: scaleX(0.15); }
+}
+.buddy .bd-ears {
+  transform-box: fill-box;
+}
+.buddy.re-surprised .bd-ears,
+.buddy.re-excited .bd-ears {
+  animation: bd-ears 0.3s ease-in-out 2;
+}
+@keyframes bd-ears {
+  50% { transform: translateY(-0.5px); }
 }

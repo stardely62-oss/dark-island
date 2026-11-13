@@ -1,5 +1,15 @@
 /** English for the interface: Russian text → English. Missing ones show in Russian. */
 export const EN: Record<string, string> = {
+  "Ковбой": "Cowboy",
+  "Пират": "Pirate",
+  "Викинг": "Viking",
+  "Повар": "Chef",
+  "Берет": "Beret",
+  "Венок": "Wreath",
+  "Ушки": "Cat ears",
+  "Нимб": "Halo",
+  "Пропеллер": "Propeller",
+  "Выпускник": "Graduate",
   "Это не JSON — нужен текст вида {\"ключ\": \"значение\"}": "This isn't JSON — it should look like {\"key\": \"value\"}",
   "Это не Base64 — тут можно раскодировать только текст вроде 0L/RgNC40LLQtdGC. Чтобы закодировать, нажми «Base64»": "This isn't Base64 — only text like 0L/RgNC40LLQtdGC can be decoded here. To encode, press “Base64”",
   "Это не закодированный адрес (в нём нет правильных %XX)": "This isn't an encoded address (no valid %XX in it)",

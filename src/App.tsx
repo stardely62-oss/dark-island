@@ -2457,11 +2457,13 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
     const half = view.offsetWidth / 2;
     if (spot === "home") {
       const slot = view.querySelector<HTMLElement>(".buddy-home");
-      if (!slot) return null;
-      const o = offsetWithin(slot, view);
-      return { x: o.x - half, y: o.y + slot.offsetHeight / 2 - (SIZE * 11) / 15 / 2 };
+      if (slot) {
+        const o = offsetWithin(slot, view);
+        return { x: o.x - half, y: o.y + slot.offsetHeight / 2 - (SIZE * 11) / 15 / 2 };
+      }
+      // Another tab is open (his clock spot is on Home only): he sits on the Home tab button.
     }
-    const i = TABS.findIndex((t) => t.id === spot);
+    const i = Math.max(0, TABS.findIndex((t) => t.id === spot));
     const btn = view.querySelectorAll<HTMLElement>("nav.tabs button")[i];
     if (!btn) return null;
     const o = offsetWithin(btn, view);
@@ -2484,11 +2486,38 @@ function TabBuddy({ tab, shown, sleeping, scale, life }: { tab: Tab; shown: bool
       setVisit(null);
       return;
     }
-    const p = measure(spot);
-    if (!p) return;
-    from.current = placed.current && ref.current ? ref.current.getBoundingClientRect() : null;
-    setPos(p);
+    // The open island may not be laid out yet (it is still growing, or
+    // another view is fading out): try again on the next frames instead of
+    // giving up — giving up left him unplaced, i.e. invisible, until the
+    // island was closed and opened again.
+    let raf = 0;
+    let tries = 0;
+    const place = () => {
+      const p = measure(spot);
+      if (!p) {
+        if (tries++ < 60) raf = requestAnimationFrame(place);
+        return;
+      }
+      from.current = placed.current && ref.current ? ref.current.getBoundingClientRect() : null;
+      setPos(p);
+    };
+    place();
+    return () => cancelAnimationFrame(raf);
   }, [spot, shown, measure, SIZE]);
+  // A safety net: every couple of seconds he checks he is where he should
+  // be (a window resize, a zoom change or a tab that changed its height).
+  useEffect(() => {
+    if (!shown) return;
+    const id = window.setInterval(() => {
+      // Hidden by a hop that never finished: show him again.
+      const svg = ref.current?.querySelector<HTMLElement>(".buddy");
+      if (svg?.style.visibility === "hidden" && !document.querySelector(".buddy-ghost")) svg.style.visibility = "";
+      const p = measure(lastSpot.current);
+      if (!p) return;
+      setPos((old) => (old && Math.abs(old.x - p.x) < 1 && Math.abs(old.y - p.y) < 1 ? old : p));
+    }, 2000);
+    return () => clearInterval(id);
+  }, [shown, measure]);
 
   // Each hop is its own flight along an arc, started from wherever he is now,
   // so quick clicks make him jump again in mid-air instead of sliding.

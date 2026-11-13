@@ -262,6 +262,16 @@ export const HATS: [string, string][] = [
   ["flower", t("Цветок")],
   ["santa", t("Дед Мороз")],
   ["witch", t("Ведьма")],
+  ["cowboy", t("Ковбой")],
+  ["pirate", t("Пират")],
+  ["viking", t("Викинг")],
+  ["chef", t("Повар")],
+  ["beret", t("Берет")],
+  ["wreath", t("Венок")],
+  ["cat", t("Ушки")],
+  ["halo", t("Нимб")],
+  ["propeller", t("Пропеллер")],
+  ["grad", t("Выпускник")],
 ];
 export const COLORS: [string, string][] = [
   ["#d97757", t("Терракота")],
@@ -774,6 +784,71 @@ function Hat({ hat }: { hat: string }) {
           {r(4, -1, 8, 2, "#6f8dff")}{r(10, -2, 3, 1, "#6f8dff")}{r(13, -1, 1, 2, "#6f8dff")}{r(13, 1, 1, 1, "#fff")}{r(5, 0, 1, 1, "#ffd84a")}{r(9, -1, 1, 1, "#ffd84a")}
         </g>
       );
+    case "cowboy":
+      return (
+        <g className="bd-hat">
+          {r(5, -3, 5, 1, "#a8703a")}{r(4, -2, 7, 2, "#a8703a")}{r(4, -1, 7, 1, "#5b3a1e")}{r(0, 0, 15, 1, "#8a5a2b")}{r(0, -1, 1, 1, "#8a5a2b")}{r(14, -1, 1, 1, "#8a5a2b")}
+        </g>
+      );
+    case "pirate":
+      return (
+        <g className="bd-hat">
+          {r(4, -3, 7, 3, "#1f1f24")}{r(2, -1, 2, 1, "#1f1f24")}{r(11, -1, 2, 1, "#1f1f24")}{r(2, 0, 11, 1, "#1f1f24")}{r(7, -2, 1, 1, "#f2f2f2")}{r(6, -1, 1, 1, "#f2f2f2")}{r(8, -1, 1, 1, "#f2f2f2")}
+          {r(4, 0, 7, 1, "#c4314b")}
+        </g>
+      );
+    case "viking":
+      return (
+        <g className="bd-hat">
+          {r(4, -2, 7, 3, "#9aa3ad")}{r(5, -3, 5, 1, "#b8c0c9")}{r(7, -2, 1, 3, "#7a828c")}{r(3, 0, 9, 1, "#7a828c")}
+          {r(2, -1, 1, 1, "#efe6cf")}{r(1, -2, 1, 1, "#efe6cf")}{r(1, -3, 1, 1, "#efe6cf")}{r(12, -1, 1, 1, "#efe6cf")}{r(13, -2, 1, 1, "#efe6cf")}{r(13, -3, 1, 1, "#efe6cf")}
+        </g>
+      );
+    case "chef":
+      return (
+        <g className="bd-hat">
+          {r(4, -4, 3, 2, "#fafafa")}{r(7, -5, 2, 3, "#fafafa")}{r(9, -4, 3, 2, "#fafafa")}{r(5, -2, 6, 2, "#f2f2f2")}{r(4, 0, 8, 1, "#d9d9d9")}
+        </g>
+      );
+    case "beret":
+      return (
+        <g className="bd-hat">
+          {r(3, -1, 9, 1, "#c4314b")}{r(4, -2, 8, 1, "#c4314b")}{r(9, -3, 3, 1, "#c4314b")}{r(7, -3, 1, 1, "#8f1f33")}{r(2, 0, 3, 1, "#c4314b")}
+        </g>
+      );
+    case "wreath":
+      return (
+        <g className="bd-hat">
+          {r(2, 0, 11, 1, "#5c9e4a")}{r(3, -1, 1, 1, "#5c9e4a")}{r(11, -1, 1, 1, "#5c9e4a")}
+          {r(4, -1, 1, 1, "#ff8fb4")}{r(6, -1, 1, 1, "#ffd84a")}{r(8, -1, 1, 1, "#9fd8ff")}{r(10, -1, 1, 1, "#ff8fb4")}{r(7, 0, 1, 1, "#ffffff")}
+        </g>
+      );
+    case "cat":
+      return (
+        <g className="bd-hat bd-ears">
+          {r(2, -1, 3, 2, C)}{r(2, -2, 2, 1, C)}{r(2, -3, 1, 1, C)}{r(3, -1, 1, 1, "#ff9fbf")}
+          {r(10, -1, 3, 2, C)}{r(11, -2, 2, 1, C)}{r(12, -3, 1, 1, C)}{r(11, -1, 1, 1, "#ff9fbf")}
+        </g>
+      );
+    case "halo":
+      return (
+        <g className="bd-hat bd-halo">
+          {r(4, -4, 7, 1, "#ffe27a")}{r(3, -3, 1, 1, "#ffe27a")}{r(11, -3, 1, 1, "#ffe27a")}{r(4, -2, 7, 1, "#ffe27a")}
+        </g>
+      );
+    case "propeller":
+      return (
+        <g className="bd-hat">
+          {r(3, -1, 9, 2, "#ff6f6f")}{r(5, -1, 2, 2, "#ffd84a")}{r(9, -1, 2, 2, "#6f8dff")}{r(7, -2, 1, 1, "#555")}
+          <g className="bd-prop">{r(4, -3, 7, 1, "#9aa3ad")}</g>
+        </g>
+      );
+    case "grad":
+      return (
+        <g className="bd-hat">
+          {r(4, -1, 7, 2, "#34343c")}{r(1, -2, 13, 1, "#4a4a56")}{r(3, -3, 9, 1, "#4a4a56")}{r(7, -3, 1, 1, "#ffd84a")}{r(12, -2, 1, 1, "#ffd84a")}{r(13, -1, 1, 2, "#ffd84a")}
+        </g>
+      );
     case "flower":
       return <g className="bd-hat">{r(11, -2, 1, 1, "#ff8fb4")}{r(10, -1, 1, 1, "#ff8fb4")}{r(12, -1, 1, 1, "#ff8fb4")}{r(11, 0, 1, 1, "#ff8fb4")}{r(11, -1, 1, 1, "#ffd84a")}</g>;
   }
@@ -970,12 +1045,19 @@ export function hopTo(fromEl: Element | null, toEl: Element | null): Promise<voi
     ],
     { duration: 620, easing: "cubic-bezier(.3,.7,.4,1)" },
   );
+  // He comes back even if the flight never reports its end (a window in the
+  // background can hold animations): never left hidden.
+  const back = () => {
+    g.remove();
+    (fromEl as HTMLElement).style.visibility = "";
+  };
+  const safety = window.setTimeout(back, 1600);
   return anim.finished
     .catch(() => undefined)
     .then(() => {
       window.setTimeout(() => {
-        g.remove();
-        (fromEl as HTMLElement).style.visibility = "";
+        clearTimeout(safety);
+        back();
       }, 260);
     });
 }
