@@ -420,6 +420,8 @@ export function App() {
   const hudTimer = useRef<number>(0);
   const knownVolume = useRef<Volume | null>(null);
   const bandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0]);
+  const lastBands = useRef("");
+  const sameBands = useRef(0);
   const liveTimer = useRef<number>(0);
   const expandedRef = useRef(false);
   expandedRef.current = expanded;
@@ -474,6 +476,15 @@ export function App() {
           }
         }),
         b.on("audio", (bands) => {
+          // The very same levels again and again are not live sound (a stuck
+          // stream): after a second of that the bars go back to their own loop.
+          const key = bands.map((v) => v.toFixed(4)).join();
+          sameBands.current = key === lastBands.current ? sameBands.current + 1 : 0;
+          lastBands.current = key;
+          if (sameBands.current > 30) {
+            bandsRef.current = bands.map(() => 0);
+            return;
+          }
           bandsRef.current = bands;
           if (bands.some((v) => v > 0.02)) {
             setLive(true);

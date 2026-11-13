@@ -94,10 +94,16 @@ fn capture(app: &AppHandle, an: &mut Analyser) -> windows::core::Result<()> {
         let mut last_sound = Instant::now() - SILENCE_AFTER;
         let mut quiet_sent = true;
         let mut last_check = Instant::now();
+        // When packets stop coming (nothing plays, or Windows paused the
+        // stream), the last sound must not be analysed over and over: that
+        // froze the bars at one height while the music went on.
+        let mut last_packet = Instant::now();
+        let mut fed_silence = 0usize;
 
         loop {
             thread::sleep(Duration::from_millis(10));
 
+            let mut got = false;
             loop {
                 let n = cap.GetNextPacketSize()?;
                 if n == 0 {
@@ -125,6 +131,24 @@ fn capture(app: &AppHandle, an: &mut Analyser) -> windows::core::Result<()> {
                     an.push(s);
                 }
                 cap.ReleaseBuffer(frames)?;
+                got = true;
+            }
+            if got {
+                last_packet = Instant::now();
+                fed_silence = 0;
+            } else if last_packet.elapsed() > Duration::from_millis(120) && fed_silence < FFT {
+                // Silence in real time, until the window holds nothing old.
+                let n = ((fmt.rate * 0.01) as usize).max(1);
+                for _ in 0..n {
+                    an.push(0.0);
+                }
+                fed_silence += n;
+            }
+            // A stream that has said nothing for a long while may be stuck
+            // (another app took the device): open it again.
+            if last_packet.elapsed() > Duration::from_secs(8) {
+                let _ = client.Stop();
+                return Ok(());
             }
 
             if last_emit.elapsed() >= EMIT_EVERY {
