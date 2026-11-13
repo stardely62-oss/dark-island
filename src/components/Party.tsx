@@ -92,3 +92,71 @@ export function PartyScene({ title, sub, onClose }: { title: string; sub: string
     </div>
   );
 }
+
+const MOVES: { cls: string; tip: string }[] = [
+  { cls: "mv-stretch", tip: "Потянись вверх — руки к потолку" },
+  { cls: "mv-bend", tip: "Наклоны в стороны, не торопись" },
+  { cls: "mv-squat", tip: "Пара приседаний — разгони кровь" },
+  { cls: "mv-look", tip: "Посмотри вдаль 20 секунд — глазам отдых" },
+  { cls: "mv-tea", tip: "И попей воды или чаю" },
+];
+export const MOVE_MS = 3600;
+
+/**
+ * The break: he gets up from the desk and warms up with you — stretch,
+ * side bends, squats, a look into the distance, a cup of tea.
+ */
+export function BreakScene({
+  minutes,
+  step,
+  onRest,
+  onLater,
+}: {
+  minutes: number;
+  step: number;
+  onRest: () => void;
+  onLater: () => void;
+}) {
+  const move = MOVES[Math.min(step, MOVES.length - 1)];
+  return (
+    <div className="brk">
+      <div className="brk-head">
+        <b>Перерыв</b>
+        <span>ты за компьютером уже {minutes} мин</span>
+      </div>
+      <div className="brk-stage">
+        <div className="brk-sun" aria-hidden />
+        <div className={`brk-me ${move.cls}`} key={move.cls}>
+          <Buddy size={70} still className="brk-buddy happy" />
+          <div className="brk-cup" aria-hidden>
+            <i className="brk-steam" />
+            <i className="brk-steam s2" />
+          </div>
+          <div className="brk-eyes-far" aria-hidden>
+            <i />
+            <i />
+            <i />
+          </div>
+        </div>
+        <div className="brk-floor" />
+      </div>
+      <div className="brk-tip" key={step}>
+        {move.tip}
+      </div>
+      <div className="brk-dots" aria-hidden>
+        {MOVES.map((m, i) => (
+          <i key={m.cls} className={i === step ? "on" : i < step ? "done" : ""} />
+        ))}
+      </div>
+      <div className="brk-actions">
+        <button className="text-btn" onClick={onLater}>
+          Позже
+        </button>
+        <button className="text-btn solid accent" onClick={onRest}>
+          Таймер 5 мин
+        </button>
+      </div>
+    </div>
+  );
+}
+export const BREAK_MOVES = MOVES.length;

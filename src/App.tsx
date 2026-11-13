@@ -39,7 +39,7 @@ import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { PartyScene } from "./components/Party";
+import { BREAK_MOVES, BreakScene, MOVE_MS, PartyScene } from "./components/Party";
 import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, usePet, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
 
@@ -56,7 +56,7 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { party?: boolean; path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
+  open?: { scene?: "party" | "break"; minutes?: number; path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
   title: string;
   sub?: string;
   sticky?: boolean;
@@ -248,12 +248,25 @@ export function App() {
   }, []);
 
   // The birthday show in the open island (a hover on the birthday card starts it).
-  const [party, setParty] = useState(0);
+  // A scene in the open island: the birthday show or the break warm-up
+  // (a hover on their card starts it).
+  const [scene, setScene] = useState<{ kind: "party" | "break"; key: number; minutes: number } | null>(null);
+  const party = scene?.key ?? 0;
+  const [brkStep, setBrkStep] = useState(0);
+  const startScene = (open: Card["open"]) =>
+    open?.scene && setScene({ kind: open.scene, key: Date.now(), minutes: open.minutes ?? 0 });
   useEffect(() => {
-    if (!party) return;
-    const t = window.setTimeout(() => setParty(0), 10_500);
-    return () => clearTimeout(t);
-  }, [party]);
+    if (!scene) return;
+    setBrkStep(0);
+    const long = scene.kind === "break" ? BREAK_MOVES * MOVE_MS + 4000 : 10_500;
+    const t = window.setTimeout(() => setScene(null), long);
+    const steps =
+      scene.kind === "break" ? window.setInterval(() => setBrkStep((n) => Math.min(n + 1, BREAK_MOVES - 1)), MOVE_MS) : 0;
+    return () => {
+      clearTimeout(t);
+      clearInterval(steps);
+    };
+  }, [scene]);
 
   const timerRef = useRef<ReturnType<typeof useTimer>>(null!);
   // ---- pomodoro: 25 minutes of work, 5 of rest (15 after every fourth) ----
@@ -784,7 +797,7 @@ export function App() {
         kind: "info",
         title: who === "user" ? "С днём рождения!" : `У ${buddy.look.name} день рождения!`,
         sub: who === "user" ? `${buddy.look.name} испёк торт — наведи` : `Ему ${buddyAge()} — наведи`,
-        open: { party: true },
+        open: { scene: "party" },
         ms: 15000,
       });
     };
@@ -819,10 +832,24 @@ export function App() {
       buddy.act("stretch", 1400);
       window.setTimeout(() => buddy.act("coffee", 4000), 1500);
       const m = Math.round((Date.now() - activeSince.current) / 60_000);
-      showCard({ kind: "info", title: `${buddy.look.name}: может, перерыв?`, sub: `Ты за компьютером уже ${m} мин — встань, разомнись`, ms: 9000 });
+      showCard({
+        kind: "info",
+        title: `${buddy.look.name}: может, перерыв?`,
+        sub: `Уже ${m} мин за компьютером — наведи`,
+        open: { scene: "break", minutes: m },
+        ms: 12000,
+      });
     }, 60_000);
     return () => clearInterval(id);
   }, [settings.breakReminder, settings.breakMinutes, away, showCard]);
+
+  // For screenshots and tests: window.dispatchEvent(new Event("debug-break")).
+  useEffect(() => {
+    const on = () =>
+      showCard({ kind: "info", title: `${buddy.look.name}: может, перерыв?`, sub: "Уже 50 мин за компьютером — наведи", open: { scene: "break", minutes: 50 }, ms: 12000 });
+    window.addEventListener("debug-break", on);
+    return () => window.removeEventListener("debug-break", on);
+  }, [showCard]);
 
   // The charger went in: a jolt of energy.
   const wasCharging = useRef<boolean | null>(null);
@@ -990,8 +1017,8 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.key]);
   useEffect(() => {
-    if (hovered && card?.open?.party) {
-      setParty(Date.now());
+    if (hovered && card?.open?.scene) {
+      startScene(card.open);
       setCard(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1292,8 +1319,8 @@ export function App() {
             return;
           }
           if (mode === "party") return;
-          if (mode === "card" && card?.open?.party) {
-            setParty(Date.now());
+          if (mode === "card" && card?.open?.scene) {
+            startScene(card.open);
             setCard(null);
             return;
           }
@@ -1436,12 +1463,28 @@ export function App() {
           <AgentPill working={working} />
         </View>
         <View on={mode === "party"} shape={sizeOf("party")}>
-          {!!party && (
+          {scene?.kind === "break" && (
+            <BreakScene
+              key={scene.key}
+              minutes={scene.minutes}
+              step={brkStep}
+              onRest={() => {
+                setScene(null);
+                timerRef.current.start(5 * 60_000);
+              }}
+              onLater={() => {
+                setScene(null);
+                // Ask again in 15 minutes.
+                nudgedAt.current = Date.now() - ((settings.breakMinutes as number) ?? 50) * 60_000 + 15 * 60_000;
+              }}
+            />
+          )}
+          {scene?.kind === "party" && (
             <PartyScene
               key={party}
               title={birthdayToday() === "buddy" ? `${buddy.look.name}у ${buddyAge()}!` : "С днём рождения!"}
               sub={birthdayToday() === "buddy" ? "Спасибо, что ты со мной" : `${buddy.look.name} испёк тебе торт`}
-              onClose={() => setParty(0)}
+              onClose={() => setScene(null)}
             />
           )}
         </View>
