@@ -1,5 +1,16 @@
 /** English for the interface: Russian text → English. Missing ones show in Russian. */
 export const EN: Record<string, string> = {
+  "С возвращением!": "Welcome back!",
+  "{0} скучал": "{0} missed you",
+  "Доброе утро!": "Good morning!",
+  "Сейчас {0}": "Now {0}",
+  "Хорошего дня": "Have a nice day",
+  "Уже {0}": "It's {0} already",
+  "{0} зевает — может, пора спать?": "{0} is yawning — time for bed?",
+  "Батарея {0}%": "Battery {0}%",
+  "Пора на зарядку": "Time to plug in",
+  "Новая наклейка!": "New sticker!",
+  "{0} — наведи": "{0} — hover",
   "каждый день": "every day",
   "по будням": "on weekdays",
   "{0} в {1}": "{0} at {1}",

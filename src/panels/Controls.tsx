@@ -90,6 +90,18 @@ export function ControlsTab({
     const id = window.setInterval(load, 3000);
     return () => clearInterval(id);
   }, [api, visible]);
+  // A pulse on the tile when the VPN comes on.
+  const [vpnPulse, setVpnPulse] = useState(false);
+  const vpnBefore = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (vpnBefore.current === null && vpn) {
+      setVpnPulse(true);
+      const id = window.setTimeout(() => setVpnPulse(false), 1500);
+      vpnBefore.current = vpn;
+      return () => clearTimeout(id);
+    }
+    vpnBefore.current = vpn;
+  }, [vpn]);
   // VPN: only shown, not switched. The address the internet sees, and its country.
   const [ip, setIp] = useState<[string, string] | null>(null);
   // The IP shows for a few seconds after a click (and is copied).
@@ -136,7 +148,7 @@ export function ControlsTab({
 
   const tile = (what: "wifi" | "bluetooth" | "dark" | "mic" | "vpn" | "through", icon: React.ReactNode, title: string, on: boolean | null | undefined, sub: string) => (
     <button
-      className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""}`}
+      className={`ctl-tile ${on ? "on" : ""} ${busy === what ? "busy" : ""} ${what === "vpn" && vpnPulse ? "pulse" : ""}`}
       disabled={on === null || on === undefined}
       title={what === "vpn" ? (vpn ? t("Нажми — покажу и скопирую IP") : t("VPN включается и выключается в самой VPN-программе")) : `${title}: ${sub}`}
       onClick={() =>

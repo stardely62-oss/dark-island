@@ -33,13 +33,13 @@ import { WeatherTab } from "./panels/Weather";
 import { Launcher, useLauncherHotkeys } from "./panels/Launcher";
 import { AiTab } from "./panels/Ai";
 import { nextRepeat, type Reminder } from "./reminders";
-import { fmtTemp, rainSoon, type Weather } from "./weather";
+import { describe, fmtTemp, rainSoon, type Weather } from "./weather";
 import { WeatherIcon } from "./components/WeatherIcon";
 import { lineAt, parseLrc, type Line } from "./lyrics";
 import { fmtClock, remaining, useTimer } from "./timer";
 import { chime } from "./chime";
 import { Bars } from "./components/Bars";
-import { BREAK_MOVES, BreakScene, MOVE_MS, PartyScene } from "./components/Party";
+import { BREAK_MOVES, BreakScene, MOVE_MS, PartyScene, StickerScene } from "./components/Party";
 import { lang, setLang, locale } from "./i18n";
 import { Buddy, animateBuddies, birthdayToday, buddy, buddyAge, climbOut, sfx, usePet, type Mood } from "./components/Buddy";
 import { shiftHue, useAccent } from "./accent";
@@ -58,12 +58,18 @@ type Card = {
   thumb?: string | null;
   swatch?: string;
   /** What a click on the card does. */
-  open?: { scene?: "party" | "break"; minutes?: number; path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
+  open?: { scene?: "party" | "break" | "sticker"; minutes?: number; sticker?: { title: string; hint: string; icon: string; color: string }; path?: string; url?: string; app?: string; reveal?: string; translate?: string; settings?: string; tab?: Tab };
   title: string;
   sub?: string;
   sticky?: boolean;
   /** Shown even while the island is hidden over a game (the good-luck wish). */
   peek?: boolean;
+  /** What Klodik does while the card is up (he takes the icon's place). */
+  act?: string;
+  /** A small animated picture instead of the icon. */
+  anim?: string;
+  /** A camera flash over the card. */
+  flash?: boolean;
   mood?: Mood;
   ms?: number;
 };
@@ -129,7 +135,7 @@ function sizeOf(
         : opts.card?.kind === "agent" || opts.card?.kind === "capture" || opts.card?.kind === "notify"
         ? { w: 380, h: 60 }
         : // A one-line card grows with its words, up to a point.
-          { w: Math.round(Math.min(440, Math.max(250, 60 + ((opts.card?.title.length ?? 0) + (opts.card?.sub?.length ?? 0)) * 7.4))), h: 34 };
+          { w: Math.round(Math.min(470, Math.max(250, (opts.card?.act ? 84 : 60) + ((opts.card?.title.length ?? 0) + (opts.card?.sub?.length ?? 0)) * 7.4))), h: 34 };
     case "timer":
       return { w: opts.pomo ? 236 : 172, h: 32 };
     case "media":
@@ -233,6 +239,7 @@ export function App() {
   const touring = useRef(false);
   const waiting = useRef<Omit<Card, "key">[]>([]);
   const cardRef = useRef<Card | null>(null);
+  const downloadsRef = useRef(0);
   // When the island last went away into a game (for the good-luck wish).
   const gameWish = useRef(0);
   const actionable = (c: Omit<Card, "key"> | null) =>
@@ -244,6 +251,7 @@ export function App() {
       return;
     }
     clearTimeout(cardTimer.current);
+    if (c.act) buddy.act(c.act, c.sticky ? 6000 : Math.min(c.ms ?? 3000, 4200));
     // The timer starts once the card is on screen (see below): behind an
     // open island it would run out unseen.
     setCard({ ...c, key: Date.now() });
@@ -252,15 +260,20 @@ export function App() {
   // The birthday show in the open island (a hover on the birthday card starts it).
   // A scene in the open island: the birthday show or the break warm-up
   // (a hover on their card starts it).
-  const [scene, setScene] = useState<{ kind: "party" | "break"; key: number; minutes: number } | null>(null);
+  const [scene, setScene] = useState<{
+    kind: "party" | "break" | "sticker";
+    key: number;
+    minutes: number;
+    sticker?: { title: string; hint: string; icon: string; color: string };
+  } | null>(null);
   const party = scene?.key ?? 0;
   const [brkStep, setBrkStep] = useState(0);
   const startScene = (open: Card["open"]) =>
-    open?.scene && setScene({ kind: open.scene, key: Date.now(), minutes: open.minutes ?? 0 });
+    open?.scene && setScene({ kind: open.scene, key: Date.now(), minutes: open.minutes ?? 0, sticker: open.sticker });
   useEffect(() => {
     if (!scene) return;
     setBrkStep(0);
-    const long = scene.kind === "break" ? BREAK_MOVES * MOVE_MS + 4000 : 10_500;
+    const long = scene.kind === "break" ? BREAK_MOVES * MOVE_MS + 4000 : scene.kind === "sticker" ? 7500 : 10_500;
     const t = window.setTimeout(() => setScene(null), long);
     const steps =
       scene.kind === "break" ? window.setInterval(() => setBrkStep((n) => Math.min(n + 1, BREAK_MOVES - 1)), MOVE_MS) : 0;
@@ -310,7 +323,7 @@ export function App() {
       return;
     }
     buddy.react("excited", 3000);
-    showCard({ kind: "timer", title: t("Таймер"), sub: t("{0} — готово", fmtClock(total)), sticky: true });
+    showCard({ kind: "timer", title: t("Таймер"), sub: t("{0} — готово", fmtClock(total)), sticky: true, act: "alarm" });
     window.setTimeout(chime, 2500);
   });
   useEffect(() => buddy.setFocus(pomoRef.current?.phase ?? null), []);
@@ -436,6 +449,9 @@ export function App() {
           if (p !== "hidden") {
             waiting.current = waiting.current.filter((c) => !c.peek);
             setCard((c) => (c?.peek ? null : c));
+            // Back after a real stretch of play: he waves hello.
+            if (presenceRef.current === "hidden" && Date.now() - gameWish.current > 5 * 60_000)
+              showCard({ kind: "info", title: t("С возвращением!"), sub: t("{0} скучал", buddy.look.name), ms: 2600, act: "wave" });
           }
           presenceRef.current = p;
           setPresence(p);
@@ -474,8 +490,8 @@ export function App() {
         }),
         b.on("keys", (k) => {
           if (expandedRef.current) return;
-          if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? t("включён") : t("выключен") });
-          else if (k.layout) showCard({ kind: "layout", title: t("Раскладка"), sub: k.layout });
+          if (k.what === "caps") showCard({ kind: "caps", title: "Caps Lock", sub: k.caps ? t("включён") : t("выключен"), anim: k.caps ? "caps-on" : "caps-off" });
+          else if (k.layout) showCard({ kind: "layout", title: t("Раскладка"), sub: k.layout, anim: "layout" });
         }),
         b.on("agent", (e) => onAgentRef.current(e)),
         b.on("weather", setWeather),
@@ -499,7 +515,7 @@ export function App() {
           if (r.on) setRecording(Date.now());
           else {
             setRecording(null);
-            if (r.path) showCard({ kind: "capture", title: t("Запись сохранена"), sub: r.path.split(/[\\/]/).pop(), open: { reveal: r.path }, ms: 5000 });
+            if (r.path) showCard({ kind: "capture", title: t("Запись сохранена"), sub: r.path.split(/[\\/]/).pop(), open: { reveal: r.path }, ms: 5000, act: "clapper" });
             else if (r.error) showCard({ kind: "info", title: t("Запись экрана"), sub: r.error, ms: 4000 });
           }
         }),
@@ -516,7 +532,12 @@ export function App() {
           setPrivacy(p);
         }),
         b.on("foreground", setForeground),
-        b.on("downloads", setDownloads),
+        b.on("downloads", (list) => {
+          // A download begins: he catches the file.
+          if (list.length && !downloadsRef.current) buddy.act("catch", 1600);
+          downloadsRef.current = list.length;
+          setDownloads(list);
+        }),
         b.on("tour", () => window.dispatchEvent(new Event("island-tour"))),
         b.on("obs", (o) => {
           const live = o.recording || o.streaming;
@@ -527,18 +548,19 @@ export function App() {
           );
         }),
         b.on("download_done", (d) =>
-          (buddy.react("happy", 1300), showCard)({ kind: "capture", title: t("Загружено"), sub: d.name, open: { reveal: d.path }, ms: 5000 }),
+          showCard({ kind: "capture", title: t("Загружено"), sub: d.name, open: { reveal: d.path }, ms: 5000, act: "box" }),
         ),
         b.on("mic_muted", (m) => {
           setPrivacy((p) => ({ ...p, micMuted: m }));
-          showCard({ kind: "info", title: t("Микрофон"), sub: m ? t("выключен") : t("включён") });
+          showCard({ kind: "info", title: t("Микрофон"), sub: m ? t("выключен") : t("включён"), act: m ? "hush" : undefined, ms: m ? 2200 : undefined });
         }),
         b.on("vpn", (v) =>
           showCard({
             kind: "info",
             title: v.on ? t("VPN включён") : t("VPN выключен"),
             sub: v.on ? [v.country, v.ip].filter(Boolean).join(" · ") || v.name || "" : "",
-            ms: 2500,
+            ms: v.on ? 3200 : 2500,
+            act: v.on && !v.country ? "shades" : undefined,
           }),
         ),
         b.on("notification", (n) =>
@@ -577,7 +599,7 @@ export function App() {
           if (r.kind === "text" || r.kind === "qr") buddy.act("magnify", 4600);
           const first = r.text.split("\n")[0];
           if (r.kind === "shot")
-            showCard({ kind: "capture", title: t("Снимок готов"), sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000 });
+            showCard({ kind: "capture", title: t("Снимок готов"), sub: r.text, thumb: r.thumb, open: r.path ? { path: r.path } : undefined, ms: 4000, act: "camera", flash: true });
           else if (r.kind === "text")
             showCard({ kind: "capture", title: t("Текст скопирован"), sub: first, open: { translate: r.text }, ms: 6000 });
           else if (r.kind === "qr")
@@ -590,7 +612,10 @@ export function App() {
             });
           else if (r.kind === "link")
             showCard({ kind: "capture", title: t("Ссылка скопирована"), sub: r.text, open: { url: r.text }, ms: 5000 });
-          else if (r.kind === "color") showCard({ kind: "capture", title: t("Цвет скопирован"), sub: r.text, swatch: r.text, ms: 3000 });
+          else if (r.kind === "color") {
+            document.documentElement.style.setProperty("--bd-paint", r.text);
+            showCard({ kind: "capture", title: t("Цвет скопирован"), sub: r.text, swatch: r.text, ms: 3000, act: "paint" });
+          }
           else {
             buddy.react("angry", 1800);
             showCard({ kind: "info", title: t("Снимок"), sub: r.text });
@@ -673,7 +698,7 @@ export function App() {
       setSetting({ reminders: rest });
       chime();
       buddy.react("excited", 3000);
-      showCard({ kind: "reminder", title: t("Напоминание"), sub: due.text, sticky: true, reminder: due });
+      showCard({ kind: "reminder", title: t("Напоминание"), sub: due.text, sticky: true, reminder: due, act: "bell" });
     };
     check();
     const id = window.setInterval(check, 15_000);
@@ -729,7 +754,7 @@ export function App() {
       const r = rainSoon(weather);
       if (r && Date.now() - rainShown.current > 3 * 3_600_000) {
         rainShown.current = Date.now();
-        showCard({ kind: "info", title: r.snow ? t("Скоро снег") : t("Скоро дождь"), sub: t("через {0} мин", r.minutes), ms: 4000 });
+        showCard({ kind: "info", title: r.snow ? t("Скоро снег") : t("Скоро дождь"), sub: t("через {0} мин", r.minutes), ms: 4000, act: r.snow ? "snow" : "umbrella" });
       }
     };
     check();
@@ -774,8 +799,14 @@ export function App() {
   // A new sticker for the album.
   useEffect(() => {
     const on = (e: Event) => {
-      const st = (e as CustomEvent<{ title: string; hint: string }>).detail;
-      showCard({ kind: "info", title: t("Новая наклейка: {0}", st.title), sub: st.hint, ms: 4000 });
+      const st = (e as CustomEvent<{ title: string; hint: string; icon: string; color: string }>).detail;
+      showCard({
+        kind: "info",
+        title: t("Новая наклейка: {0}", st.title),
+        sub: t("{0} — наведи", st.hint),
+        ms: 6000,
+        open: { scene: "sticker", sticker: { title: st.title, hint: st.hint, icon: st.icon, color: st.color } },
+      });
     };
     window.addEventListener("buddy-sticker", on);
     return () => window.removeEventListener("buddy-sticker", on);
@@ -810,6 +841,55 @@ export function App() {
       clearInterval(id);
     };
   }, [settings.userBirthday, showCard]);
+  // Morning and late night: the first visit of the day gets a sunrise, a
+  // visit deep in the night a yawn (once each).
+  useEffect(() => {
+    if (away) return;
+    const day = (d: Date) => d.toDateString();
+    const once = (key: string, value: string) => {
+      try {
+        if (localStorage.getItem(key) === value) return false;
+        localStorage.setItem(key, value);
+      } catch {
+        /* no storage: still once per run */
+      }
+      return true;
+    };
+    const check = () => {
+      const now = new Date();
+      const h = now.getHours() + now.getMinutes() / 60;
+      if (h >= 5 && h < 12 && once("island.morning", day(now))) {
+        const cur = weather?.points.length
+          ? weather.points.reduce((b, p) => (Math.abs(p.t - now.getTime()) < Math.abs(b.t - now.getTime()) ? p : b))
+          : null;
+        const wx = cur ? `${fmtTemp(cur.temp)}, ${describe(cur.symbol).text}` : "";
+        showCard({ kind: "info", title: t("Доброе утро!"), sub: wx ? t("Сейчас {0}", wx) : t("Хорошего дня"), ms: 3600, act: "sunrise" });
+      } else if (h >= 0.5 && h < 4.5 && once("island.night", day(now))) {
+        const hm = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+        showCard({ kind: "info", title: t("Уже {0}", hm), sub: t("{0} зевает — может, пора спать?", buddy.look.name), ms: 4000, act: "yawn" });
+      }
+    };
+    const first = window.setTimeout(check, 6000);
+    const id = window.setInterval(check, 10 * 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [away, showCard]);
+  // Low battery: he drags the plug to the socket (once per discharge).
+  const lowWarned = useRef(false);
+  useEffect(() => {
+    if (!battery) return;
+    if (battery.charging || battery.percent > 20) {
+      lowWarned.current = false;
+      return;
+    }
+    if (battery.percent <= 15 && !lowWarned.current) {
+      lowWarned.current = true;
+      showCard({ kind: "info", title: t("Батарея {0}%", battery.percent), sub: t("Пора на зарядку"), ms: 4000, act: "plug" });
+    }
+  }, [battery, showCard]);
   // A break now and then: after a long stretch at the computer he asks you to rest.
   const activeSince = useRef(Date.now());
   const nudgedAt = useRef(0);
@@ -858,8 +938,14 @@ export function App() {
   useEffect(() => {
     const on = () =>
       showCard({ kind: "info", title: t("{0}: может, перерыв?", buddy.look.name), sub: t("Уже 50 мин за компьютером — наведи"), open: { scene: "break", minutes: 50 }, ms: 12000 });
+    // Any card: window.dispatchEvent(new CustomEvent("debug-card", { detail: {...} })).
+    const any = (e: Event) => showCard((e as CustomEvent<Omit<Card, "key">>).detail);
     window.addEventListener("debug-break", on);
-    return () => window.removeEventListener("debug-break", on);
+    window.addEventListener("debug-card", any);
+    return () => {
+      window.removeEventListener("debug-break", on);
+      window.removeEventListener("debug-card", any);
+    };
   }, [showCard]);
 
   // The charger went in: a jolt of energy.
@@ -1123,7 +1209,7 @@ export function App() {
         api?.call<{ wifi: boolean; bluetooth: boolean; dark: boolean }>("controls_get").then((c) => {
           const on = !c[id as "wifi" | "bluetooth" | "dark"];
           api?.call("controls_set", { what: id, on });
-          showCard({ kind: "info", title: id === "dark" ? t("Тема") : id === "wifi" ? "Wi-Fi" : "Bluetooth", sub: on ? (id === "dark" ? t("тёмная") : t("включён")) : id === "dark" ? t("светлая") : t("выключен") });
+          showCard({ anim: id === "dark" ? (on ? "theme-dark" : "theme-light") : `${id}-${on ? "on" : "off"}`, kind: "info", title: id === "dark" ? t("Тема") : id === "wifi" ? "Wi-Fi" : "Bluetooth", sub: on ? (id === "dark" ? t("тёмная") : t("включён")) : id === "dark" ? t("светлая") : t("выключен") });
         });
       },
       close: () => {
@@ -1466,7 +1552,8 @@ export function App() {
             }
             onCopyColor={(c) => {
               navigator.clipboard?.writeText(c).catch(() => {});
-              showCard({ kind: "capture", title: t("Цвет скопирован"), sub: c, swatch: c, ms: 2500 });
+              document.documentElement.style.setProperty("--bd-paint", c);
+              showCard({ kind: "capture", title: t("Цвет скопирован"), sub: c, swatch: c, ms: 2500, act: "paint" });
             }}
           />,
         )}
@@ -1489,6 +1576,9 @@ export function App() {
                 nudgedAt.current = Date.now() - ((settings.breakMinutes as number) ?? 50) * 60_000 + 15 * 60_000;
               }}
             />
+          )}
+          {scene?.kind === "sticker" && scene.sticker && (
+            <StickerScene key={scene.key} {...scene.sticker} onClose={() => setScene(null)} />
           )}
           {scene?.kind === "party" && (
             <PartyScene
@@ -1629,7 +1719,7 @@ function CardView({
     return (
       <div className="reminder-card" key={card.key}>
         <div className="rc-head">
-          <Buddy size={28} mood="ask" />
+          <Buddy size={28} mood={card.act ? null : "ask"} />
           <div className="agent-text">
             <div className="card-title">{t("Напоминание")}</div>
             <div className="rc-text">{r.text}</div>
@@ -1646,12 +1736,17 @@ function CardView({
   }
   if (card.kind === "capture" || card.kind === "notify") {
     return (
-      <div className={`compact card card-agent ${card.open ? "clickable" : ""}`} key={card.key}>
+      <div className={`compact card card-agent ${card.open ? "clickable" : ""} ${card.flash ? "card-flash" : ""}`} key={card.key}>
+        {card.act && (
+          <span className="card-buddy">
+            <Buddy size={26} />
+          </span>
+        )}
         {card.thumb ? (
           <img className="card-thumb" src={card.thumb} alt="" />
         ) : card.swatch ? (
           <span className="card-swatch" style={{ background: card.swatch }} />
-        ) : (
+        ) : card.act ? null : (
           <span className="card-icon">{card.kind === "notify" ? <BellIcon /> : <TabClip size={20} />}</span>
         )}
         <div className="agent-text">
@@ -1675,15 +1770,83 @@ function CardView({
       </div>
     );
   }
-  const icon =
-    card.kind === "caps" ? <CapsIcon /> : card.kind === "layout" ? <GlobeIcon /> : card.kind === "timer" ? <TimerIcon /> : null;
+  const icon = card.act ? (
+    <Buddy size={26} />
+  ) : card.anim ? (
+    <AnimIcon kind={card.anim} sub={card.sub ?? ""} />
+  ) : card.kind === "caps" ? (
+    <CapsIcon />
+  ) : card.kind === "layout" ? (
+    <GlobeIcon />
+  ) : card.kind === "timer" ? (
+    <TimerIcon />
+  ) : null;
   return (
     <div className={`compact card card-${card.kind}`} key={card.key}>
-      <span className="card-icon">{icon}</span>
+      <span className={`card-icon ${card.act ? "card-buddy" : ""}`}>{icon}</span>
       <span className="card-title">{card.title}</span>
       <span className="card-sub">{card.sub}</span>
     </div>
   );
+}
+
+/**
+ * Little moving pictures for switch cards: the sun and the moon trade
+ * places, Wi-Fi waves rise or fade, the Bluetooth rune pings, a letter
+ * flips case, the layout code turns over.
+ */
+function AnimIcon({ kind, sub }: { kind: string; sub: string }) {
+  if (kind === "theme-dark" || kind === "theme-light")
+    return (
+      <span className={`ai-theme ${kind}`} aria-hidden>
+        <svg width="20" height="20" viewBox="0 0 24 24">
+          <g className="ai-sun">
+            <circle cx="12" cy="12" r="4.5" fill="#ffd84a" />
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((a) => (
+              <rect key={a} x="11.2" y="2" width="1.6" height="3" rx="0.8" fill="#ffd84a" transform={`rotate(${a} 12 12)`} />
+            ))}
+          </g>
+          <g className="ai-moon">
+            <path d="M15.5 4.5a8 8 0 1 0 4 12.5 6.5 6.5 0 0 1-4-12.5z" fill="#cfd6ff" />
+          </g>
+        </svg>
+      </span>
+    );
+  if (kind.startsWith("wifi"))
+    return (
+      <span className={`ai-wifi ${kind}`} aria-hidden>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <path className="w3" d="M2.5 9a14 14 0 0 1 19 0" />
+          <path className="w2" d="M5.5 12.5a9.5 9.5 0 0 1 13 0" />
+          <path className="w1" d="M8.6 16a5 5 0 0 1 6.8 0" />
+          <circle className="w0" cx="12" cy="19.2" r="1.3" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+    );
+  if (kind.startsWith("bluetooth"))
+    return (
+      <span className={`ai-bt ${kind}`} aria-hidden>
+        <i className="ping" />
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m7 7 10 10-5 4V3l5 4L7 17" />
+        </svg>
+      </span>
+    );
+  if (kind.startsWith("caps"))
+    return (
+      <span className={`ai-flip ${kind}`} aria-hidden>
+        <b className="front">{kind === "caps-on" ? "a" : "A"}</b>
+        <b className="back">{kind === "caps-on" ? "A" : "a"}</b>
+      </span>
+    );
+  if (kind === "layout")
+    return (
+      <span className="ai-flip layout" aria-hidden>
+        <b className="front">⌨</b>
+        <b className="back">{sub.slice(0, 2).toUpperCase()}</b>
+      </span>
+    );
+  return null;
 }
 
 /**
@@ -1966,6 +2129,9 @@ function DownloadPill({ list }: { list: { name: string; size: number; speed: num
   return (
     <div className="compact download-pill" style={pct !== null ? ({ "--dl": `${pct}%` } as React.CSSProperties) : undefined}>
       {pct !== null && <i className="dl-progress" />}
+      <span className="dl-buddy">
+        <Buddy size={22} />
+      </span>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7fd0ff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M12 4v11M7 10.5 12 15.5l5-5M5 20h14" />
       </svg>

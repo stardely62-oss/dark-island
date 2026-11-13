@@ -3015,3 +3015,171 @@ body.settings-page.preview {
   border-top: 1px solid rgb(255 255 255 / 0.06);
   font-size: 13px;
 }
+
+/* ---- Klodik on event cards, animated card icons ---- */
+.card-buddy {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: none;
+  /* room for the thing he holds on his right */
+  width: 50px;
+  margin-right: 2px;
+  overflow: visible;
+}
+.card-buddy .buddy {
+  translate: 0 2px;
+}
+.card-buddy .buddy {
+  overflow: visible;
+}
+.card-flash {
+  position: relative;
+}
+.card-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #fff;
+  pointer-events: none;
+  opacity: 0;
+  animation: card-flash 2.4s steps(1, end);
+}
+@keyframes card-flash {
+  0%, 30% { opacity: 0; }
+  32% { opacity: 0.55; }
+  36% { opacity: 0.15; }
+  40%, 60% { opacity: 0; }
+  62% { opacity: 0.45; }
+  66% { opacity: 0.1; }
+  70%, 100% { opacity: 0; }
+}
+
+.ai-theme svg {
+  overflow: visible;
+}
+.ai-theme .ai-sun,
+.ai-theme .ai-moon {
+  transform-box: view-box;
+  transform-origin: 12px 26px;
+  transition: none;
+}
+.ai-theme.theme-dark .ai-sun {
+  animation: ai-set 0.9s ease-in both;
+}
+.ai-theme.theme-dark .ai-moon {
+  animation: ai-rise 0.9s ease-out 0.25s both;
+}
+.ai-theme.theme-light .ai-moon {
+  animation: ai-set 0.9s ease-in both;
+}
+.ai-theme.theme-light .ai-sun {
+  animation: ai-rise 0.9s ease-out 0.25s both;
+}
+@keyframes ai-set {
+  from { transform: rotate(0); opacity: 1; }
+  to { transform: rotate(80deg); opacity: 0; }
+}
+@keyframes ai-rise {
+  from { transform: rotate(-80deg); opacity: 0; }
+  to { transform: rotate(0); opacity: 1; }
+}
+.ai-theme.theme-light .ai-sun {
+  animation: ai-rise 0.9s ease-out 0.25s both, ai-spin 6s linear 1.2s infinite;
+}
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+.ai-wifi {
+  color: #7fd0ff;
+}
+.ai-wifi.wifi-on .w0 { animation: ai-in 0.2s ease-out both; }
+.ai-wifi.wifi-on .w1 { animation: ai-in 0.25s ease-out 0.2s both; }
+.ai-wifi.wifi-on .w2 { animation: ai-in 0.25s ease-out 0.4s both; }
+.ai-wifi.wifi-on .w3 { animation: ai-in 0.25s ease-out 0.6s both; }
+.ai-wifi.wifi-off {
+  color: var(--fg-3);
+}
+.ai-wifi.wifi-off .w3 { animation: ai-out 0.25s ease-in both; }
+.ai-wifi.wifi-off .w2 { animation: ai-out 0.25s ease-in 0.2s both; }
+.ai-wifi.wifi-off .w1 { animation: ai-out 0.25s ease-in 0.4s both; }
+@keyframes ai-in {
+  from { opacity: 0; }
+}
+@keyframes ai-out {
+  to { opacity: 0.12; }
+}
+.ai-bt {
+  position: relative;
+  display: grid;
+  place-items: center;
+  color: #6f8dff;
+}
+.ai-bt.bluetooth-off {
+  color: var(--fg-3);
+}
+.ai-bt .ping {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0;
+}
+.ai-bt.bluetooth-on .ping {
+  animation: ai-ping 1.1s ease-out 2;
+}
+.ai-bt.bluetooth-off svg {
+  animation: ai-out 0.6s ease-in both;
+}
+@keyframes ai-ping {
+  from { transform: scale(0.5); opacity: 0.8; }
+  to { transform: scale(1.4); opacity: 0; }
+}
+.ai-flip {
+  position: relative;
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  perspective: 80px;
+}
+.ai-flip b {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.12);
+  font-size: 13px;
+  font-weight: 700;
+  backface-visibility: hidden;
+  animation: ai-flip-front 0.6s ease-in-out 0.15s both;
+}
+.ai-flip b.back {
+  animation-name: ai-flip-back;
+}
+.ai-flip.caps-on b.back,
+.ai-flip.layout b.back {
+  background: #d97757;
+  color: #1a0d08;
+}
+@keyframes ai-flip-front {
+  to { transform: rotateY(180deg); }
+}
+@keyframes ai-flip-back {
+  from { transform: rotateY(-180deg); }
+  to { transform: rotateY(0); }
+}
+
+/* VPN tile: a pulse when it comes on */
+.ctl-tile.pulse .ctl-icon {
+  animation: tile-pulse 0.7s ease-out 2;
+}
+@keyframes tile-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(217 119 87 / 0.7); }
+  100% { box-shadow: 0 0 0 10px rgb(217 119 87 / 0); }
+}
+.download-pill .dl-buddy {
+  display: grid;
+  place-items: center;
+  flex: none;
+}

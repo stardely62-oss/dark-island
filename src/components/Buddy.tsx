@@ -787,6 +787,66 @@ function Props() {
   const r = (x: number, y: number, w: number, h: number, f: string, k?: string) => <rect key={k} x={x} y={y} width={w} height={h} fill={f} />;
   return (
     <g className="bd-props">
+      {/* ---- event props: shown in the pill too (class pill-ok) ---- */}
+      <g className="bd-p pill-ok bd-p-camera">
+        <g className="bd-cam">
+          {r(13, 2, 6, 4, "#3a3d44")}{r(14, 1, 2, 1, "#3a3d44")}{r(15, 3, 2, 2, "#9fd8ff")}{r(16, 3, 1, 1, "#e8f6ff")}
+        </g>
+        <g className="bd-flash">{r(17, 0, 1, 1, "#fff", "f1")}{r(19, 1, 1, 1, "#fff", "f2")}{r(19, -1, 1, 1, "#fff8c0", "f3")}{r(15, -1, 1, 1, "#fff8c0", "f4")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-clapper">
+        {r(13, 4, 6, 4, "#2b2b30")}{r(14, 5, 4, 1, "#eaeaea")}{r(14, 7, 3, 1, "#eaeaea")}
+        <g className="bd-clap-top">{r(13, 2, 6, 1, "#eaeaea")}{r(13, 3, 6, 1, "#2b2b30")}{r(14, 2, 1, 1, "#2b2b30")}{r(16, 2, 1, 1, "#2b2b30")}{r(18, 2, 1, 1, "#2b2b30")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-shades">
+        <g className="bd-glasses">
+          {r(3, 3, 4, 2, "#141418")}{r(8, 3, 4, 2, "#141418")}{r(7, 3, 1, 1, "#141418")}{r(4, 3, 1, 1, "#8a8f9c")}{r(9, 3, 1, 1, "#8a8f9c")}
+        </g>
+      </g>
+      <g className="bd-p pill-ok bd-p-umbrella">
+        <g className="bd-umb">{r(3, -2, 15, 1, "#6f8dff")}{r(5, -3, 11, 1, "#6f8dff")}{r(8, -4, 5, 1, "#8fa6ff")}</g>
+        {r(14, -1, 1, 6, "#bbb")}{r(13, 4, 1, 1, "#bbb")}
+        <g className="bd-drops">{r(1, 0, 1, 1, "#9fd8ff", "a")}{r(17, -1, 1, 1, "#9fd8ff", "b")}{r(19, 2, 1, 1, "#9fd8ff", "c")}{r(-1, 2, 1, 1, "#9fd8ff", "d")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-snow">
+        <g className="bd-flakes">{r(2, -4, 1, 1, "#fff", "a")}{r(7, -6, 1, 1, "#e8f4ff", "b")}{r(12, -5, 1, 1, "#fff", "c")}{r(16, -3, 1, 1, "#e8f4ff", "d")}{r(-1, -2, 1, 1, "#fff", "e")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-hush">
+        <g className="bd-mute">{r(15, 0, 1, 1, "#ff6f6f")}{r(17, 0, 1, 1, "#ff6f6f")}{r(16, 1, 1, 1, "#ff6f6f")}{r(15, 2, 1, 1, "#ff6f6f")}{r(17, 2, 1, 1, "#ff6f6f")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-alarm">
+        <g className="bd-clock">
+          {r(15, 3, 5, 5, "#ffd84a")}{r(16, 4, 3, 3, "#fff8e0")}{r(17, 4, 1, 2, "#333")}{r(17, 5, 2, 1, "#333")}
+          {r(14, 2, 2, 1, "#e0a800")}{r(19, 2, 2, 1, "#e0a800")}{r(15, 8, 1, 1, "#e0a800")}{r(19, 8, 1, 1, "#e0a800")}
+        </g>
+        <g className="bd-rings">{r(13, 1, 1, 1, "#fff", "a")}{r(21, 1, 1, 1, "#fff", "b")}{r(12, 4, 1, 1, "#fff", "c")}{r(22, 4, 1, 1, "#fff", "d")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-bell">
+        <g className="bd-handbell">{r(15, 0, 1, 2, "#8a5a2b")}{r(14, 2, 3, 1, "#ffcf3a")}{r(13, 3, 5, 2, "#ffcf3a")}{r(13, 5, 5, 1, "#e0a800")}{r(15, 6, 1, 1, "#e0a800")}</g>
+        <g className="bd-rings">{r(11, 2, 1, 1, "#fff", "a")}{r(19, 2, 1, 1, "#fff", "b")}{r(19, 5, 1, 1, "#fff", "c")}{r(11, 5, 1, 1, "#fff", "d")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-catch">
+        <g className="bd-falling">{r(6, -6, 4, 5, "#e8eef8")}{r(7, -5, 2, 1, "#9fb0c8")}{r(7, -3, 2, 1, "#9fb0c8")}{r(9, -6, 1, 1, "#9fb0c8")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-box">
+        <g className="bd-crate">{r(14, 5, 6, 4, "#c98a4b")}{r(14, 5, 6, 1, "#e0a868")}{r(16, 5, 2, 4, "#a86f36")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-sunrise">
+        <g className="bd-sun">{r(15, 2, 4, 4, "#ffd84a")}{r(16, 1, 2, 1, "#ffd84a")}{r(16, 6, 2, 1, "#ffd84a")}{r(14, 3, 1, 2, "#ffd84a")}{r(19, 3, 1, 2, "#ffd84a")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-yawn">
+        <g className="bd-yawn-mouth">{r(6, 5, 3, 2, "#3b1d1d")}</g>
+        <g className="bd-zs">{r(14, 0, 2, 1, "#cfd6ff", "a")}{r(15, 1, 1, 1, "#cfd6ff", "b")}{r(14, 2, 2, 1, "#cfd6ff", "c")}</g>
+      </g>
+      <g className="bd-p pill-ok bd-p-paint">
+        <g className="bd-brush">{r(14, 0, 1, 5, "#c98a4b")}{r(13, 5, 3, 1, "#bbb")}<rect x={13} y={6} width={3} height={2} className="bd-paint" /></g>
+        <rect x={18} y={6} width={2} height={2} className="bd-paint bd-drop" />
+      </g>
+      <g className="bd-p pill-ok bd-p-plug">
+        {r(20, 3, 3, 5, "#e6e6e6")}{r(21, 4, 1, 1, "#555")}{r(21, 6, 1, 1, "#555")}
+        <g className="bd-plug-head">{r(13, 5, 1, 1, "#777")}{r(14, 5, 1, 1, "#777")}{r(15, 4, 3, 3, "#f2f2f2")}{r(18, 4, 1, 1, "#aaa")}{r(18, 6, 1, 1, "#aaa")}</g>
+        <g className="bd-spark">{r(19, 2, 1, 1, "#ffd84a")}{r(20, 1, 1, 1, "#ffd84a")}{r(19, 9, 1, 1, "#ffd84a")}</g>
+      </g>
       <g className="bd-p bd-p-paper">
         {r(15, 7, 6, 3, "#efeae0")}{r(16, 6, 5, 1, "#e2dccf")}{r(16, 8, 4, 1, "#b9b2a4")}{r(15, 10, 6, 1, "#d8d1c2")}
         <g className="bd-scraps">

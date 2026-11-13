@@ -159,3 +159,38 @@ export function BreakScene({
   );
 }
 export const BREAK_MOVES = MOVES.length;
+
+/**
+ * A new sticker: a gift box shakes, the lid pops, the sticker spins up
+ * and settles in the album while he claps.
+ */
+export function StickerScene({ title, hint, icon, color, onClose }: { title: string; hint: string; icon: string; color: string; onClose: () => void }) {
+  return (
+    <div className="stk" onClick={onClose}>
+      <div className="stk-rays" aria-hidden />
+      <div className="stk-head">
+        <b>{t("Новая наклейка!")}</b>
+      </div>
+      <div className="stk-me">
+        <Buddy size={64} still className="stk-buddy happy" />
+      </div>
+      <div className="stk-box" aria-hidden>
+        <i className="stk-lid" />
+        <i className="stk-base" />
+        <i className="stk-ribbon" />
+      </div>
+      <div className="stk-sticker" style={{ "--stk": color } as React.CSSProperties}>
+        <span>{icon}</span>
+      </div>
+      <div className="stk-text">
+        <b>{title}</b>
+        <span>{hint}</span>
+      </div>
+      <div className="stk-sparks" aria-hidden>
+        {Array.from({ length: 8 }, (_, i) => (
+          <i key={i} style={{ "--a": `${i * 45}deg` } as React.CSSProperties} />
+        ))}
+      </div>
+    </div>
+  );
+}

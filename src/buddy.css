@@ -672,7 +672,7 @@
   transform-box: fill-box;
 }
 /* In the small pill there is no room for things: only the body moves. */
-.compact .buddy .bd-props {
+.compact .buddy .bd-props > .bd-p:not(.pill-ok) {
   display: none;
 }
 .buddy.act-paper .bd-p-paper,
@@ -1623,4 +1623,344 @@
   0% { transform: scale(1, 1); }
   15% { transform: scale(0.94, 1.1); }
   30%, 100% { transform: scale(0.97, 1.05); }
+}
+
+/* ===================== event acts (show in the pill too) ===================== */
+.buddy.act-camera .bd-p-camera,
+.buddy.act-clapper .bd-p-clapper,
+.buddy.act-shades .bd-p-shades,
+.buddy.act-umbrella .bd-p-umbrella,
+.buddy.act-snow .bd-p-snow,
+.buddy.act-hush .bd-p-hush,
+.buddy.act-alarm .bd-p-alarm,
+.buddy.act-bell .bd-p-bell,
+.buddy.act-catch .bd-p-catch,
+.buddy.act-box .bd-p-box,
+.buddy.act-sunrise .bd-p-sunrise,
+.buddy.act-yawn .bd-p-yawn,
+.buddy.act-paint .bd-p-paint,
+.buddy.act-plug .bd-p-plug {
+  opacity: 1;
+}
+
+/* 1. camera: raises it, two flashes */
+.buddy.act-camera .bd-arm-r {
+  translate: 0 -2px;
+}
+.buddy.act-camera .bd-cam {
+  animation: ev-cam 2.4s ease-in-out;
+}
+.buddy.act-camera .bd-flash {
+  opacity: 0;
+  animation: ev-flash 2.4s steps(1);
+}
+.buddy.act-camera .bd-eyes {
+  animation: ev-squint 2.4s steps(1);
+}
+@keyframes ev-cam {
+  0% { transform: translateY(3px); }
+  20%, 100% { transform: translateY(0); }
+  45% { transform: translateY(0.4px); }
+}
+@keyframes ev-flash {
+  0%, 30% { opacity: 0; }
+  32%, 40% { opacity: 1; }
+  42%, 60% { opacity: 0; }
+  62%, 70% { opacity: 1; }
+  72%, 100% { opacity: 0; }
+}
+@keyframes ev-squint {
+  0%, 30%, 42%, 60%, 72%, 100% { transform: none; }
+  32%, 62% { transform: scaleY(0.3); }
+}
+
+/* 2. clapperboard: snaps twice */
+.buddy.act-clapper .bd-clap-top {
+  transform-origin: 0% 100%;
+  animation: ev-clap 2.4s ease-in;
+}
+.buddy.act-clapper .bd-arm-r {
+  animation: bd-tap 0.3s steps(1) 6;
+}
+@keyframes ev-clap {
+  0%, 25% { transform: rotate(-28deg); }
+  32% { transform: rotate(0); }
+  45%, 55% { transform: rotate(-28deg); }
+  62%, 100% { transform: rotate(0); }
+}
+
+/* 3. sunglasses come down onto his eyes, he nods cool */
+.buddy.act-shades .bd-glasses {
+  animation: ev-shades 3.2s cubic-bezier(0.3, 1.3, 0.5, 1) both;
+}
+.buddy.act-shades .bd-jump {
+  animation: ev-nod 3.2s ease-in-out;
+}
+@keyframes ev-shades {
+  0% { transform: translateY(-7px); opacity: 0; }
+  25% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes ev-nod {
+  0%, 30%, 100% { transform: translateY(0); }
+  40% { transform: translateY(0.6px); }
+  50% { transform: translateY(0); }
+  60% { transform: translateY(0.6px); }
+}
+
+/* 4a. umbrella opens, drops fall */
+.buddy.act-umbrella .bd-umb {
+  transform-origin: 75% 100%;
+  animation: ev-umb 0.6s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.buddy.act-umbrella .bd-arm-r {
+  translate: -1px -1px;
+}
+.buddy.act-umbrella .bd-drops rect {
+  animation: bd-drip 0.8s linear infinite;
+}
+.buddy.act-umbrella .bd-drops rect:nth-child(2) { animation-delay: 0.25s; }
+.buddy.act-umbrella .bd-drops rect:nth-child(3) { animation-delay: 0.5s; }
+.buddy.act-umbrella .bd-drops rect:nth-child(4) { animation-delay: 0.65s; }
+@keyframes ev-umb {
+  from { transform: scaleX(0.1); }
+}
+/* 4b. snow: flakes fall, he looks up and catches one */
+.buddy.act-snow .bd-flakes rect {
+  animation: ev-flake 1.8s linear infinite;
+}
+.buddy.act-snow .bd-flakes rect:nth-child(2) { animation-delay: 0.4s; }
+.buddy.act-snow .bd-flakes rect:nth-child(3) { animation-delay: 0.9s; }
+.buddy.act-snow .bd-flakes rect:nth-child(4) { animation-delay: 1.2s; }
+.buddy.act-snow .bd-flakes rect:nth-child(5) { animation-delay: 0.7s; }
+.buddy.act-snow .bd-gaze {
+  translate: 0 -0.8px;
+}
+.buddy.act-snow .bd-arm-l,
+.buddy.act-snow .bd-arm-r {
+  animation: ev-reach 1.8s ease-in-out infinite;
+}
+@keyframes ev-flake {
+  0% { transform: translate(0, 0); opacity: 0; }
+  15% { opacity: 1; }
+  50% { transform: translate(1px, 5px); }
+  100% { transform: translate(-1px, 11px); opacity: 0; }
+}
+@keyframes ev-reach {
+  50% { translate: 0 -2px; }
+}
+
+/* 5. hush: paws over the mouth, a red cross for "muted" */
+.buddy.act-hush .bd-arm-l {
+  translate: 5px 1px;
+}
+.buddy.act-hush .bd-arm-r {
+  translate: -5px 1px;
+}
+.buddy.act-hush .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-hush .bd-big {
+  opacity: 1;
+}
+.buddy.act-hush .bd-mute {
+  animation: ev-pulse 0.8s ease-in-out infinite;
+}
+@keyframes ev-pulse {
+  50% { opacity: 0.35; }
+}
+
+/* 9. alarm clock rings and shakes; he jumps and taps it */
+.buddy.act-alarm .bd-clock {
+  animation: ev-shake 0.12s linear infinite;
+}
+.buddy.act-alarm .bd-rings rect,
+.buddy.act-bell .bd-rings rect {
+  animation: ev-ring 0.5s steps(2) infinite;
+}
+.buddy.act-alarm .bd-rings rect:nth-child(2n),
+.buddy.act-bell .bd-rings rect:nth-child(2n) {
+  animation-delay: 0.25s;
+}
+.buddy.act-alarm .bd-jump {
+  animation: ev-startle 1.6s ease-out infinite;
+}
+.buddy.act-alarm .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-alarm .bd-big {
+  opacity: 1;
+}
+@keyframes ev-shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  25% { transform: translateX(-0.5px) rotate(-6deg); }
+  75% { transform: translateX(0.5px) rotate(6deg); }
+}
+@keyframes ev-ring {
+  50% { opacity: 0; }
+}
+@keyframes ev-startle {
+  0%, 60%, 100% { transform: translateY(0); }
+  10% { transform: translateY(-2px); }
+  25% { transform: translateY(0); }
+}
+
+/* 10. hand bell: he swings it overhead */
+.buddy.act-bell .bd-handbell {
+  transform-origin: 50% 0%;
+  animation: ev-swing 0.5s ease-in-out infinite alternate;
+}
+.buddy.act-bell .bd-arm-r {
+  translate: 0 -3px;
+  animation: ev-arm-swing 0.5s ease-in-out infinite alternate;
+}
+.buddy.act-bell .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-bell .bd-happy {
+  opacity: 1;
+}
+@keyframes ev-swing {
+  from { transform: rotate(-22deg); }
+  to { transform: rotate(22deg); }
+}
+@keyframes ev-arm-swing {
+  from { translate: -0.5px -3px; }
+  to { translate: 0.5px -3px; }
+}
+
+/* 12a. catch: a file falls into his raised paws */
+.buddy.act-catch .bd-falling {
+  animation: ev-fall 1.6s cubic-bezier(0.5, 0, 0.8, 1) both;
+}
+.buddy.act-catch .bd-arm-l,
+.buddy.act-catch .bd-arm-r {
+  animation: ev-catch-arms 1.6s ease-out both;
+}
+.buddy.act-catch .bd-jump {
+  animation: ev-catch-bob 1.6s ease-out;
+}
+@keyframes ev-fall {
+  0% { transform: translateY(-6px); opacity: 0; }
+  20% { opacity: 1; }
+  70%, 100% { transform: translateY(5px); opacity: 1; }
+}
+@keyframes ev-catch-arms {
+  0%, 60% { translate: 0 -3px; }
+  75%, 100% { translate: 0 -1px; }
+}
+@keyframes ev-catch-bob {
+  0%, 68%, 100% { transform: translateY(0); }
+  75% { transform: translateY(1px) scaleY(0.92); }
+}
+/* 12b. box: puts the download on the shelf to his right */
+.buddy.act-box .bd-crate {
+  animation: ev-box 1.8s ease-in-out both;
+}
+.buddy.act-box .bd-arm-r {
+  animation: ev-push 1.8s ease-in-out;
+}
+@keyframes ev-box {
+  0% { transform: translate(-5px, -3px); }
+  50% { transform: translate(-2px, -3px); }
+  75%, 100% { transform: translate(0, 0); }
+}
+@keyframes ev-push {
+  0%, 70% { translate: 0 -2px; }
+  100% { translate: 0 0; }
+}
+
+/* 14a. sunrise: the sun comes up behind him while he stretches */
+.buddy.act-sunrise .bd-sun {
+  animation: ev-sunrise 3.4s ease-out both;
+}
+.buddy.act-sunrise .bd-arm-l,
+.buddy.act-sunrise .bd-arm-r {
+  animation: ev-stretch-up 3.4s ease-in-out;
+}
+.buddy.act-sunrise .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-sunrise .bd-happy {
+  opacity: 1;
+}
+@keyframes ev-sunrise {
+  0% { transform: translateY(8px); opacity: 0; }
+  60%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes ev-stretch-up {
+  30%, 70% { translate: 0 -4px; }
+}
+/* 14b. yawn: mouth wide open, eyes half shut, a few z's */
+.buddy.act-yawn .bd-yawn-mouth {
+  transform-origin: 50% 0%;
+  animation: ev-yawn 3s ease-in-out;
+}
+.buddy.act-yawn .bd-eyes {
+  opacity: 0;
+}
+.buddy.act-yawn .bd-half {
+  opacity: 1;
+}
+.buddy.act-yawn .bd-zs {
+  animation: ev-zs 3s ease-out;
+}
+.buddy.act-yawn .bd-arm-l {
+  animation: ev-yawn-paw 3s ease-in-out;
+}
+@keyframes ev-yawn {
+  0%, 100% { transform: scaleY(0); }
+  30%, 65% { transform: scaleY(1); }
+}
+@keyframes ev-zs {
+  0% { transform: translate(-2px, 2px); opacity: 0; }
+  40% { opacity: 1; }
+  100% { transform: translate(1px, -3px); opacity: 0; }
+}
+@keyframes ev-yawn-paw {
+  30%, 65% { translate: 5px 1px; }
+}
+
+/* 15. paint: brush dips in the picked colour and dabs */
+.buddy .bd-paint {
+  fill: var(--bd-paint, #ff6f9c);
+}
+.buddy.act-paint .bd-brush {
+  transform-origin: 50% 0%;
+  animation: ev-dab 0.6s ease-in-out 4;
+}
+.buddy.act-paint .bd-drop {
+  animation: ev-drop 2.4s ease-out both;
+}
+.buddy.act-paint .bd-arm-r {
+  animation: bd-tap 0.3s steps(1) 8;
+}
+@keyframes ev-dab {
+  50% { transform: rotate(-25deg) translateY(1px); }
+}
+@keyframes ev-drop {
+  0%, 30% { transform: scale(0); }
+  45% { transform: scale(1.4); }
+  60%, 100% { transform: scale(1); }
+}
+
+/* 16. plug: he drags the plug to the socket, a spark, relief */
+.buddy.act-plug .bd-plug-head {
+  animation: ev-plug 2.8s ease-in-out both;
+}
+.buddy.act-plug .bd-spark {
+  opacity: 0;
+  animation: ev-spark 2.8s steps(1);
+}
+.buddy.act-plug .bd-jump {
+  animation: bd-lean 2.8s ease-in-out;
+}
+@keyframes ev-plug {
+  0% { transform: translateX(-3px); }
+  70%, 100% { transform: translateX(1px); }
+}
+@keyframes ev-spark {
+  0%, 70% { opacity: 0; }
+  72%, 80% { opacity: 1; }
+  82%, 100% { opacity: 0; }
 }
