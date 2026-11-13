@@ -331,7 +331,7 @@ fn partial_name(file: &str) -> String {
     let anon = base.rsplit_once(' ').is_some_and(|(word, num)| {
         !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) && UNCONFIRMED.iter().any(|u| word.eq_ignore_ascii_case(u) || word == *u)
     });
-    if anon { "Файл из браузера".into() } else { base.to_string() }
+    if anon { crate::i18n::tr("Файл из браузера", "File from browser").into() } else { base.to_string() }
 }
 
 /// Watches the Downloads folder: files being written show up in the pill,

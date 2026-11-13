@@ -155,7 +155,7 @@ pub fn done(app: &AppHandle, settings: &crate::settings::Settings, keys: &crate:
                     put_text(&t);
                     report(app, CaptureResult { kind: "text", text: t, thumb: None, path: None });
                 }
-                None => report(app, CaptureResult { kind: "error", text: "Текст не найден".into(), thumb: None, path: None }),
+                None => report(app, CaptureResult { kind: "error", text: crate::i18n::tr("Текст не найден", "No text found").into(), thumb: None, path: None }),
             }
         }
         "upload" => {
@@ -173,7 +173,7 @@ pub fn done(app: &AppHandle, settings: &crate::settings::Settings, keys: &crate:
                 put_text(&t);
                 report(app, CaptureResult { kind: "qr", text: t, thumb: None, path: None });
             }
-            None => report(app, CaptureResult { kind: "error", text: "QR-код не найден".into(), thumb: None, path: None }),
+            None => report(app, CaptureResult { kind: "error", text: crate::i18n::tr("QR-код не найден", "No QR code found").into(), thumb: None, path: None }),
         },
         _ => {
             let Some((w, h, rgba)) = decode_png(&png) else { return };
@@ -185,7 +185,7 @@ pub fn done(app: &AppHandle, settings: &crate::settings::Settings, keys: &crate:
             let mut path = None;
             if action == "save" || settings.bool("screenshotSave", true) {
                 if let Some(dir) = save_dir(app, settings) {
-                    let p = dir.join(format!("Снимок {}.png", stamp()));
+                    let p = dir.join(crate::L!("Снимок {}.png", "Screenshot {}.png", stamp()));
                     if std::fs::write(&p, &png).is_ok() {
                         path = Some(p.to_string_lossy().into_owned());
                     }
@@ -193,10 +193,10 @@ pub fn done(app: &AppHandle, settings: &crate::settings::Settings, keys: &crate:
             }
             let thumb = thumbnail(w, h, &rgba).map(|t| format!("data:image/png;base64,{}", B64.encode(t)));
             let text = match (copied, &path) {
-                (true, Some(_)) => "В буфере и в папке",
-                (true, None) => "В буфере обмена",
-                (false, Some(_)) => "Сохранён в папку",
-                _ => "Не удалось сохранить",
+                (true, Some(_)) => crate::i18n::tr("В буфере и в папке", "In the clipboard and the folder"),
+                (true, None) => crate::i18n::tr("В буфере обмена", "In the clipboard"),
+                (false, Some(_)) => crate::i18n::tr("Сохранён в папку", "Saved to the folder"),
+                _ => crate::i18n::tr("Не удалось сохранить", "Couldn't save"),
             };
             report(app, CaptureResult { kind: "shot", text: text.into(), thumb, path });
         }

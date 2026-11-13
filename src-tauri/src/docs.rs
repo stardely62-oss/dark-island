@@ -8,7 +8,9 @@ const LIMIT: usize = 60_000;
 
 fn cut(mut s: String) -> String {
     if s.chars().count() > LIMIT {
-        s = s.chars().take(LIMIT).collect::<String>() + "\n…(дальше обрезано)";
+        s = s.chars().take(LIMIT).collect::<String>() + crate::i18n::tr("
+…(дальше обрезано)", "
+…(cut off here)");
     }
     s
 }
@@ -16,7 +18,7 @@ fn cut(mut s: String) -> String {
 /// Text of the XML parts of an Office file, tags dropped, paragraphs kept.
 fn office_text(path: &Path, parts: impl Fn(&str) -> bool, para: &str) -> Result<String, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|_| "Файл повреждён или это не документ Office".to_string())?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| crate::i18n::tr("Файл повреждён или это не документ Office", "The file is damaged or not an Office document").to_string())?;
     let mut names: Vec<String> = zip.file_names().filter(|n| parts(n)).map(str::to_string).collect();
     // slide2 after slide1, not after slide19
     names.sort_by_key(|n| {
@@ -59,7 +61,7 @@ pub fn read(path: &str) -> Result<String, String> {
     let text = match ext.as_str() {
         "pdf" => {
             let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
-            pdf_extract::extract_text_from_mem(&bytes).map_err(|_| "Не удалось прочитать PDF".to_string())?
+            pdf_extract::extract_text_from_mem(&bytes).map_err(|_| crate::i18n::tr("Не удалось прочитать PDF", "Couldn't read the PDF").to_string())?
         }
         "docx" => office_text(p, |n| n == "word/document.xml", "w:p")?,
         "pptx" => office_text(p, |n| n.starts_with("ppt/slides/slide") && n.ends_with(".xml"), "a:p")?,
@@ -67,14 +69,14 @@ pub fn read(path: &str) -> Result<String, String> {
         _ => {
             let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
             if bytes.iter().take(4096).any(|&b| b == 0) {
-                return Err("Это не текстовый файл".into());
+                return Err(crate::i18n::tr("Это не текстовый файл", "This isn't a text file").into());
             }
             String::from_utf8_lossy(&bytes).into_owned()
         }
     };
     let text = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join("\n");
     if text.trim().is_empty() {
-        return Err("В файле нет текста (скан? приложи снимок страницы)".into());
+        return Err(crate::i18n::tr("В файле нет текста (скан? приложи снимок страницы)", "The file has no text (a scan? attach a screenshot of the page)").into());
     }
     Ok(cut(text))
 }

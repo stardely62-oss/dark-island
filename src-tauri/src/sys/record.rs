@@ -30,7 +30,7 @@ pub fn record_mic(stop: Arc<AtomicBool>, level: impl Fn(f32)) -> Result<Vec<i16>
         let chosen = super::windows::AUDIO_PREFS.lock().unwrap().1.clone();
         let dev = match super::devices::device(eCapture, &chosen) {
             Some(d) => d,
-            None => e.GetDefaultAudioEndpoint(eCapture, eConsole).map_err(|_| "Нет микрофона".to_string())?,
+            None => e.GetDefaultAudioEndpoint(eCapture, eConsole).map_err(|_| crate::i18n::tr("Нет микрофона", "No microphone").to_string())?,
         };
         let client: IAudioClient = dev.Activate(CLSCTX_ALL, None).map_err(|e| e.to_string())?;
         let wf = client.GetMixFormat().map_err(|e| e.to_string())?;
@@ -151,7 +151,7 @@ fn capture_sound(sound: Sound, stop: Arc<AtomicBool>, tx: std::sync::mpsc::Sende
             CoTaskMemFree(Some(wf as *const _));
             init.map_err(|e| e.to_string())?;
             if !float && raw.wBitsPerSample != 16 {
-                return Err("Необычный формат звука".into());
+                return Err(crate::i18n::tr("Необычный формат звука", "Unusual audio format").into());
             }
             let cap: IAudioCaptureClient = client.GetService().map_err(|e| e.to_string())?;
             client.Start().map_err(|e| e.to_string())?;
@@ -438,5 +438,5 @@ pub fn record_gif(path: &str, area: Area, stop: Arc<AtomicBool>) -> Result<(), S
         ReleaseDC(None, screen);
     }
     drop(tx);
-    encoder.join().map_err(|_| "Не удалось записать GIF".to_string())?
+    encoder.join().map_err(|_| crate::i18n::tr("Не удалось записать GIF", "Couldn't write the GIF").to_string())?
 }

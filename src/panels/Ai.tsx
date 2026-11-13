@@ -3,7 +3,7 @@ import type { Bridge } from "../ipc";
 import { providerOf, useAi, type AiDoc, type AiMsg } from "../ai";
 import type { Settings } from "../settings";
 import { TabAi } from "../components/Icons";
-import { b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit, urlDec } from "../textTools";
+import { FriendlyError, b64dec, b64enc, fixLayout, minJson, prettyJson, sentence, title, translit, urlDec } from "../textTools";
 
 import { lang, t, locale } from "../i18n";
 const CHAT_KEY = "island.chat";
@@ -225,7 +225,7 @@ export function AiTab({
     try {
       setOut(f(src));
     } catch (e) {
-      setOut(e instanceof Error && /^Это не/.test(e.message) ? e.message : t("Не получилось: {0}", e instanceof Error ? e.message : String(e)));
+      setOut(e instanceof FriendlyError ? e.message : t("Не получилось: {0}", e instanceof Error ? e.message : String(e)));
     }
   };
   const aiAction = (prompt: string, text = src) => {

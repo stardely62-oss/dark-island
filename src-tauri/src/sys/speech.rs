@@ -29,9 +29,9 @@ fn err(text: &str) -> SpeechError {
 fn from_hr(e: windows::core::Error) -> SpeechError {
     // 0x80045509: the speech privacy policy was not accepted.
     if e.code().0 as u32 == 0x8004_5509 {
-        return SpeechError { text: "Включи «Распознавание речи в сети» в Параметрах Windows".into(), privacy: true };
+        return SpeechError { text: crate::i18n::tr("Включи «Распознавание речи в сети» в Параметрах Windows", "Turn on “Online speech recognition” in Windows Settings").into(), privacy: true };
     }
-    SpeechError { text: format!("Распознавание Windows: {}", e.message()), privacy: false }
+    SpeechError { text: crate::L!("Распознавание Windows: {}", "Windows recognition: {}", e.message()), privacy: false }
 }
 
 /// Listens until `stop` is set, then returns everything that was said.
@@ -42,7 +42,7 @@ pub fn dictate(lang: &str, stop: Arc<AtomicBool>, mut on_hint: impl FnMut()) -> 
         "en" => SpeechRecognizer::Create(&Language::CreateLanguage(&HSTRING::from("en-US")).map_err(from_hr)?),
         _ => SpeechRecognizer::new(),
     }
-    .map_err(|_| err("Нет распознавания речи для этого языка: Параметры → Время и язык → Речь"))?;
+    .map_err(|_| err(crate::i18n::tr("Нет распознавания речи для этого языка: Параметры → Время и язык → Речь", "No speech recognition for this language: Settings → Time & language → Speech")))?;
     // The dictation topic first; some installations only take the built-in
     // grammar (no constraints at all), so that is the second try.
     let topic = SpeechRecognitionTopicConstraint::Create(SpeechRecognitionScenario::Dictation, &HSTRING::from("dictation")).map_err(from_hr)?;
@@ -54,13 +54,13 @@ pub fn dictate(lang: &str, stop: Arc<AtomicBool>, mut on_hint: impl FnMut()) -> 
     }
     if status != SpeechRecognitionResultStatus::Success {
         let why = match status {
-            s if s == SpeechRecognitionResultStatus::TopicLanguageNotSupported => "нет диктовки на этом языке — поставь пакет речи (Параметры → Время и язык → Речь)",
-            s if s == SpeechRecognitionResultStatus::NetworkFailure => "нужен интернет",
-            s if s == SpeechRecognitionResultStatus::MicrophoneUnavailable => "микрофон недоступен",
-            s if s == SpeechRecognitionResultStatus::GrammarCompilationFailure => "Windows не подготовила распознавание",
-            _ => "Windows не запустила распознавание",
+            s if s == SpeechRecognitionResultStatus::TopicLanguageNotSupported => crate::i18n::tr("нет диктовки на этом языке — поставь пакет речи (Параметры → Время и язык → Речь)", "no dictation for this language — install a speech pack (Settings → Time & language → Speech)"),
+            s if s == SpeechRecognitionResultStatus::NetworkFailure => crate::i18n::tr("нужен интернет", "needs internet"),
+            s if s == SpeechRecognitionResultStatus::MicrophoneUnavailable => crate::i18n::tr("микрофон недоступен", "microphone unavailable"),
+            s if s == SpeechRecognitionResultStatus::GrammarCompilationFailure => crate::i18n::tr("Windows не подготовила распознавание", "Windows didn't prepare recognition"),
+            _ => crate::i18n::tr("Windows не запустила распознавание", "Windows didn't start recognition"),
         };
-        return Err(err(&format!("Распознавание Windows: {why} (код {})", status.0)));
+        return Err(err(&crate::L!("Распознавание Windows: {why} (код {})", "Windows recognition: {why} (code {})", status.0)));
     }
     let session: SpeechContinuousRecognitionSession = rec.ContinuousRecognitionSession().map_err(from_hr)?;
     let _ = session.SetAutoStopSilenceTimeout(windows::Foundation::TimeSpan { Duration: 600_000_000 });

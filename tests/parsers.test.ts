@@ -99,8 +99,8 @@ import { lighterModel } from "../src/ai";
 describe("text tools", () => {
   it("round-trips Cyrillic through Base64 and explains bad input", () => {
     expect(b64dec(b64enc("привет, как дела"))).toBe("привет, как дела");
-    expect(() => b64dec("привет")).toThrow(/Это не Base64/);
-    expect(() => prettyJson("привет")).toThrow(/Это не JSON/);
+    expect(() => b64dec("привет")).toThrow(/Это не Base64|isn.t Base64/);
+    expect(() => prettyJson("привет")).toThrow(/Это не JSON|isn.t JSON/);
     expect(urlDec("%D0%BF%D1%80%D0%B8+x")).toBe("при x");
   });
   it("finds a lighter model for a busy one", () => {

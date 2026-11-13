@@ -273,10 +273,10 @@ pub fn bt_connect(container: &str, on: bool) -> Result<(), String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
     }
-    let guid = parse_guid(container).ok_or("Не удалось найти устройство")?;
+    let guid = parse_guid(container).ok_or(crate::i18n::tr("Не удалось найти устройство", "Couldn't find the device"))?;
     let eps = endpoints_of(&guid);
     if eps.is_empty() {
-        return Err("Это не наушники и не колонка: подключи его в Параметрах Windows".into());
+        return Err(crate::i18n::tr("Это не наушники и не колонка: подключи его в Параметрах Windows", "This isn't headphones or a speaker: connect it in Windows Settings").into());
     }
     // KSPROPSETID_BtAudio: 0 = one-shot reconnect, 1 = one-shot disconnect.
     let set = GUID::from_u128(0x7fa06c40_b8f6_4c7e_8556_e8c33a12e54d);
@@ -303,7 +303,7 @@ pub fn bt_connect(container: &str, on: bool) -> Result<(), String> {
             Err(e) => last = e.message(),
         }
     }
-    Err(format!("Windows не дал {}: {last}", if on { "подключить" } else { "отключить" }))
+    Err(crate::L!("Windows не дал {}: {last}", "Windows couldn't {}: {last}", if on { "подключить" } else { "отключить" }))
 }
 
 fn parse_guid(s: &str) -> Option<GUID> {

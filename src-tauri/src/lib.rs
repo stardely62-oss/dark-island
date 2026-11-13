@@ -1,6 +1,6 @@
-mod agents;
 #[macro_use]
 mod i18n;
+mod agents;
 mod ai;
 mod capture;
 mod clip;
@@ -79,7 +79,7 @@ fn monitors_list(app: AppHandle) -> Vec<MonitorInfo> {
         .enumerate()
         .map(|(i, m)| MonitorInfo {
             index: i,
-            name: m.name().cloned().unwrap_or_else(|| format!("Монитор {}", i + 1)),
+            name: m.name().cloned().unwrap_or_else(|| crate::L!("Монитор {}", "Monitor {}", i + 1)),
             width: m.size().width,
             height: m.size().height,
             primary: Some(*m.position()) == primary,
@@ -238,7 +238,7 @@ fn shelf_add(ctl: State<'_, Ctl>, paths: Vec<String>) -> Vec<ShelfItem> {
 #[tauri::command]
 async fn shelf_pick(app: AppHandle) -> Vec<ShelfItem> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = in_dialog(|| app.dialog().file().set_title("Положить на полку").blocking_pick_files()).unwrap_or_default();
+    let picked = in_dialog(|| app.dialog().file().set_title(crate::i18n::tr("Положить на полку", "Put on the shelf")).blocking_pick_files()).unwrap_or_default();
     let paths: Vec<String> = picked
         .into_iter()
         .filter_map(|p| p.into_path().ok())
@@ -367,7 +367,7 @@ fn open_settings_window(app: AppHandle, section: Option<String>) {
         url.push_str(&sec.bytes().map(|b| format!("%{b:02X}")).collect::<String>());
     }
     let built = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App(url.into()))
-        .title("Dark Island — настройки")
+        .title(crate::i18n::tr("Dark Island — настройки", "Dark Island — settings"))
         .inner_size(860.0, 640.0)
         .min_inner_size(680.0, 460.0)
         .theme(Some(tauri::Theme::Dark))
@@ -410,7 +410,7 @@ async fn settings_export(app: AppHandle) -> Result<Option<String>, String> {
     let Some(path) = in_dialog(|| {
         app.dialog()
             .file()
-            .set_title("Сохранить настройки")
+            .set_title(crate::i18n::tr("Сохранить настройки", "Save settings"))
             .set_file_name("dark-island-settings.json")
             .add_filter("JSON", &["json"])
             .blocking_save_file()
@@ -444,13 +444,13 @@ fn settings_replace(app: &AppHandle, mut next: serde_json::Map<String, serde_jso
 #[tauri::command]
 async fn settings_import(app: AppHandle) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let Some(path) = in_dialog(|| app.dialog().file().set_title("Загрузить настройки").add_filter("JSON", &["json"]).blocking_pick_file())
+    let Some(path) = in_dialog(|| app.dialog().file().set_title(crate::i18n::tr("Загрузить настройки", "Load settings")).add_filter("JSON", &["json"]).blocking_pick_file())
         .and_then(|p| p.into_path().ok())
     else {
         return Ok(None);
     };
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&text).map_err(|_| "Это не файл настроек острова".to_string())?;
+    let map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&text).map_err(|_| crate::i18n::tr("Это не файл настроек острова", "This isn't an island settings file").to_string())?;
     Ok(Some(settings_replace(&app, map)))
 }
 
@@ -466,7 +466,7 @@ fn settings_reset(app: AppHandle) -> serde_json::Map<String, serde_json::Value> 
 async fn update_check(app: AppHandle) -> Result<serde_json::Value, String> {
     let current = app.package_info().version.to_string();
     let v = live::get_json("https://api.github.com/repos/stardely62-oss/dark-island/releases/latest")
-        .ok_or("Не удалось узнать: нет связи с GitHub или релизов ещё нет")?;
+        .ok_or(crate::i18n::tr("Не удалось узнать: нет связи с GitHub или релизов ещё нет", "Couldn't check: no connection to GitHub or no releases yet"))?;
     let tag = v.get("tag_name").and_then(|t| t.as_str()).unwrap_or("").trim_start_matches('v').to_string();
     let url = v.get("html_url").and_then(|t| t.as_str()).unwrap_or("https://github.com/stardely62-oss/dark-island/releases").to_string();
     let newer = version_newer(&tag, &current);
@@ -511,7 +511,7 @@ fn agents_connect(ctl: State<'_, Ctl>, which: String, on: bool, replace: Option<
         "claude" => agents::connect_claude(&ctl.agents, on)?,
         "codex" => agents::connect_codex(&ctl.agents, on, replace.unwrap_or(false))?,
         "opencode" => agents::connect_opencode(&ctl.agents, on)?,
-        _ => return Err("неизвестный агент".into()),
+        _ => return Err(crate::i18n::tr("неизвестный агент", "unknown agent").into()),
     }
     Ok(agents::connections())
 }
@@ -683,7 +683,7 @@ async fn bt_connect(app: AppHandle, container: String, on: bool) -> Result<(), S
     #[cfg(not(windows))]
     {
         let _ = (app, container, on);
-        Err("только в Windows".into())
+        Err(crate::i18n::tr("только в Windows", "Windows only").into())
     }
 }
 
@@ -724,8 +724,8 @@ async fn doc_pick(app: AppHandle) -> Vec<Doc> {
     let picked = in_dialog(|| {
         app.dialog()
             .file()
-            .set_title("Приложить документ")
-            .add_filter("Документы", &["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv", "json", "log", "xml", "html", "rs", "py", "js", "ts"])
+            .set_title(crate::i18n::tr("Приложить документ", "Attach a document"))
+            .add_filter(crate::i18n::tr("Документы", "Documents"), &["pdf", "docx", "xlsx", "pptx", "txt", "md", "csv", "json", "log", "xml", "html", "rs", "py", "js", "ts"])
             .blocking_pick_files()
     })
     .unwrap_or_default();
@@ -901,7 +901,7 @@ fn dictate(app: &AppHandle, target: String) {
             let whisper_key = ["groq", "openai"].into_iter().find(|k| ctl.keys.has(k));
             let whisper = |samples: Vec<i16>, svc: &str| -> Result<String, (String, bool)> {
                 if samples.len() <= 16_000 / 3 {
-                    return Err(("Слишком коротко".into(), false));
+                    return Err((crate::i18n::tr("Слишком коротко", "Too short").into(), false));
                 }
                 emit("busy", serde_json::json!({}));
                 let (base, model) = match svc {
@@ -940,7 +940,7 @@ fn dictate(app: &AppHandle, target: String) {
                     None => {
                         emit("busy", serde_json::json!({}));
                         rx.recv_timeout(std::time::Duration::from_secs(6))
-                            .unwrap_or_else(|_| Err(("Распознавание Windows не ответило".into(), false)))
+                            .unwrap_or_else(|_| Err((crate::i18n::tr("Распознавание Windows не ответило", "Windows recognition didn't respond").into(), false)))
                     }
                 };
                 let samples = mic.join().ok().and_then(|r| r.ok()).unwrap_or_default();
@@ -961,7 +961,7 @@ fn dictate(app: &AppHandle, target: String) {
                     }
                 }
             } else {
-                let samples = mic.join().map_err(|_| ("Микрофон".to_string(), false)).and_then(|r| r.map_err(|e| (e, false)));
+                let samples = mic.join().map_err(|_| (crate::i18n::tr("Микрофон", "Microphone").to_string(), false)).and_then(|r| r.map_err(|e| (e, false)));
                 match samples {
                     Ok(s) => whisper(s, &service),
                     Err(e) => Err(e),
@@ -979,7 +979,7 @@ fn dictate(app: &AppHandle, target: String) {
                     }
                     emit("done", serde_json::json!({ "text": text }));
                 }
-                Ok(_) => emit("error", serde_json::json!({ "text": "Речь не распознана" })),
+                Ok(_) => emit("error", serde_json::json!({ "text": crate::i18n::tr("Речь не распознана", "Speech not recognized") })),
                 Err((e, privacy)) => emit("error", serde_json::json!({ "text": e, "privacy": privacy })),
             }
         });
@@ -1028,7 +1028,7 @@ fn record_start(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
             Some("mic") => sys::record::Sound::Mic,
             _ => sys::record::Sound::None,
         };
-        let path = dir.join(format!("Запись {secs}.{}", if gif { "gif" } else { "mp4" })).to_string_lossy().into_owned();
+        let path = dir.join(crate::L!("Запись {secs}.{}", "Recording {secs}.{}", if gif { "gif" } else { "mp4" })).to_string_lossy().into_owned();
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         *ctl.recording.lock().unwrap() = Some(stop.clone());
         let _ = app.emit_to("island", "recording", serde_json::json!({ "on": true }));
@@ -1125,7 +1125,7 @@ fn apply_hotkeys(app: &AppHandle) {
             continue; // turned off
         }
         let Some(sc) = parse_combo(&combo) else {
-            taken.push(format!("{combo} (не понял)"));
+            taken.push(crate::L!("{combo} (не понял)", "{combo} (not understood)"));
             continue;
         };
         if app.global_shortcut().register(sc).is_ok() {

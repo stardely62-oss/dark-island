@@ -1,3 +1,7 @@
+import { t } from "./i18n";
+
+/** An error whose message is fit to show as is. */
+export class FriendlyError extends Error {}
 // Local text tools: no network.
 
 const EN = "`qwertyuiop[]asdfghjkl;'zxcvbnm,./~QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?@#$^&";
@@ -37,7 +41,7 @@ function parseJson(s: string) {
   try {
     return JSON.parse(s);
   } catch {
-    throw new Error("Это не JSON — нужен текст вида {\"ключ\": \"значение\"}");
+    throw new FriendlyError(t("Это не JSON — нужен текст вида {\"ключ\": \"значение\"}"));
   }
 }
 export function prettyJson(s: string) {
@@ -56,7 +60,7 @@ export function b64dec(s: string) {
     const t = s.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
     bin = atob(t + "=".repeat((4 - (t.length % 4)) % 4));
   } catch {
-    throw new Error("Это не Base64 — тут можно раскодировать только текст вроде 0L/RgNC40LLQtdGC. Чтобы закодировать, нажми «Base64»");
+    throw new FriendlyError(t("Это не Base64 — тут можно раскодировать только текст вроде 0L/RgNC40LLQtdGC. Чтобы закодировать, нажми «Base64»"));
   }
   const out = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
   return out;
@@ -65,6 +69,6 @@ export function urlDec(s: string) {
   try {
     return decodeURIComponent(s.replace(/\+/g, " "));
   } catch {
-    throw new Error("Это не закодированный адрес (в нём нет правильных %XX)");
+    throw new FriendlyError(t("Это не закодированный адрес (в нём нет правильных %XX)"));
   }
 }

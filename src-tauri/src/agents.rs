@@ -264,7 +264,7 @@ fn claude(app: &AppHandle, agents: &Agents, settings: &Settings, input: &Value, 
         }
         "PermissionRequest" => {
             if !settings.bool("agentsAnswer", true) {
-                emit(app, base("waiting", "Нужно разрешение".into()));
+                emit(app, base("waiting", crate::i18n::tr("Нужно разрешение", "Needs permission").into()));
                 return "{}".into();
             }
             let tool = input.get("tool_name").and_then(Value::as_str).unwrap_or("");
@@ -282,14 +282,14 @@ fn claude(app: &AppHandle, agents: &Agents, settings: &Settings, input: &Value, 
                     let decision = if allow {
                         json!({ "behavior": "allow" })
                     } else {
-                        json!({ "behavior": "deny", "message": "Отклонено на острове" })
+                        json!({ "behavior": "deny", "message": crate::i18n::tr("Отклонено на острове", "Denied on the island") })
                     };
                     json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": decision } })
                         .to_string()
                 }
                 // Nobody answered: Claude Code asks in the terminal as usual.
                 Err(_) => {
-                    emit(app, base("waiting", "Ответь в терминале".into()));
+                    emit(app, base("waiting", crate::i18n::tr("Ответь в терминале", "Answer in the terminal").into()));
                     "{}".into()
                 }
             }
@@ -369,7 +369,7 @@ pub fn test(agents: &Agents, which: &str) -> Result<(), String> {
     let url = agents.url(which);
     match which {
         "codex" => {
-            let body = json!({ "type": "agent-turn-complete", "thread-id": "test", "cwd": "проверка", "last-assistant-message": "Связь с Codex работает" }).to_string();
+            let body = json!({ "type": "agent-turn-complete", "thread-id": "test", "cwd": "проверка", "last-assistant-message": crate::i18n::tr("Связь с Codex работает", "Codex connection works") }).to_string();
             let mut cmd = std::process::Command::new("curl");
             cmd.args(["-s", "-m", "3", "-H", "Content-Type: application/json", &url, "--data-binary", &body]);
             #[cfg(windows)]
@@ -377,14 +377,14 @@ pub fn test(agents: &Agents, which: &str) -> Result<(), String> {
                 use std::os::windows::process::CommandExt;
                 cmd.creation_flags(0x0800_0000);
             }
-            let out = cmd.output().map_err(|_| "curl не найден: Codex не сможет сообщать острову".to_string())?;
+            let out = cmd.output().map_err(|_| crate::i18n::tr("curl не найден: Codex не сможет сообщать острову", "curl not found: Codex won't be able to report to the island").to_string())?;
             if out.status.success() { Ok(()) } else { Err(format!("curl: {}", String::from_utf8_lossy(&out.stderr).trim())) }
         }
         _ => {
             let body = if which == "claude" {
-                json!({ "hook_event_name": "Stop", "session_id": "test", "cwd": "проверка", "last_assistant_message": "Связь с Claude Code работает" })
+                json!({ "hook_event_name": "Stop", "session_id": "test", "cwd": "проверка", "last_assistant_message": crate::i18n::tr("Связь с Claude Code работает", "Claude Code connection works") })
             } else {
-                json!({ "type": "done", "session": "test", "cwd": "проверка", "detail": "Связь с opencode работает" })
+                json!({ "type": "done", "session": "test", "cwd": "проверка", "detail": crate::i18n::tr("Связь с opencode работает", "opencode connection works") })
             };
             ureq::post(&url).send_json(body).map(|_| ()).map_err(|e| e.to_string())
         }
@@ -478,7 +478,7 @@ export default {
       if (behavior === "allow") ev.effect = "allow";
       else if (behavior === "deny") {
         ev.effect = "deny";
-        ev.message = "Отклонено на острове";
+        ev.message = crate::i18n::tr("Отклонено на острове", "Denied on the island");
       }
     }));
     // The answer is done.
@@ -491,7 +491,7 @@ export default {
 
 /// Writes or deletes the island's plugin for opencode.
 pub fn connect_opencode(agents: &Agents, on: bool) -> Result<(), String> {
-    let path = opencode_plugin().ok_or("нет папки пользователя")?;
+    let path = opencode_plugin().ok_or(crate::i18n::tr("нет папки пользователя", "no user folder"))?;
     if !on {
         let _ = std::fs::remove_file(&path);
         return Ok(());
@@ -544,12 +544,12 @@ fn backup(path: &PathBuf) {
 /// user settings, leaving everything else as it was. A copy of the original
 /// file is kept next to it.
 pub fn connect_claude(agents: &Agents, on: bool) -> Result<(), String> {
-    let path = claude_settings().ok_or("нет папки пользователя")?;
+    let path = claude_settings().ok_or(crate::i18n::tr("нет папки пользователя", "no user folder"))?;
     let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
-    let mut root: Value = serde_json::from_str(&text).map_err(|_| "settings.json Claude Code не читается как JSON")?;
-    let obj = root.as_object_mut().ok_or("settings.json — не объект")?;
+    let mut root: Value = serde_json::from_str(&text).map_err(|_| crate::i18n::tr("settings.json Claude Code не читается как JSON", "Claude Code's settings.json isn't valid JSON"))?;
+    let obj = root.as_object_mut().ok_or(crate::i18n::tr("settings.json — не объект", "settings.json is not an object"))?;
     let hooks = obj.entry("hooks").or_insert_with(|| json!({}));
-    let hooks = hooks.as_object_mut().ok_or("hooks — не объект")?;
+    let hooks = hooks.as_object_mut().ok_or(crate::i18n::tr("hooks — не объект", "hooks is not an object"))?;
     let ours = |g: &Value| g.to_string().contains(MARK);
     for (event, _) in CLAUDE_EVENTS {
         if let Some(Value::Array(groups)) = hooks.get_mut(*event) {
@@ -586,7 +586,7 @@ fn codex_hooks_file() -> Option<PathBuf> {
 /// keeping any hooks of the user's own. Codex runs it through cmd: curl
 /// passes the request on and prints the island's answer.
 fn codex_hooks(agents: &Agents, on: bool) -> Result<(), String> {
-    let path = codex_hooks_file().ok_or("нет папки пользователя")?;
+    let path = codex_hooks_file().ok_or(crate::i18n::tr("нет папки пользователя", "no user folder"))?;
     let text = std::fs::read_to_string(&path).unwrap_or_else(|_| "{}".into());
     let mut root: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({}));
     if !root.is_object() {
@@ -711,7 +711,7 @@ const TRUST_END: &str = "# dark-island: approval of its hook (end)";
 /// Approves the island's hook in Codex's config.toml, the way /hooks would,
 /// so nobody has to do it by hand. `trust`: (group index, fingerprint).
 fn codex_trust(hooks_file: &std::path::Path, trust: Option<(usize, String)>) -> Result<(), String> {
-    let path = codex_config().ok_or("нет папки пользователя")?;
+    let path = codex_config().ok_or(crate::i18n::tr("нет папки пользователя", "no user folder"))?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let mut out = Vec::new();
     let mut inside = false;
@@ -781,13 +781,13 @@ pub fn connect_codex(agents: &Agents, on: bool, replace: bool) -> Result<(), Str
     // Permission requests come through Codex's hooks (same format as Claude
     // Code's); answers keep coming through `notify`.
     codex_hooks(agents, on)?;
-    let path = codex_config().ok_or("нет папки пользователя")?;
+    let path = codex_config().ok_or(crate::i18n::tr("нет папки пользователя", "no user folder"))?;
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let mut lines: Vec<String> = text.lines().filter(|l| l.starts_with(SAVED) || !is_ours(l)).map(str::to_string).collect();
     if on {
         if let Some((a, b)) = notify_span(&lines) {
             if !replace {
-                return Err("у Codex уже есть свой notify".into());
+                return Err(crate::i18n::tr("у Codex уже есть свой notify", "Codex already has its own notify").into());
             }
             for l in &mut lines[a..=b] {
                 *l = format!("{SAVED}{l}");
