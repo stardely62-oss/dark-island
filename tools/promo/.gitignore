@@ -1,0 +1,7 @@
+frames/
+*.wav
+*.mp4
+bands.json
+frames.json
+list.txt
+offset.txt

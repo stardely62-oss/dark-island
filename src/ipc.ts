@@ -205,7 +205,7 @@ function mockBridge(): Bridge {
   // bands, to show that the island smooths jitter out.
   const t0 = performance.now();
   window.setInterval(() => {
-    if (!state.media?.playing) return;
+    if (!state.media?.playing || params.has("noaudio")) return;
     const t = (performance.now() - t0) / 1000;
     const kick = Math.exp(-((t * 118) / 60 % 1) * 7);
     const n = () => (Math.random() - 0.5) * 0.25;
