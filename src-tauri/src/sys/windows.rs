@@ -826,21 +826,47 @@ pub fn release_focus(win: &WebviewWindow) {
 
 // ------------------------------------------------------------- keyboard ----
 
+static CAPS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static CAPS_READ_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CAPS_RECHECK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+/// When a mouse button was last seen down (GetTickCount64 ms).
+static LAST_CLICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Caps Lock state and the keyboard layout of the window in front.
+///
+/// The toggle state lives in the input queue of the window in front, and
+/// reading it means briefly attaching to that queue. Doing that all the time
+/// broke double-clicks there (on the desktop: folders and shortcuts would not
+/// open), so it is read only when the Caps Lock key was pressed, otherwise
+/// rarely, and never right around a click.
 pub fn keys() -> (bool, String) {
+    use std::sync::atomic::Ordering::Relaxed;
+    use windows::Win32::System::SystemInformation::GetTickCount64;
     unsafe {
         let fg = GetForegroundWindow();
         let fg_thread = GetWindowThreadProcessId(fg, None);
-        let me = GetCurrentThreadId();
-        // Toggle state is per input queue: read it from the one in front.
-        let attached = fg_thread != 0 && fg_thread != me && safe_to_attach(fg) && AttachThreadInput(me, fg_thread, true).as_bool();
-        let caps = GetKeyState(VK_CAPITAL.0 as i32) & 1 == 1;
-        if attached {
-            let _ = AttachThreadInput(me, fg_thread, false);
+        let now = GetTickCount64();
+        // Pressed now, or since the last look: read the new state on the next few ticks.
+        let caps_key = GetAsyncKeyState(VK_CAPITAL.0 as i32) as u16;
+        if caps_key & 0x8001 != 0 {
+            CAPS_RECHECK.store(4, Relaxed);
         }
+        let due = CAPS_RECHECK.load(Relaxed) > 0 || now.saturating_sub(CAPS_READ_AT.load(Relaxed)) > 15_000;
+        let clicking = mouse_down() || now.saturating_sub(LAST_CLICK.load(Relaxed)) < 900;
+        if due && !clicking {
+            let me = GetCurrentThreadId();
+            let attached = fg_thread != 0 && fg_thread != me && safe_to_attach(fg) && AttachThreadInput(me, fg_thread, true).as_bool();
+            CAPS.store(GetKeyState(VK_CAPITAL.0 as i32) & 1 == 1, Relaxed);
+            if attached {
+                let _ = AttachThreadInput(me, fg_thread, false);
+            }
+            CAPS_READ_AT.store(now, Relaxed);
+            let _ = CAPS_RECHECK.fetch_update(Relaxed, Relaxed, |n| Some(n.saturating_sub(1)));
+        }
+        // The layout needs no attaching.
         let hkl = GetKeyboardLayout(fg_thread);
         let lang = (hkl.0 as usize & 0xffff) as u16;
-        (caps, layout_name(lang))
+        (CAPS.load(Relaxed), layout_name(lang))
     }
 }
 
@@ -876,7 +902,12 @@ fn layout_name(langid: u16) -> String {
 }
 
 pub fn mouse_down() -> bool {
-    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+    let down = unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0 };
+    if down {
+        let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount64() };
+        LAST_CLICK.store(now, std::sync::atomic::Ordering::Relaxed);
+    }
+    down
 }
 
 // ------------------------------------------------------------- controls ----
